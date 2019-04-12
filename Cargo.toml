@@ -1,0 +1,7 @@
+[package]
+name = "recompose"
+version = "0.1.0"
+authors = ["Alex Hamlin <alex@alexhamlin.co>"]
+edition = "2018"
+
+[dependencies]
