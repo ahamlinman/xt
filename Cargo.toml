@@ -5,3 +5,4 @@ authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
 [dependencies]
+clap = "2"
