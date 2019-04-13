@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::prelude::*;
 use std::io::{stdin, stdout};
+use std::path::Path;
 
 use clap::{crate_version, App, Arg};
 use serde_any;
@@ -24,9 +25,19 @@ fn main() {
                 .required(true)
                 .help("Format to convert to"),
         )
+        .arg(
+            Arg::with_name("input")
+                .takes_value(true)
+                .help("File to read input from"),
+        )
         .get_matches();
 
-    let value_tree = match read_value_tree(stdin(), matches.value_of("from")) {
+    let value_tree = match matches.value_of("input") {
+        Some(filename) => read_value_tree_from_file(filename),
+        None => read_value_tree(stdin(), matches.value_of("from")),
+    };
+
+    let value_tree = match value_tree {
         Ok(v) => v,
         Err(e) => panic!("unable to read input: {}", e),
     };
@@ -36,6 +47,15 @@ fn main() {
     }
 
     println!();
+}
+
+fn read_value_tree_from_file<P: AsRef<Path>>(
+    path: P,
+) -> Result<serde_value::Value, Box<dyn Error>> {
+    match serde_any::from_file(path) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(Box::new(SerdeAnyError(e))),
+    }
 }
 
 fn read_value_tree<R: Read>(
