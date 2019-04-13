@@ -15,7 +15,6 @@ fn main() {
             Arg::with_name("from")
                 .long("from")
                 .takes_value(true)
-                .required(true)
                 .help("Format to convert from"),
         )
         .arg(
@@ -27,7 +26,7 @@ fn main() {
         )
         .get_matches();
 
-    let value_tree = match read_value_tree(stdin(), matches.value_of("from").unwrap()) {
+    let value_tree = match read_value_tree(stdin(), matches.value_of("from")) {
         Ok(v) => v,
         Err(e) => panic!("unable to read input: {}", e),
     };
@@ -39,7 +38,27 @@ fn main() {
     println!();
 }
 
-fn read_value_tree<R: Read>(rdr: R, format: &str) -> Result<serde_value::Value, Box<dyn Error>> {
+fn read_value_tree<R: Read>(
+    mut rdr: R,
+    format: Option<&str>,
+) -> Result<serde_value::Value, Box<dyn Error>> {
+    if let Some(format) = format {
+        return read_value_tree_from_known_format(rdr, format);
+    }
+
+    let mut buffer = Vec::new();
+    rdr.read_to_end(&mut buffer)?;
+
+    match serde_any::from_slice_any(buffer.as_slice()) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(Box::new(SerdeAnyError(e))),
+    }
+}
+
+fn read_value_tree_from_known_format<R: Read>(
+    rdr: R,
+    format: &str,
+) -> Result<serde_value::Value, Box<dyn Error>> {
     let format = match serde_any_format(format) {
         Some(f) => f,
         None => return Err(Box::new(UnknownFormatError(String::from(format)))),
