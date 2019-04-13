@@ -15,3 +15,5 @@ community, the shoulders of which I merely stand upon here.
 ```
 cargo install --git https://github.com/ahamlinman/recompose
 ```
+
+[serde_any]: https://crates.io/crates/serde_any
