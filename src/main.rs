@@ -35,6 +35,8 @@ fn main() {
     if let Err(e) = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap()) {
         panic!("unable to write output: {}", e);
     }
+
+    println!();
 }
 
 fn read_value_tree<R: Read>(rdr: R, format: &str) -> Result<serde_value::Value, Box<dyn Error>> {
