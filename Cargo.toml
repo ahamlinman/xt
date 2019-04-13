@@ -7,5 +7,9 @@ edition = "2018"
 [dependencies]
 clap = "2"
 serde = "1"
-serde_any = "0.5"
 serde-value = "0.5"
+
+[dependencies.serde_any]
+version = "0.5"
+default-features = false
+features = ["json", "yaml", "toml"]
