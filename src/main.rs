@@ -22,13 +22,18 @@ fn main() {
             Arg::with_name("to")
                 .long("to")
                 .takes_value(true)
-                .required(true)
+                .required_unless("output")
                 .help("Format to convert to"),
         )
         .arg(
             Arg::with_name("input")
                 .takes_value(true)
                 .help("File to read input from"),
+        )
+        .arg(
+            Arg::with_name("output")
+                .takes_value(true)
+                .help("File to write output to"),
         )
         .get_matches();
 
@@ -42,11 +47,18 @@ fn main() {
         Err(e) => panic!("unable to read input: {}", e),
     };
 
-    if let Err(e) = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap()) {
+    let res = match matches.value_of("output") {
+        Some(filename) => write_value_tree_to_file(filename, value_tree),
+        None => {
+            let res = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap());
+            println!();
+            res
+        }
+    };
+
+    if let Err(e) = res {
         panic!("unable to write output: {}", e);
     }
-
-    println!();
 }
 
 fn read_value_tree_from_file<P: AsRef<Path>>(
@@ -86,6 +98,16 @@ fn read_value_tree_from_known_format<R: Read>(
 
     match serde_any::from_reader(rdr, format) {
         Ok(v) => Ok(v),
+        Err(e) => Err(Box::new(SerdeAnyError(e))),
+    }
+}
+
+fn write_value_tree_to_file<P: AsRef<Path>>(
+    path: P,
+    value: serde_value::Value,
+) -> Result<(), Box<dyn Error>> {
+    match serde_any::to_file_pretty(path, &value) {
+        Ok(_) => Ok(()),
         Err(e) => Err(Box::new(SerdeAnyError(e))),
     }
 }
