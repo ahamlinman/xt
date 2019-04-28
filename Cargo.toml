@@ -5,8 +5,12 @@ authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
 [dependencies]
-clap = "2"
 serde = "1"
+
+[dependencies.clap]
+version = "2"
+default-features = false
+features = ["color", "suggestions", "wrap_help"]
 
 [dependencies.serde_any]
 version = "0.5"

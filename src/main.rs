@@ -8,6 +8,8 @@ use clap::{crate_version, App, Arg};
 use serde_any;
 use serde_value;
 
+const FORMATS: &[&str] = &["json", "yaml", "toml"];
+
 fn main() {
     let matches = App::new("recompose")
         .version(crate_version!())
@@ -16,27 +18,40 @@ fn main() {
             Arg::with_name("from")
                 .long("from")
                 .takes_value(true)
-                .help("Format to convert from"),
+                .possible_values(FORMATS)
+                .hide_possible_values(true)
+                .help("Format to convert from")
+                .long_help(
+                    r#"Format of the input: "json", "yaml", or "toml". If input is from a file, this flag is ignored and recompose will attempt to determine the format from the file extension. If the format is unknown, recompose will read all input into memory and try different formats in turn."#
+                ),
         )
         .arg(
             Arg::with_name("to")
                 .long("to")
                 .takes_value(true)
+                .possible_values(FORMATS)
+                .hide_possible_values(true)
                 .required_unless("output")
-                .help("Format to convert to"),
+                .help("Format to convert to")
+                .long_help(
+                    r#"Format of the output: "json", "yaml", or "toml". If output is to a file, this flag is ignored and recompose will determine the format from the file extension."#
+                ),
         )
         .arg(
             Arg::with_name("input")
                 .takes_value(true)
                 .help("File to read input from (default -, i.e. stdin)")
                 .long_help(
-                    r#"Name of a file to read input from, or "-" for stdin. Defaults to stdin if not specified."#),
+                    r#"Name of a file to read input from, or "-" for stdin. Defaults to stdin if not specified."#
+                ),
         )
         .arg(
             Arg::with_name("output")
                 .takes_value(true)
                 .help("File to write output to (default -, i.e. stdout)")
-                .long_help(r#"Name of a file to write output to, or "-" for stdout. Defaults to stdout if not specified."#),
+                .long_help(
+                    r#"Name of a file to write output to, or "-" for stdout. Defaults to stdout if not specified."#
+                ),
         )
         .get_matches();
 
