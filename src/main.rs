@@ -28,18 +28,21 @@ fn main() {
         .arg(
             Arg::with_name("input")
                 .takes_value(true)
-                .help("File to read input from"),
+                .help("File to read input from (default -, i.e. stdin)")
+                .long_help(
+                    r#"Name of a file to read input from, or "-" for stdin. Defaults to stdin if not specified."#),
         )
         .arg(
             Arg::with_name("output")
                 .takes_value(true)
-                .help("File to write output to"),
+                .help("File to write output to (default -, i.e. stdout)")
+                .long_help(r#"Name of a file to write output to, or "-" for stdout. Defaults to stdout if not specified."#),
         )
         .get_matches();
 
     let value_tree = match matches.value_of("input") {
-        Some(filename) => read_value_tree_from_file(filename),
-        None => read_value_tree(stdin(), matches.value_of("from")),
+        Some(fname) if fname != "-" => read_value_tree_from_file(fname),
+        _ => read_value_tree(stdin(), matches.value_of("from")),
     };
 
     let value_tree = match value_tree {
@@ -48,8 +51,8 @@ fn main() {
     };
 
     let res = match matches.value_of("output") {
-        Some(filename) => write_value_tree_to_file(filename, value_tree),
-        None => {
+        Some(fname) if fname != "-" => write_value_tree_to_file(fname, value_tree),
+        _ => {
             let res = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap());
             println!();
             res
