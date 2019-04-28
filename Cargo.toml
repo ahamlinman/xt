@@ -7,9 +7,16 @@ edition = "2018"
 [dependencies]
 clap = "2"
 serde = "1"
-serde-value = "0.5"
 
 [dependencies.serde_any]
 version = "0.5"
 default-features = false
 features = ["json", "yaml", "toml"]
+
+[dependencies.serde-value]
+# TODO: Figure out a more sustainable way to preserve ordering; using a stale
+# fork from GitHub is not great
+version = "0.5"
+git = "https://github.com/mitsuhiko/serde-value"
+branch = "feature/add-preserve-order"
+features = ["preserve_order"]
