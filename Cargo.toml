@@ -1,6 +1,6 @@
 [package]
 name = "recompose"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
