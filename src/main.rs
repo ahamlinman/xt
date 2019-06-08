@@ -58,25 +58,18 @@ fn main() {
     let value_tree = match matches.value_of("input") {
         Some(fname) if fname != "-" => read_value_tree_from_file(fname),
         _ => read_value_tree(stdin(), matches.value_of("from")),
-    };
+    }
+    .expect("unable to read input");
 
-    let value_tree = match value_tree {
-        Ok(v) => v,
-        Err(e) => panic!("unable to read input: {}", e),
-    };
-
-    let res = match matches.value_of("output") {
+    match matches.value_of("output") {
         Some(fname) if fname != "-" => write_value_tree_to_file(fname, value_tree),
         _ => {
             let res = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap());
             println!();
             res
         }
-    };
-
-    if let Err(e) = res {
-        panic!("unable to write output: {}", e);
     }
+    .expect("unable to write output");
 }
 
 fn read_value_tree_from_file<P: AsRef<Path>>(
