@@ -102,9 +102,9 @@ fn read_value_tree_from_known_format<R: Read>(
     rdr: R,
     format: &str,
 ) -> Result<serde_value::Value, Box<dyn Error>> {
-    let format = match serde_any_format(format) {
-        Some(f) => f,
-        None => return Err(Box::new(UnknownFormatError(String::from(format)))),
+    let format = match format.parse() {
+        Ok(f) => f,
+        Err(_) => return Err(Box::new(UnknownFormatError(String::from(format)))),
     };
 
     match serde_any::from_reader(rdr, format) {
@@ -128,9 +128,9 @@ fn write_value_tree<W: Write>(
     value: serde_value::Value,
     format: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let format = match serde_any_format(format) {
-        Some(f) => f,
-        None => return Err(Box::new(UnknownFormatError(String::from(format)))),
+    let format = match format.parse() {
+        Ok(f) => f,
+        Err(_) => return Err(Box::new(UnknownFormatError(String::from(format)))),
     };
 
     match serde_any::to_writer_pretty(writer, &value, format) {
@@ -151,18 +151,6 @@ impl fmt::Display for SerdeAnyError {
 impl Error for SerdeAnyError {
     // TODO: serde_any::Error doesn't implement std::error::Error. So returning a cause is not
     // trivial as far as I know, but would be extremely useful.
-}
-
-fn serde_any_format(format: &str) -> Option<serde_any::Format> {
-    use serde_any::Format::*;
-
-    match format {
-        "json" => Some(Json),
-        "yaml" => Some(Yaml),
-        "toml" => Some(Toml),
-
-        _ => None,
-    }
 }
 
 #[derive(Debug)]
