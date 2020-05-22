@@ -17,52 +17,58 @@ fn main() {
         .arg(
             Arg::with_name("from")
                 .long("from")
+                .short("f")
                 .takes_value(true)
                 .possible_values(FORMATS)
                 .hide_possible_values(true)
+                .conflicts_with("input")
                 .help("Format to convert from")
                 .long_help(
-                    r#"Format of the input: "json", "yaml", or "toml". If input is from a file, this flag is ignored and jyt will attempt to determine the format from the file extension. If the format is unknown, jyt will read all input into memory and try different formats in turn."#
+                    r#"Format of input from stdin [json, yaml, toml]. Format will be identified if not provided, however all stdin will be read into memory to do this. Invalid for file inputs; the file extension is used instead."#
                 ),
         )
         .arg(
             Arg::with_name("to")
                 .long("to")
+                .short("t")
                 .takes_value(true)
                 .possible_values(FORMATS)
                 .hide_possible_values(true)
+                .conflicts_with("output")
                 .required_unless("output")
                 .help("Format to convert to")
                 .long_help(
-                    r#"Format of the output: "json", "yaml", or "toml". If output is to a file, this flag is ignored and jyt will determine the format from the file extension."#
+                    r#"Format of output to stdout [json, yaml, toml]. Invalid for file outputs; the file extension is used instead."#
+                ),
+        )
+        .arg(
+            Arg::with_name("output")
+                .long("output")
+                .short("o")
+                .takes_value(true)
+                .help("File to write output to (default stdout)")
+                .long_help(
+                    r#"Name of a file to write output to. Otherwise outputs to stdout."#
                 ),
         )
         .arg(
             Arg::with_name("input")
                 .takes_value(true)
-                .help("File to read input from (default -, i.e. stdin)")
+                .help("File to read input from (default stdin)")
                 .long_help(
-                    r#"Name of a file to read input from, or "-" for stdin. Defaults to stdin if not specified."#
-                ),
-        )
-        .arg(
-            Arg::with_name("output")
-                .takes_value(true)
-                .help("File to write output to (default -, i.e. stdout)")
-                .long_help(
-                    r#"Name of a file to write output to, or "-" for stdout. Defaults to stdout if not specified."#
+                    r#"Name of a file to read input from. Defaults to stdin if not specified."#
                 ),
         )
         .get_matches();
 
     let value_tree = match matches.value_of("input") {
-        Some(fname) if fname != "-" => read_value_tree_from_file(fname),
+        Some(fname) => read_value_tree_from_file(fname),
         _ => read_value_tree(stdin(), matches.value_of("from")),
     }
     .expect("unable to read input");
 
     match matches.value_of("output") {
-        Some(fname) if fname != "-" => write_value_tree_to_file(fname, value_tree),
+        Some(fname) => write_value_tree_to_file(fname, value_tree),
         _ => {
             let res = write_value_tree(stdout(), value_tree, matches.value_of("to").unwrap());
             println!();
