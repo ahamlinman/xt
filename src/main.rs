@@ -11,7 +11,7 @@ use serde_value;
 const FORMATS: &[&str] = &["json", "yaml", "toml"];
 
 fn main() {
-    let matches = App::new("recompose")
+    let matches = App::new("jyt")
         .version(crate_version!())
         .about("Convert between serialized data formats")
         .arg(
@@ -22,7 +22,7 @@ fn main() {
                 .hide_possible_values(true)
                 .help("Format to convert from")
                 .long_help(
-                    r#"Format of the input: "json", "yaml", or "toml". If input is from a file, this flag is ignored and recompose will attempt to determine the format from the file extension. If the format is unknown, recompose will read all input into memory and try different formats in turn."#
+                    r#"Format of the input: "json", "yaml", or "toml". If input is from a file, this flag is ignored and jyt will attempt to determine the format from the file extension. If the format is unknown, jyt will read all input into memory and try different formats in turn."#
                 ),
         )
         .arg(
@@ -34,7 +34,7 @@ fn main() {
                 .required_unless("output")
                 .help("Format to convert to")
                 .long_help(
-                    r#"Format of the output: "json", "yaml", or "toml". If output is to a file, this flag is ignored and recompose will determine the format from the file extension."#
+                    r#"Format of the output: "json", "yaml", or "toml". If output is to a file, this flag is ignored and jyt will determine the format from the file extension."#
                 ),
         )
         .arg(
