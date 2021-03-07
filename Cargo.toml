@@ -1,5 +1,9 @@
 [package]
 name = "jyt"
+description = "Translate between serialized data formats"
 version = "0.3.0"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
+
+[dependencies]
+structopt = "0.3"
