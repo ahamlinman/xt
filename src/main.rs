@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Write};
 use std::str::FromStr;
 
 use structopt::StructOpt;
@@ -16,6 +16,12 @@ fn main() {
       let mut ser = serde_yaml::Serializer::new(io::stdout());
       serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML")
     }
+    Format::Toml => {
+      let mut s = String::new();
+      let mut ser = toml::Serializer::new(&mut s);
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize TOML");
+      io::stdout().write(s.as_bytes()).unwrap();
+    }
   };
 }
 
@@ -30,6 +36,7 @@ struct Opt {
 enum Format {
   Json,
   Yaml,
+  Toml,
 }
 
 impl FromStr for Format {
@@ -39,6 +46,7 @@ impl FromStr for Format {
     match s {
       "json" => Ok(Self::Json),
       "yaml" => Ok(Self::Yaml),
+      "toml" => Ok(Self::Toml),
       _ => Err("unknown format"),
     }
   }
