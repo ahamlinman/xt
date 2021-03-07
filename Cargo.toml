@@ -1,0 +1,5 @@
+[package]
+name = "jyt"
+version = "0.3.0"
+authors = ["Alex Hamlin <alex@alexhamlin.co>"]
+edition = "2018"
