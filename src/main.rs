@@ -1,10 +1,22 @@
+use std::io;
 use std::str::FromStr;
 
 use structopt::StructOpt;
 
 fn main() {
   let opt = Opt::from_args();
-  println!("{:?}", opt);
+
+  let de = serde_yaml::Deserializer::from_reader(io::stdin());
+  match opt.to {
+    Format::Json => {
+      let mut ser = serde_json::Serializer::pretty(io::stdout());
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON")
+    }
+    Format::Yaml => {
+      let mut ser = serde_yaml::Serializer::new(io::stdout());
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML")
+    }
+  };
 }
 
 #[derive(StructOpt, Debug)]

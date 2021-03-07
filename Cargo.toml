@@ -6,4 +6,7 @@ authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
 [dependencies]
+serde-transcode = "1"
+serde_json = "1"
+serde_yaml = "0.8"
 structopt = "0.3"
