@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::str::FromStr;
 
 use structopt::StructOpt;
@@ -6,8 +6,25 @@ use structopt::StructOpt;
 fn main() {
   let opt = Opt::from_args();
 
-  let de = serde_yaml::Deserializer::from_reader(io::stdin());
-  match opt.to {
+  match opt.from {
+    None | Some(Format::Json) | Some(Format::Yaml) => {
+      let de = serde_yaml::Deserializer::from_reader(io::stdin());
+      transcode_and_write(de, opt.to);
+    }
+    Some(Format::Toml) => {
+      let mut s = String::new();
+      io::stdin().lock().read_to_string(&mut s).unwrap();
+      let mut de = toml::Deserializer::new(s.as_str());
+      transcode_and_write(&mut de, opt.to);
+    }
+  }
+}
+
+fn transcode_and_write<'a, D>(de: D, to: Format)
+where
+  D: serde::de::Deserializer<'a>,
+{
+  match to {
     Format::Json => {
       let mut ser = serde_json::Serializer::pretty(io::stdout());
       serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON")
@@ -30,6 +47,9 @@ fn main() {
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
+
+  #[structopt(short = "f", help = "Format to convert from")]
+  from: Option<Format>,
 }
 
 #[derive(Debug)]
