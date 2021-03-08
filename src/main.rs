@@ -11,17 +11,17 @@ fn main() {
   let opt = Opt::from_args();
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
-      let reader = get_reader(opt.input_file);
+      let reader = get_input_reader(opt.input_file);
       let de = serde_yaml::Deserializer::from_reader(reader);
       transcode_to(de, opt.to);
     }
     Some(Format::Json) => {
-      let reader = get_reader(opt.input_file);
+      let reader = get_input_reader(opt.input_file);
       let mut de = serde_json::Deserializer::from_reader(reader);
       transcode_to(&mut de, opt.to);
     }
     Some(Format::Toml) => {
-      let slice = get_slice(opt.input_file);
+      let slice = get_input_slice(opt.input_file);
       let input_str = std::str::from_utf8(&slice).unwrap();
       let mut de = toml::Deserializer::new(input_str);
       transcode_to(&mut de, opt.to);
@@ -29,30 +29,31 @@ fn main() {
   }
 }
 
-fn get_reader<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Read> {
+fn get_input_reader<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Read> {
   match path.filter(|p| p.as_ref().to_str() != Some("-")) {
     Some(p) => Box::new(File::open(p).expect("failed to open file")),
     None => Box::new(io::stdin()),
   }
 }
 
-fn get_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u8]>> {
-  match path.filter(|p| p.as_ref().to_str() != Some("-")) {
+fn get_input_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u8]>> {
+  let mut input: Box<dyn Read> = match path.filter(|p| p.as_ref().to_str() != Some("-")) {
     Some(p) => {
-      // TODO: something about the fact this is unsafe?
-      // truncating the file while it's mapped => undefined behavior
-      let map = {
-        let f = File::open(p).unwrap();
-        unsafe { memmap2::Mmap::map(&f).unwrap() }
-      };
-      Box::new(map)
+      // mmap the file, or fall back to standard reading if it fails. As dirty
+      // as it is, we document for users that modifying the input while it's
+      // mapped results in undefined behavior.
+      let file = File::open(p).unwrap();
+      match unsafe { memmap2::Mmap::map(&file) } {
+        Ok(map) => return Box::new(map),
+        Err(_) => Box::new(file),
+      }
     }
-    None => {
-      let mut buf = Vec::new();
-      io::stdin().read_to_end(&mut buf).unwrap();
-      Box::new(buf)
-    }
-  }
+    None => Box::new(io::stdin()),
+  };
+
+  let mut buf = Vec::new();
+  input.read_to_end(&mut buf).unwrap();
+  Box::new(buf)
 }
 
 fn transcode_to<'a, D>(de: D, to: Format)
@@ -102,8 +103,9 @@ where
 ///
 /// jyt reads JSON and YAML input in streaming fashion. When reading TOML from
 /// stdin, jyt buffers the full input into memory. When reading TOML from a file,
-/// jyt will mmap the file. Modifying the mmap'ed file while jyt is running will
-/// probably cause issues.
+/// jyt will attempt to map the file directly into memory (buffering only if the
+/// map fails). Modifying a mapped input file while jyt is running will trigger
+/// undefined behavior.
 ///
 /// jyt writes JSON and YAML output in streaming fashion, and outputs values in
 /// the same order as the input. With JSON output, jyt pretty-prints if
@@ -133,7 +135,7 @@ impl Opt {
 
     match &self.input_file {
       None => None,
-      Some(p) => match p.extension().map(|s| s.to_str()).flatten() {
+      Some(p) => match p.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
         Some("yaml") | Some("yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
