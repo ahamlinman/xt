@@ -1,4 +1,6 @@
+use std::fs::File;
 use std::io::{self, Read, Write};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use structopt::StructOpt;
@@ -6,7 +8,11 @@ use structopt::StructOpt;
 fn main() {
   let opt = Opt::from_args();
 
-  let input = io::stdin();
+  let mut input: Box<dyn Read> = match opt.input_file {
+    None => Box::new(io::stdin()),
+    Some(p) if p.to_str() == Some("-") => Box::new(io::stdin()),
+    Some(p) => Box::new(File::open(p).expect("failed to open file")),
+  };
   let output = io::stdout();
 
   match opt.from {
@@ -20,7 +26,7 @@ fn main() {
     }
     Some(Format::Toml) => {
       let mut s = String::new();
-      input.lock().read_to_string(&mut s).unwrap();
+      input.read_to_string(&mut s).unwrap();
       let mut de = toml::Deserializer::new(s.as_str());
       transcode_to(&mut de, opt.to, output);
     }
@@ -58,6 +64,13 @@ struct Opt {
 
   #[structopt(short = "f", help = "Format to convert from")]
   from: Option<Format>,
+
+  #[structopt(
+    name = "file",
+    help = "File to read input from [default: stdin]",
+    parse(from_os_str)
+  )]
+  input_file: Option<PathBuf>,
 }
 
 enum Format {
