@@ -1,3 +1,9 @@
+_**Note:** jyt has been rewritten from scratch, and this legacy version is
+not actively maintained. Please see the `main` branch for the newest
+version._
+
+---
+
 # jyt
 
 jyt is a JSON-YAML-TOML transcoding tool. It's extremely rough but even in this
@@ -9,10 +15,10 @@ cargo install --git https://github.com/ahamlinman/jyt
 
 ## TODOs and Limitations
 
-* Right now when files are used format selection is based on file extension. It
+- Right now when files are used format selection is based on file extension. It
   would be nice to allow some overrides on the command line for special cases.
-* Better error checking and handling. Unit testing. That kind of stuff.
-* TOML output requires that all values appear before all dictionaries, would be
+- Better error checking and handling. Unit testing. That kind of stuff.
+- TOML output requires that all values appear before all dictionaries, would be
   nice to rearrange JSON and YAML inputs automatically.
 
 ## Acknowledgements
