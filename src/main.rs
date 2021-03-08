@@ -45,17 +45,22 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn get_input_reader<P: AsRef<Path>>(path: Option<P>) -> io::Result<Box<dyn Read>> {
-  match path.filter(|p| p.as_ref().to_str() != Some("-")) {
-    Some(p) => Ok(Box::new(File::open(p)?)),
+fn get_input_reader<P>(path: Option<P>) -> io::Result<Box<dyn Read>>
+where
+  P: AsRef<Path>,
+{
+  match filter_stdin_path(path) {
     None => Ok(Box::new(io::stdin())),
+    Some(p) => Ok(Box::new(File::open(p)?)),
   }
 }
 
-fn get_input_slice<P: AsRef<Path>>(
-  path: Option<P>,
-) -> Result<Box<dyn Deref<Target = [u8]>>, Box<dyn Error>> {
-  let mut input: Box<dyn Read> = match path.filter(|p| p.as_ref().to_str() != Some("-")) {
+fn get_input_slice<P>(path: Option<P>) -> Result<Box<dyn Deref<Target = [u8]>>, Box<dyn Error>>
+where
+  P: AsRef<Path>,
+{
+  let mut input: Box<dyn Read> = match filter_stdin_path(path) {
+    None => Box::new(io::stdin()),
     Some(p) => {
       // mmap the file, or fall back to standard reading if it fails. As dirty
       // as it is, we document for users that modifying the input while it's
@@ -66,12 +71,18 @@ fn get_input_slice<P: AsRef<Path>>(
         Err(_) => Box::new(file),
       }
     }
-    None => Box::new(io::stdin()),
   };
 
   let mut buf = Vec::new();
   input.read_to_end(&mut buf)?;
   Ok(Box::new(buf))
+}
+
+fn filter_stdin_path<P>(path: Option<P>) -> Option<P>
+where
+  P: AsRef<Path>,
+{
+  path.filter(|p| p.as_ref().to_str() != Some("-"))
 }
 
 fn transcode_to<'a, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
