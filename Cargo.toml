@@ -12,4 +12,7 @@ serde-transcode = "1"
 serde_json = "1"
 serde_yaml = "0.8"
 structopt = "0.3"
-toml = "0.5"
+
+[dependencies.toml]
+version = "0.5"
+features = ["preserve_order"]

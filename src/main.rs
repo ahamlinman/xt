@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use serde::Deserialize;
 use structopt::StructOpt;
 
 fn main() {
@@ -71,9 +72,15 @@ where
       serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML")
     }
     Format::Toml => {
-      let mut output_buf = String::new();
-      let mut ser = toml::Serializer::new(&mut output_buf);
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize TOML");
+      // TOML requires that all non-table values appear before any tables at a
+      // given "level." We can't enforce that JSON and YAML inputs put all
+      // objects / maps before other types, so instead of the normal transcode
+      // workflow we buffer these inputs into a toml::Value, which will
+      // serialize them back out in the necessary order.
+      let value = toml::Value::deserialize(de).expect("failed to serialize TOML");
+
+      // TODO: Write directly to output if the toml crate gains support for it.
+      let output_buf = toml::to_string(&value).expect("failed to serialize TOML");
       output.write(output_buf.as_bytes()).unwrap();
     }
   };
