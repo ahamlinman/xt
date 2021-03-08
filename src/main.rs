@@ -96,13 +96,13 @@ where
 /// extension. Otherwise, jyt will default to '-f yaml', which supports both YAML
 /// and JSON input. To read TOML from stdin, specify '-f toml' explicitly.
 ///
-/// jyt always reads JSON and YAML input in streaming fashion. When reading TOML
-/// from stdin, jyt buffers the full input into memory. When reading TOML from a
-/// file, jyt will attempt to mmap the file. Modifying a mmap'ed input file while
-/// jyt is running may produce undefined behavior.
+/// jyt reads JSON and YAML input in streaming fashion. When reading TOML from
+/// stdin, jyt buffers the full input into memory. When reading TOML from a file,
+/// jyt will mmap the file. Modifying the mmap'ed file while jyt is running will
+/// probably cause issues.
 ///
-/// jyt always writes JSON and YAML output in streaming fashion, and outputs maps
-/// in the same order as the input. When writing TOML, jyt reads the full input
+/// jyt writes JSON and YAML output in streaming fashion, and outputs values in
+/// the same order as the input. When writing TOML, jyt fully parses the input
 /// into memory, then sorts non-table values before tables in the output to
 /// ensure it is valid TOML.
 struct Opt {
