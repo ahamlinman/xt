@@ -92,11 +92,13 @@ where
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// Supported formats are json, yaml, and toml.
+/// Supported formats are: json, yaml, and toml. Formats can be specified using
+/// the first character of the name, e.g. '-ty' is the same as '-t yaml'.
 ///
 /// When reading from a file, jyt will try to detect a value for -f based on the
 /// extension. Otherwise, jyt will default to '-f yaml', which supports both YAML
-/// and JSON input. To read TOML from stdin, specify '-f toml' explicitly.
+/// and JSON input. To read TOML from stdin, specify '-f toml' (a.k.a. '-ft')
+/// explicitly.
 ///
 /// jyt reads JSON and YAML input in streaming fashion. When reading TOML from
 /// stdin, jyt buffers the full input into memory. When reading TOML from a file,
@@ -153,9 +155,9 @@ impl FromStr for Format {
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
-      "json" => Ok(Self::Json),
-      "yaml" => Ok(Self::Yaml),
-      "toml" => Ok(Self::Toml),
+      "j" | "json" => Ok(Self::Json),
+      "y" | "yaml" => Ok(Self::Yaml),
+      "t" | "toml" => Ok(Self::Toml),
       _ => Err("unknown format"),
     }
   }

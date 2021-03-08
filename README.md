@@ -3,13 +3,13 @@
 jyt translates between three common serialized data formats: JSON, YAML, and
 TOML.
 
-jyt…
+Among its features, jyt…
 
 - …tries to be as efficient as possible for every input and output
   combination, avoiding internal buffers except where necessary for correct
   output.
-- …autodetects input formats from file extensions, or supports a simple
-  flag to set the input type.
+- …tries to autodetect input formats from file extensions, but can be
+  overridden with a simple flag.
 - …outputs JSON by default for convenient use with [jq][jq].
 
 _Note: jyt v0.3 is a ground-up rewrite that shares no history with jyt v0.2.
@@ -38,10 +38,10 @@ hashbrown
 
 Translating an application config from JSON to YAML for easier editing. Here,
 jyt will autodetect the input format, so we only need to specify the output
-type.
+type, which we do using the shorthand for `-t yaml`.
 
 ```sh
-$ jyt -t yaml config.json > config.yaml
+$ jyt -ty config.json > config.yaml
 ```
 
 [jq]: https://stedolan.github.io/jq/
