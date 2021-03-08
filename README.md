@@ -25,11 +25,11 @@ jyt -h
 ## Examples
 
 Processing jyt's own `Cargo.lock` file with [`jq`][jq] to find all of the
-pre-1.0 crates it uses. Since `.lock` is a non-standard extension, we use
-`-f toml` to override the default YAML / JSON input parser.
+pre-1.0 crates it uses. Since `.lock` is a non-standard extension, we use the
+shorthand for `-f toml` to override the default YAML / JSON input parser.
 
 ```sh
-$ jyt -f toml Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
+$ jyt -ft Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
 atty
 dtoa
 hashbrown
