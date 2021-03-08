@@ -3,8 +3,10 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::process;
+use std::str::{self, FromStr};
 
+use memmap2::Mmap;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -17,7 +19,7 @@ fn main() {
       _ => {}
     }
     eprint!("jyt error: {}\n", e);
-    std::process::exit(1);
+    process::exit(1);
   }
 }
 
@@ -35,7 +37,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
     }
     Some(Format::Toml) => {
       let slice = get_input_slice(opt.input_file)?;
-      let input_str = std::str::from_utf8(&slice)?;
+      let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
       transcode_to(&mut de, opt.to)?;
     }
@@ -59,7 +61,7 @@ fn get_input_slice<P: AsRef<Path>>(
       // as it is, we document for users that modifying the input while it's
       // mapped results in undefined behavior.
       let file = File::open(p)?;
-      match unsafe { memmap2::Mmap::map(&file) } {
+      match unsafe { Mmap::map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
         Err(_) => Box::new(file),
       }
