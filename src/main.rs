@@ -87,7 +87,24 @@ where
 }
 
 #[derive(StructOpt)]
-#[structopt(about)]
+#[structopt(verbatim_doc_comment)]
+/// Translate between serialized data formats
+///
+/// Supported formats are json, yaml, and toml.
+///
+/// When reading from a file, jyt will try to detect a value for -f based on the
+/// extension. Otherwise, jyt will default to '-f yaml', which supports both YAML
+/// and JSON input. To read TOML from stdin, specify '-f toml' explicitly.
+///
+/// jyt always reads JSON and YAML input in streaming fashion. When reading TOML
+/// from stdin, jyt buffers the full input into memory. When reading TOML from a
+/// file, jyt will attempt to mmap the file. Modifying a mmap'ed input file while
+/// jyt is running may produce undefined behavior.
+///
+/// jyt always writes JSON and YAML output in streaming fashion, and outputs maps
+/// in the same order as the input. When writing TOML, jyt reads the full input
+/// into memory, then sorts non-table values before tables in the output to
+/// ensure it is valid TOML.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
