@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use serde::Deserialize;
@@ -31,20 +31,15 @@ fn main() {
   }
 }
 
-fn get_reader(path: Option<PathBuf>) -> Box<dyn Read> {
-  match path.filter(|p| p.to_str() != Some("-")) {
-    None => Box::new(io::stdin()),
+fn get_reader<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Read> {
+  match path.filter(|p| p.as_ref().to_str() != Some("-")) {
     Some(p) => Box::new(File::open(p).expect("failed to open file")),
+    None => Box::new(io::stdin()),
   }
 }
 
-fn get_slice(path: Option<PathBuf>) -> Box<dyn Deref<Target = [u8]>> {
-  match path.filter(|p| p.to_str() != Some("-")) {
-    None => {
-      let mut buf = Vec::new();
-      io::stdin().read_to_end(&mut buf).unwrap();
-      Box::new(buf)
-    }
+fn get_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u8]>> {
+  match path.filter(|p| p.as_ref().to_str() != Some("-")) {
     Some(p) => {
       // TODO: something about the fact this is unsafe?
       // truncating the file while it's mapped => undefined behavior
@@ -53,6 +48,11 @@ fn get_slice(path: Option<PathBuf>) -> Box<dyn Deref<Target = [u8]>> {
         unsafe { memmap2::Mmap::map(&f).unwrap() }
       };
       Box::new(map)
+    }
+    None => {
+      let mut buf = Vec::new();
+      io::stdin().read_to_end(&mut buf).unwrap();
+      Box::new(buf)
     }
   }
 }
