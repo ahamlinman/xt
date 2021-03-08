@@ -10,7 +10,15 @@ use structopt::StructOpt;
 
 fn main() {
   let opt = Opt::from_args();
-  jyt(opt).unwrap();
+
+  if let Err(e) = jyt(opt) {
+    match e.downcast_ref::<io::Error>() {
+      Some(e) if e.kind() == io::ErrorKind::BrokenPipe => return,
+      _ => {}
+    }
+    eprint!("jyt error: {}\n", e);
+    std::process::exit(1);
+  }
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
@@ -18,20 +26,21 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
     None | Some(Format::Yaml) => {
       let reader = get_input_reader(opt.input_file)?;
       let de = serde_yaml::Deserializer::from_reader(reader);
-      transcode_to(de, opt.to)
+      transcode_to(de, opt.to)?;
     }
     Some(Format::Json) => {
       let reader = get_input_reader(opt.input_file)?;
       let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to)
+      transcode_to(&mut de, opt.to)?;
     }
     Some(Format::Toml) => {
       let slice = get_input_slice(opt.input_file)?;
       let input_str = std::str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to)
+      transcode_to(&mut de, opt.to)?;
     }
   }
+  Ok(())
 }
 
 fn get_input_reader<P: AsRef<Path>>(path: Option<P>) -> io::Result<Box<dyn Read>> {
@@ -87,13 +96,17 @@ where
       // objects / maps before other types, so instead of the normal transcode
       // workflow we buffer these inputs into a toml::Value, which will
       // serialize them back out in the necessary order.
-      let value = toml::Value::deserialize(de).expect("failed to serialize TOML");
+      //
+      // The error type here is bound by the lifetime of the deserializer;
+      // converting to a string allows us to maintain 'static on the error this
+      // function returns.
+      let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
 
-      // TODO: Write directly to output if the toml crate gains support for it.
+      // TODO: Write directly to stdout if / when the toml crate gains support.
       let output_buf = toml::to_string(&value)?;
       io::stdout().write(output_buf.as_bytes())?;
     }
-  };
+  }
   Ok(())
 }
 
