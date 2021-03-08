@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
@@ -9,42 +10,57 @@ use structopt::StructOpt;
 
 fn main() {
   let opt = Opt::from_args();
+
+  if let Err(e) = jyt(opt) {
+    match e.downcast_ref::<io::Error>() {
+      Some(e) if e.kind() == io::ErrorKind::BrokenPipe => return,
+      _ => {}
+    }
+    eprint!("jyt error: {}\n", e);
+    std::process::exit(1);
+  }
+}
+
+fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
-      let reader = get_input_reader(opt.input_file);
+      let reader = get_input_reader(opt.input_file)?;
       let de = serde_yaml::Deserializer::from_reader(reader);
-      transcode_to(de, opt.to);
+      transcode_to(de, opt.to)?;
     }
     Some(Format::Json) => {
-      let reader = get_input_reader(opt.input_file);
+      let reader = get_input_reader(opt.input_file)?;
       let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to);
+      transcode_to(&mut de, opt.to)?;
     }
     Some(Format::Toml) => {
-      let slice = get_input_slice(opt.input_file);
-      let input_str = std::str::from_utf8(&slice).unwrap();
+      let slice = get_input_slice(opt.input_file)?;
+      let input_str = std::str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to);
+      transcode_to(&mut de, opt.to)?;
     }
   }
+  Ok(())
 }
 
-fn get_input_reader<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Read> {
+fn get_input_reader<P: AsRef<Path>>(path: Option<P>) -> io::Result<Box<dyn Read>> {
   match path.filter(|p| p.as_ref().to_str() != Some("-")) {
-    Some(p) => Box::new(File::open(p).expect("failed to open file")),
-    None => Box::new(io::stdin()),
+    Some(p) => Ok(Box::new(File::open(p)?)),
+    None => Ok(Box::new(io::stdin())),
   }
 }
 
-fn get_input_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u8]>> {
+fn get_input_slice<P: AsRef<Path>>(
+  path: Option<P>,
+) -> Result<Box<dyn Deref<Target = [u8]>>, Box<dyn Error>> {
   let mut input: Box<dyn Read> = match path.filter(|p| p.as_ref().to_str() != Some("-")) {
     Some(p) => {
       // mmap the file, or fall back to standard reading if it fails. As dirty
       // as it is, we document for users that modifying the input while it's
       // mapped results in undefined behavior.
-      let file = File::open(p).unwrap();
+      let file = File::open(p)?;
       match unsafe { memmap2::Mmap::map(&file) } {
-        Ok(map) => return Box::new(map),
+        Ok(map) => return Ok(Box::new(map)),
         Err(_) => Box::new(file),
       }
     }
@@ -52,27 +68,27 @@ fn get_input_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u
   };
 
   let mut buf = Vec::new();
-  input.read_to_end(&mut buf).unwrap();
-  Box::new(buf)
+  input.read_to_end(&mut buf)?;
+  Ok(Box::new(buf))
 }
 
-fn transcode_to<'a, D>(de: D, to: Format)
+fn transcode_to<'a, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
 where
   D: serde::de::Deserializer<'a>,
 {
   match to {
     Format::Json if atty::is(atty::Stream::Stdout) => {
       let mut ser = serde_json::Serializer::pretty(io::stdout());
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON");
+      serde_transcode::transcode(de, &mut ser)?;
       println!(""); // Extra newline so it looks even prettier
     }
     Format::Json => {
       let mut ser = serde_json::Serializer::new(io::stdout());
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON");
+      serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Yaml => {
       let mut ser = serde_yaml::Serializer::new(io::stdout());
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML");
+      serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Toml => {
       // TOML requires that all non-table values appear before any tables at a
@@ -80,13 +96,18 @@ where
       // objects / maps before other types, so instead of the normal transcode
       // workflow we buffer these inputs into a toml::Value, which will
       // serialize them back out in the necessary order.
-      let value = toml::Value::deserialize(de).expect("failed to serialize TOML");
+      //
+      // The error type here is bound by the lifetime of the deserializer;
+      // converting to a string allows us to maintain 'static on the error this
+      // function returns.
+      let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
 
-      // TODO: Write directly to output if the toml crate gains support for it.
-      let output_buf = toml::to_string(&value).expect("failed to serialize TOML");
-      io::stdout().write(output_buf.as_bytes()).unwrap();
+      // TODO: Write directly to stdout if / when the toml crate gains support.
+      let output_buf = toml::to_string(&value)?;
+      io::stdout().write(output_buf.as_bytes())?;
     }
-  };
+  }
+  Ok(())
 }
 
 #[derive(StructOpt)]
