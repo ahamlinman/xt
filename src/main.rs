@@ -42,7 +42,7 @@ where
   };
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt)]
 #[structopt(about)]
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
@@ -52,7 +52,6 @@ struct Opt {
   from: Option<Format>,
 }
 
-#[derive(Debug)]
 enum Format {
   Json,
   Yaml,
