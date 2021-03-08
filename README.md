@@ -30,9 +30,9 @@ pre-1.0 crates it uses. Since `.lock` is a non-standard extension, we use
 
 ```sh
 $ jyt -f toml Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
+atty
 dtoa
 hashbrown
-heck
 # etc.
 ```
 

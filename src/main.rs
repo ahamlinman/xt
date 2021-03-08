@@ -9,24 +9,22 @@ use structopt::StructOpt;
 
 fn main() {
   let opt = Opt::from_args();
-  let output = io::stdout();
-
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
       let reader = get_reader(opt.input_file);
       let de = serde_yaml::Deserializer::from_reader(reader);
-      transcode_to(de, opt.to, output);
+      transcode_to(de, opt.to);
     }
     Some(Format::Json) => {
       let reader = get_reader(opt.input_file);
       let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to, output);
+      transcode_to(&mut de, opt.to);
     }
     Some(Format::Toml) => {
       let slice = get_slice(opt.input_file);
       let input_str = std::str::from_utf8(&slice).unwrap();
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to, output);
+      transcode_to(&mut de, opt.to);
     }
   }
 }
@@ -57,19 +55,23 @@ fn get_slice<P: AsRef<Path>>(path: Option<P>) -> Box<dyn Deref<Target = [u8]>> {
   }
 }
 
-fn transcode_to<'a, D, W>(de: D, to: Format, mut output: W)
+fn transcode_to<'a, D>(de: D, to: Format)
 where
   D: serde::de::Deserializer<'a>,
-  W: Write,
 {
   match to {
+    Format::Json if atty::is(atty::Stream::Stdout) => {
+      let mut ser = serde_json::Serializer::pretty(io::stdout());
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON");
+      println!(""); // Extra newline so it looks even prettier
+    }
     Format::Json => {
-      let mut ser = serde_json::Serializer::pretty(output);
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON")
+      let mut ser = serde_json::Serializer::new(io::stdout());
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize JSON");
     }
     Format::Yaml => {
-      let mut ser = serde_yaml::Serializer::new(output);
-      serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML")
+      let mut ser = serde_yaml::Serializer::new(io::stdout());
+      serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML");
     }
     Format::Toml => {
       // TOML requires that all non-table values appear before any tables at a
@@ -81,7 +83,7 @@ where
 
       // TODO: Write directly to output if the toml crate gains support for it.
       let output_buf = toml::to_string(&value).expect("failed to serialize TOML");
-      output.write(output_buf.as_bytes()).unwrap();
+      io::stdout().write(output_buf.as_bytes()).unwrap();
     }
   };
 }
@@ -102,9 +104,10 @@ where
 /// probably cause issues.
 ///
 /// jyt writes JSON and YAML output in streaming fashion, and outputs values in
-/// the same order as the input. When writing TOML, jyt fully parses the input
-/// into memory, then sorts non-table values before tables in the output to
-/// ensure it is valid TOML.
+/// the same order as the input. With JSON output, jyt pretty-prints if
+/// outputting to a terminal, and prints compactly otherwise. With TOML output,
+/// jyt fully parses the input into memory, then sorts non-table values before
+/// tables in the output to ensure it is valid TOML.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,

@@ -1,11 +1,12 @@
 [package]
 name = "jyt"
 description = "Translate between serialized data formats"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
 [dependencies]
+atty = "0.2"
 memmap2 = "0.2"
 serde = "1"
 serde-transcode = "1"
