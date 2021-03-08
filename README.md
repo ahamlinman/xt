@@ -1,14 +1,16 @@
 # jyt
 
 jyt translates between three common serialized data formats: JSON, YAML, and
-TOML. jyt...
+TOML.
 
-- ...tries to be as efficient as possible for every input and output
+jyt…
+
+- …tries to be as efficient as possible for every input and output
   combination, avoiding internal buffers except where necessary for correct
   output.
-- ...autodetects input formats from file extensions, or supports a simple
+- …autodetects input formats from file extensions, or supports a simple
   flag to set the input type.
-- ...outputs JSON by default for convenient use with [jq][jq].
+- …outputs JSON by default for convenient use with [jq][jq].
 
 _Note: jyt v0.3 is a ground-up rewrite that shares no history with jyt v0.2.
 The older version remains available on the `v0.2` branch._
