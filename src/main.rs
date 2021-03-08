@@ -45,11 +45,13 @@ fn get_slice(path: Option<PathBuf>) -> Box<dyn Deref<Target = [u8]>> {
       Box::new(buf)
     }
     Some(p) => {
-      let f = File::open(p).unwrap();
       // TODO: something about the fact this is unsafe?
       // truncating the file while it's mapped => undefined behavior
-      let mmap = unsafe { memmap2::Mmap::map(&f).unwrap() };
-      Box::new(mmap)
+      let map = {
+        let f = File::open(p).unwrap();
+        unsafe { memmap2::Mmap::map(&f).unwrap() }
+      };
+      Box::new(map)
     }
   }
 }
