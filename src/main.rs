@@ -7,29 +7,34 @@ use structopt::StructOpt;
 
 fn main() {
   let opt = Opt::from_args();
-
-  let mut input: Box<dyn Read> = match opt.input_file {
-    None => Box::new(io::stdin()),
-    Some(p) if p.to_str() == Some("-") => Box::new(io::stdin()),
-    Some(p) => Box::new(File::open(p).expect("failed to open file")),
-  };
   let output = io::stdout();
 
   match opt.from {
     None | Some(Format::Yaml) => {
+      let input = open_reader(opt.input_file);
       let de = serde_yaml::Deserializer::from_reader(input);
       transcode_to(de, opt.to, output);
     }
     Some(Format::Json) => {
+      let input = open_reader(opt.input_file);
       let mut de = serde_json::Deserializer::from_reader(input);
       transcode_to(&mut de, opt.to, output);
     }
     Some(Format::Toml) => {
+      let mut input = open_reader(opt.input_file);
       let mut s = String::new();
       input.read_to_string(&mut s).unwrap();
       let mut de = toml::Deserializer::new(s.as_str());
       transcode_to(&mut de, opt.to, output);
     }
+  }
+}
+
+fn open_reader(filename: Option<PathBuf>) -> Box<dyn Read> {
+  match filename {
+    None => Box::new(io::stdin()),
+    Some(p) if p.to_str() == Some("-") => Box::new(io::stdin()),
+    Some(p) => Box::new(File::open(p).expect("failed to open file")),
   }
 }
 
