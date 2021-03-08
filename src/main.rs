@@ -10,7 +10,7 @@ fn main() {
   let opt = Opt::from_args();
   let output = io::stdout();
 
-  match opt.from {
+  match opt.detect_from() {
     None | Some(Format::Yaml) => {
       let reader = get_reader(opt.input_file);
       let de = serde_yaml::Deserializer::from_reader(reader);
@@ -96,6 +96,25 @@ struct Opt {
   input_file: Option<PathBuf>,
 }
 
+impl Opt {
+  fn detect_from(&self) -> Option<Format> {
+    if self.from.is_some() {
+      return self.from.clone();
+    }
+
+    match &self.input_file {
+      None => None,
+      Some(p) => match p.extension().map(|s| s.to_str()).flatten() {
+        Some("json") => Some(Format::Json),
+        Some("yaml") | Some("yml") => Some(Format::Yaml),
+        Some("toml") => Some(Format::Toml),
+        _ => None,
+      },
+    }
+  }
+}
+
+#[derive(Clone)]
 enum Format {
   Json,
   Yaml,
