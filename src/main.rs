@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -21,20 +22,34 @@ fn main() {
       transcode_to(&mut de, opt.to, output);
     }
     Some(Format::Toml) => {
-      let mut input = open_reader(opt.input_file);
-      let mut s = String::new();
-      input.read_to_string(&mut s).unwrap();
-      let mut de = toml::Deserializer::new(s.as_str());
+      let slice = get_slice(opt.input_file);
+      let mut de = toml::Deserializer::new(std::str::from_utf8(&slice).unwrap());
       transcode_to(&mut de, opt.to, output);
     }
   }
 }
 
-fn open_reader(filename: Option<PathBuf>) -> Box<dyn Read> {
-  match filename {
+fn open_reader(path: Option<PathBuf>) -> Box<dyn Read> {
+  match path.filter(|p| p.to_str() != Some("-")) {
     None => Box::new(io::stdin()),
-    Some(p) if p.to_str() == Some("-") => Box::new(io::stdin()),
     Some(p) => Box::new(File::open(p).expect("failed to open file")),
+  }
+}
+
+fn get_slice(path: Option<PathBuf>) -> Box<dyn Deref<Target = [u8]>> {
+  match path.filter(|p| p.to_str() != Some("-")) {
+    None => {
+      let mut buf = Vec::new();
+      io::stdin().read_to_end(&mut buf).unwrap();
+      Box::new(buf)
+    }
+    Some(p) => {
+      let f = File::open(p).unwrap();
+      // TODO: something about the fact this is unsafe?
+      // truncating the file while it's mapped => undefined behavior
+      let mmap = unsafe { memmap2::Mmap::map(&f).unwrap() };
+      Box::new(mmap)
+    }
   }
 }
 
