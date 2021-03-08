@@ -7,9 +7,13 @@ fn main() {
   let opt = Opt::from_args();
 
   match opt.from {
-    None | Some(Format::Json) | Some(Format::Yaml) => {
+    None | Some(Format::Yaml) => {
       let de = serde_yaml::Deserializer::from_reader(io::stdin());
       transcode_and_write(de, opt.to);
+    }
+    Some(Format::Json) => {
+      let mut de = serde_json::Deserializer::from_reader(io::stdin());
+      transcode_and_write(&mut de, opt.to);
     }
     Some(Format::Toml) => {
       let mut s = String::new();
