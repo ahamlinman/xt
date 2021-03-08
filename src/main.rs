@@ -12,24 +12,25 @@ fn main() {
 
   match opt.from {
     None | Some(Format::Yaml) => {
-      let input = open_reader(opt.input_file);
-      let de = serde_yaml::Deserializer::from_reader(input);
+      let reader = get_reader(opt.input_file);
+      let de = serde_yaml::Deserializer::from_reader(reader);
       transcode_to(de, opt.to, output);
     }
     Some(Format::Json) => {
-      let input = open_reader(opt.input_file);
-      let mut de = serde_json::Deserializer::from_reader(input);
+      let reader = get_reader(opt.input_file);
+      let mut de = serde_json::Deserializer::from_reader(reader);
       transcode_to(&mut de, opt.to, output);
     }
     Some(Format::Toml) => {
       let slice = get_slice(opt.input_file);
-      let mut de = toml::Deserializer::new(std::str::from_utf8(&slice).unwrap());
+      let input_str = std::str::from_utf8(&slice).unwrap();
+      let mut de = toml::Deserializer::new(input_str);
       transcode_to(&mut de, opt.to, output);
     }
   }
 }
 
-fn open_reader(path: Option<PathBuf>) -> Box<dyn Read> {
+fn get_reader(path: Option<PathBuf>) -> Box<dyn Read> {
   match path.filter(|p| p.to_str() != Some("-")) {
     None => Box::new(io::stdin()),
     Some(p) => Box::new(File::open(p).expect("failed to open file")),
@@ -68,10 +69,10 @@ where
       serde_transcode::transcode(de, &mut ser).expect("failed to serialize YAML")
     }
     Format::Toml => {
-      let mut s = String::new();
-      let mut ser = toml::Serializer::new(&mut s);
+      let mut output_buf = String::new();
+      let mut ser = toml::Serializer::new(&mut output_buf);
       serde_transcode::transcode(de, &mut ser).expect("failed to serialize TOML");
-      output.write(s.as_bytes()).unwrap();
+      output.write(output_buf.as_bytes()).unwrap();
     }
   };
 }
