@@ -18,7 +18,7 @@ actively maintained._
 ## Install
 
 ```sh
-cargo install --git https://github.com/ahamlinman/jyt.git --branch main
+cargo install --locked --git https://github.com/ahamlinman/jyt.git --branch main
 jyt -h
 ```
 
