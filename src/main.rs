@@ -66,9 +66,12 @@ where
   let mut input: Box<dyn Read> = match filter_stdin_path(path) {
     None => Box::new(io::stdin()),
     Some(p) => {
-      // mmap the file, or fall back to standard reading if it fails. As dirty
-      // as it is, we document for users that modifying the input while it's
-      // mapped results in undefined behavior.
+      // mmap the file to represent it directly as a slice, or fall back to
+      // standard buffering if that fails.
+      //
+      // Mmap::map is marked unsafe as modifying a mapped file outside of the
+      // process can produce undefined behavior. Our dirty "solution" is simply
+      // to document this for users.
       let file = File::open(p)?;
       match unsafe { Mmap::map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
