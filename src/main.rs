@@ -26,8 +26,11 @@ fn main() {
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
-      let reader = get_input_reader(opt.input_file)?;
-      let de = serde_yaml::Deserializer::from_reader(reader);
+      // serde_yaml has a "from_reader" method, however as of this writing it
+      // "secretly" buffers all the reader's contents into a byte vector, so we
+      // may as well give it our own slice.
+      let slice = get_input_slice(opt.input_file)?;
+      let de = serde_yaml::Deserializer::from_slice(&slice);
       transcode_to(de, opt.to)?;
     }
     Some(Format::Json) => {
@@ -139,22 +142,24 @@ where
 /// Supported formats are: json, yaml, and toml. Formats can be specified using
 /// the first character of the name, e.g. '-ty' is the same as '-t yaml'.
 ///
-/// When reading from a file, jyt will try to detect a value for -f based on the
-/// extension. Otherwise, jyt will default to '-f yaml', which supports both YAML
-/// and JSON input. To read TOML from stdin, specify '-f toml' (a.k.a. '-ft')
-/// explicitly.
+/// jyt will try to detect an input format for files based on their extension.
+/// Otherwise it defaults to '-f yaml', which supports YAML and JSON input (but
+/// is slightly less efficient than '-f json' for the latter). To read TOML from
+/// stdin or a file with a non-standard extension, specify '-f toml' (a.k.a.
+/// '-ft') explicitly.
 ///
-/// jyt reads JSON and YAML input in streaming fashion. When reading TOML from
-/// stdin, jyt buffers the full input into memory. When reading TOML from a file,
-/// jyt will attempt to map the file directly into memory (buffering only if the
-/// map fails). Modifying a mapped input file while jyt is running will trigger
-/// undefined behavior.
+/// When reading files, jyt may attempt to map the file into memory. jyt's
+/// behavior is undefined if a mapped file is modified while jyt is running.
 ///
-/// jyt writes JSON and YAML output in streaming fashion, and outputs values in
-/// the same order as the input. With JSON output, jyt pretty-prints if
-/// outputting to a terminal, and prints compactly otherwise. With TOML output,
-/// jyt fully parses the input into memory, then sorts non-table values before
-/// tables in the output to ensure it is valid TOML.
+/// With JSON and YAML output, jyt will output values in the same order as the
+/// input. With TOML output, jyt will parse all input into memory, then sort
+/// non-table values before table values in the output to ensure it is valid
+/// TOML. TOML does not support null values; translation will fail if the input
+/// contains one.
+///
+/// With JSON output, jyt pretty-prints if outputting to a terminal, and prints
+/// compactly otherwise. jyt outputs YAML and TOML with consistent formatting to
+/// all destinations.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
