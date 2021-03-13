@@ -92,9 +92,9 @@ where
   path.filter(|p| p.as_ref().to_str() != Some("-"))
 }
 
-fn transcode_to<'a, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
+fn transcode_to<'de, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
 where
-  D: serde::de::Deserializer<'a>,
+  D: serde::de::Deserializer<'de>,
 {
   // Note that BufWriter attempts to flush when dropped, but ignores flush
   // errors. This is fine, we only drop before flushing if a transcode error
