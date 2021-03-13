@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -45,14 +45,15 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn get_input_reader<P>(path: Option<P>) -> io::Result<Box<dyn Read>>
+fn get_input_reader<P>(path: Option<P>) -> io::Result<impl Read>
 where
   P: AsRef<Path>,
 {
-  match filter_stdin_path(path) {
-    None => Ok(Box::new(io::stdin())),
-    Some(p) => Ok(Box::new(File::open(p)?)),
-  }
+  let reader: Box<dyn Read> = match filter_stdin_path(path) {
+    None => Box::new(io::stdin()),
+    Some(p) => Box::new(File::open(p)?),
+  };
+  Ok(BufReader::new(reader))
 }
 
 fn get_input_slice<P>(path: Option<P>) -> Result<Box<dyn Deref<Target = [u8]>>, Box<dyn Error>>
@@ -89,18 +90,24 @@ fn transcode_to<'a, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
 where
   D: serde::de::Deserializer<'a>,
 {
+  // Note that BufWriter attempts to flush when dropped, but ignores flush
+  // errors. This is fine, we only drop before flushing if a transcode error
+  // forces us to abort early, in which case the real error happened during
+  // transcoding.
+  let mut output = BufWriter::new(io::stdout());
+
   match to {
     Format::Json if atty::is(atty::Stream::Stdout) => {
-      let mut ser = serde_json::Serializer::pretty(io::stdout());
+      let mut ser = serde_json::Serializer::pretty(&mut output);
       serde_transcode::transcode(de, &mut ser)?;
       println!(""); // Extra newline so it looks even prettier
     }
     Format::Json => {
-      let mut ser = serde_json::Serializer::new(io::stdout());
+      let mut ser = serde_json::Serializer::new(&mut output);
       serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Yaml => {
-      let mut ser = serde_yaml::Serializer::new(io::stdout());
+      let mut ser = serde_yaml::Serializer::new(&mut output);
       serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Toml => {
@@ -117,9 +124,11 @@ where
 
       // TODO: Write directly to stdout if / when the toml crate gains support.
       let output_buf = toml::to_string(&value)?;
-      io::stdout().write(output_buf.as_bytes())?;
+      output.write_all(output_buf.as_bytes())?;
     }
   }
+
+  output.flush()?;
   Ok(())
 }
 
