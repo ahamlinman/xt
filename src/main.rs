@@ -13,14 +13,17 @@ use structopt::StructOpt;
 fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
-    Err(e) => {
-      // As of this writing, clap's error messages always include an "error:"
-      // prefix, so this gives consistent formatting for both argument and
-      // translation errors. It is admittedly a bit fragile, since I can't
-      // imagine clap's error message format having any stability guarantee.
-      eprint!("jyt {}\n", e.message);
-      process::exit(1);
-    }
+    Err(e) => match e.kind {
+      clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => e.exit(),
+      _ => {
+        // As of this writing, clap's "real" error messages include an "error:"
+        // prefix, so this gives consistent formatting for both argument and
+        // translation errors. It is admittedly a bit fragile, since I can't
+        // imagine clap's error message format having any stability guarantee.
+        eprint!("jyt {}\n", e.message);
+        process::exit(1);
+      }
+    },
   };
 
   if let Err(e) = jyt(opt) {
