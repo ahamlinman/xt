@@ -6,8 +6,7 @@ TOML.
 Among its features, jyt…
 
 - …tries to be as efficient as possible for every input and output
-  combination, avoiding internal buffers except where necessary for correct
-  output.
+  combination.
 - …tries to autodetect input formats from file extensions, but can be
   overridden with a simple flag.
 - …outputs JSON by default for convenient use with [jq][jq].
@@ -50,4 +49,3 @@ $ jyt -ty config.json > config.yaml
 ## TODO
 
 - Find a way to autodetect TOML input on stdin?
-- Nicer formatted errors, instead of Rust panics.
