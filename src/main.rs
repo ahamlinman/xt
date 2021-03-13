@@ -11,7 +11,17 @@ use serde::Deserialize;
 use structopt::StructOpt;
 
 fn main() {
-  let opt = Opt::from_args();
+  let opt = match Opt::from_args_safe() {
+    Ok(opt) => opt,
+    Err(e) => {
+      // As of this writing, clap's error messages always include an "error:"
+      // prefix, so this gives consistent formatting for both argument and
+      // translation errors. It is admittedly a bit fragile, since I can't
+      // imagine clap's error message format having any stability guarantee.
+      eprint!("jyt {}\n", e.message);
+      process::exit(1);
+    }
+  };
 
   if let Err(e) = jyt(opt) {
     match e.downcast_ref::<io::Error>() {
@@ -204,14 +214,14 @@ enum Format {
 }
 
 impl FromStr for Format {
-  type Err = &'static str;
+  type Err = String;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
       "j" | "json" => Ok(Self::Json),
       "y" | "yaml" => Ok(Self::Yaml),
       "t" | "toml" => Ok(Self::Toml),
-      _ => Err("unknown format"),
+      _ => Err(format!("unknown format '{}'", s)),
     }
   }
 }
