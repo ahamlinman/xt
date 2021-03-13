@@ -59,7 +59,7 @@ where
   Ok(BufReader::new(reader))
 }
 
-fn get_input_slice<P>(path: Option<P>) -> Result<Box<dyn Deref<Target = [u8]>>, Box<dyn Error>>
+fn get_input_slice<P>(path: Option<P>) -> io::Result<Box<dyn Deref<Target = [u8]>>>
 where
   P: AsRef<Path>,
 {
