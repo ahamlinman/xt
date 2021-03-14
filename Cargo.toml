@@ -1,7 +1,7 @@
 [package]
 name = "jyt"
 description = "Translate between serialized data formats"
-version = "0.4.4"
+version = "0.4.5"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 edition = "2018"
 
@@ -24,3 +24,9 @@ default-features = false
 [dependencies.toml]
 version = "0.5"
 features = ["preserve_order"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
