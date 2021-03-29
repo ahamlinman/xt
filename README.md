@@ -15,16 +15,19 @@ _**Note:** jyt v0.3 is a ground-up rewrite that shares no history with jyt
 v0.2. The legacy version remains available on the `v0.2` branch, but is not
 actively maintained._
 
-## Install
+## Installation
 
 ```sh
 cargo install --locked --git https://github.com/ahamlinman/jyt.git --branch main
-jyt -h
 ```
 
-## Examples
+## Usage
 
-Processing jyt's own `Cargo.lock` file with [`jq`][jq] to find all of the
+Run `jyt -h` for full usage details.
+
+### Examples
+
+Process jyt's own `Cargo.lock` file with [`jq`][jq] to find all of the
 pre-1.0 crates it uses. Since `.lock` is a non-standard extension, we use the
 shorthand for `-f toml` to override the default YAML / JSON input parser.
 
@@ -36,7 +39,7 @@ hashbrown
 # etc.
 ```
 
-Translating an application config from JSON to YAML for easier editing. Here,
+Translate an application config from JSON to YAML for easier editing. Here,
 jyt will autodetect the input format, so we only need to specify the output
 type, which we do using the shorthand for `-t yaml`.
 
