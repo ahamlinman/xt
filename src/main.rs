@@ -119,7 +119,7 @@ where
     Format::Json if atty::is(atty::Stream::Stdout) => {
       let mut ser = serde_json::Serializer::pretty(&mut output);
       serde_transcode::transcode(de, &mut ser)?;
-      println!(""); // Extra newline so it looks even prettier
+      writeln!(output, "")?; // Extra newline so it looks even prettier
     }
     Format::Json => {
       let mut ser = serde_json::Serializer::new(&mut output);
