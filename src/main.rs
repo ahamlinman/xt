@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::str::{self, FromStr};
 
-use memmap2::Mmap;
+use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -86,7 +86,7 @@ where
       // process can produce undefined behavior. Our dirty "solution" is simply
       // to document this for users.
       let file = File::open(p)?;
-      match unsafe { Mmap::map(&file) } {
+      match unsafe { MmapOptions::new().populate().map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
         Err(_) => Box::new(file),
       }
