@@ -37,6 +37,13 @@ fn main() {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
+  // Note that BufWriter attempts to flush when dropped, but ignores flush
+  // errors. This is fine, we only drop before flushing if a transcode error
+  // forces us to abort early, in which case the real error happened during
+  // transcoding.
+  let mut w = BufWriter::new(io::stdout());
+  let pretty = atty::is(atty::Stream::Stdout);
+
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
       // serde_yaml has a "from_reader" method, however as of this writing it
@@ -44,20 +51,22 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       // give it a slice directly.
       let slice = get_input_slice(opt.input_file)?;
       let de = serde_yaml::Deserializer::from_slice(&slice);
-      transcode_to(de, opt.to)?;
+      transcode_to(de, opt.to, &mut w, pretty)?;
     }
     Some(Format::Json) => {
       let reader = get_input_reader(opt.input_file)?;
       let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to)?;
+      transcode_to(&mut de, opt.to, &mut w, pretty)?;
     }
     Some(Format::Toml) => {
       let slice = get_input_slice(opt.input_file)?;
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to)?;
+      transcode_to(&mut de, opt.to, &mut w, pretty)?;
     }
   }
+
+  w.flush()?;
   Ok(())
 }
 
@@ -105,28 +114,23 @@ where
   path.filter(|p| p.as_ref().to_str() != Some("-"))
 }
 
-fn transcode_to<'de, D>(de: D, to: Format) -> Result<(), Box<dyn Error>>
+fn transcode_to<'de, D, W>(de: D, to: Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
 where
   D: serde::de::Deserializer<'de>,
+  W: Write,
 {
-  // Note that BufWriter attempts to flush when dropped, but ignores flush
-  // errors. This is fine, we only drop before flushing if a transcode error
-  // forces us to abort early, in which case the real error happened during
-  // transcoding.
-  let mut output = BufWriter::new(io::stdout());
-
   match to {
-    Format::Json if atty::is(atty::Stream::Stdout) => {
-      let mut ser = serde_json::Serializer::pretty(&mut output);
+    Format::Json if pretty => {
+      let mut ser = serde_json::Serializer::pretty(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
-      writeln!(output, "")?; // Extra newline so it looks even prettier
+      writeln!(&mut w, "")?; // Extra newline so it looks even prettier
     }
     Format::Json => {
-      let mut ser = serde_json::Serializer::new(&mut output);
+      let mut ser = serde_json::Serializer::new(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Yaml => {
-      let mut ser = serde_yaml::Serializer::new(&mut output);
+      let mut ser = serde_yaml::Serializer::new(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
     }
     Format::Toml => {
@@ -143,11 +147,9 @@ where
 
       // TODO: Write directly to stdout if / when the toml crate gains support.
       let output_buf = toml::to_string(&value)?;
-      output.write_all(output_buf.as_bytes())?;
+      w.write_all(output_buf.as_bytes())?;
     }
   }
-
-  output.flush()?;
   Ok(())
 }
 
