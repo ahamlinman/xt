@@ -123,11 +123,12 @@ where
     Format::Json if pretty => {
       let mut ser = serde_json::Serializer::pretty(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
-      writeln!(&mut w, "")?; // Extra newline so it looks even prettier
+      writeln!(&mut w, "")?;
     }
     Format::Json => {
       let mut ser = serde_json::Serializer::new(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
+      writeln!(&mut w, "")?;
     }
     Format::Yaml => {
       let mut ser = serde_yaml::Serializer::new(&mut w);
