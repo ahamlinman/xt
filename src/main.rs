@@ -16,10 +16,10 @@ fn main() {
     Err(e) => match e.kind {
       clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => e.exit(),
       _ => {
-        // As of this writing, clap's "real" error messages include an "error:"
-        // prefix, so this gives consistent formatting for both argument and
-        // translation errors. It is admittedly a bit fragile, since I can't
-        // imagine clap's error message format having any stability guarantee.
+        // As of this writing, clap's error messages (other than those above)
+        // include an "error:" prefix, so this gives consistent formatting for
+        // both argument and translation errors. It is a bit fragile, since it's
+        // unlikely that clap's error message format is guaranteed to be stable.
         eprint!("jyt {}\n", e.message);
         process::exit(1);
       }
@@ -40,8 +40,8 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
       // serde_yaml has a "from_reader" method, however as of this writing it
-      // "secretly" buffers all the reader's contents into a byte vector, so we
-      // may as well give it our own slice.
+      // buffers all the reader's contents into a byte vector, so we may as well
+      // give it a slice directly.
       let slice = get_input_slice(opt.input_file)?;
       let de = serde_yaml::Deserializer::from_slice(&slice);
       transcode_to(de, opt.to)?;
@@ -82,9 +82,9 @@ where
       // mmap the file to represent it directly as a slice, or fall back to
       // standard buffering if that fails.
       //
-      // Mmap::map is marked unsafe as modifying a mapped file outside of the
-      // process can produce undefined behavior. Our dirty "solution" is simply
-      // to document this for users.
+      // This is marked unsafe as modifying a mapped file outside of the process
+      // can produce undefined behavior. Our dirty "solution" is to document
+      // this for users.
       let file = File::open(p)?;
       match unsafe { MmapOptions::new().populate().map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
