@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::ops::Deref;
@@ -7,7 +8,6 @@ use std::process;
 use std::str::{self, FromStr};
 
 use memmap2::MmapOptions;
-use serde::Deserialize;
 use structopt::StructOpt;
 
 fn main() {
@@ -134,21 +134,9 @@ where
       let mut ser = serde_yaml::Serializer::new(&mut w);
       serde_transcode::transcode(de, &mut ser)?;
     }
-    Format::Toml => {
-      // TOML requires that all non-table values appear before any tables at a
-      // given "level." We can't enforce that JSON and YAML inputs put all
-      // objects / maps before other types, so instead of the normal transcode
-      // workflow we buffer these inputs into a toml::Value, which will
-      // serialize them back out in the necessary order.
-      //
-      // The error type here is bound by the lifetime of the deserializer;
-      // converting to a string allows us to maintain 'static on the error this
-      // function returns.
-      let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
-
-      // TODO: Write directly to stdout if / when the toml crate gains support.
-      let output_buf = toml::to_string(&value)?;
-      w.write_all(output_buf.as_bytes())?;
+    _ => {
+      // TODO: Validate before reaching the output step?
+      return Err(format!("{} output is not supported", to))?;
     }
   }
   Ok(())
@@ -158,27 +146,20 @@ where
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// Supported formats are: json, yaml, and toml. Formats can be specified using
-/// the first character of the name, e.g. '-ty' is the same as '-t yaml'.
+/// This version of jyt supports the following formats, which may be specified
+/// by their full name or first character (e.g. '-ty' == '-t yaml'):
 ///
-/// jyt will try to detect an input format for files based on their extension.
-/// Otherwise it defaults to '-f yaml', which supports YAML and JSON input (but
-/// is slightly less efficient than '-f json' for the latter). To read TOML from
-/// stdin or a file with a non-standard extension, specify '-f toml' (a.k.a.
-/// '-ft') explicitly.
+///   json: Input and output
+///   yaml: Input and output
+///   toml: Input only
 ///
-/// When reading files, jyt may attempt to map the file into memory. jyt's
-/// behavior is undefined if a mapped file is modified while jyt is running.
+/// With file inputs, jyt will try to detect the input format based on file
+/// extensions. Otherwise it defaults to '-f yaml', which supports YAML and JSON
+/// input (but is less efficient than '-f json' for the latter). jyt's behavior
+/// is undefined if an input file is modified while jyt is running.
 ///
-/// With JSON and YAML output, jyt will output values in the same order as the
-/// input. With TOML output, jyt will parse all input into memory, then sort
-/// non-table values before table values in the output to ensure it is valid
-/// TOML. TOML does not support null values; translation will fail if the input
-/// contains one.
-///
-/// With JSON output, jyt pretty-prints if outputting to a terminal, and prints
-/// compactly otherwise. jyt outputs YAML and TOML with consistent formatting to
-/// all destinations.
+/// Where a distinction is possible, jyt will print "pretty" output to
+/// terminals, and "compact" output to other destinations.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
@@ -227,7 +208,17 @@ impl FromStr for Format {
       "j" | "json" => Ok(Self::Json),
       "y" | "yaml" => Ok(Self::Yaml),
       "t" | "toml" => Ok(Self::Toml),
-      _ => Err(format!("unknown format '{}'", s)),
+      _ => Err(format!("'{}' is not a valid format", s)),
+    }
+  }
+}
+
+impl Display for Format {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::Json => write!(f, "json"),
+      Self::Yaml => write!(f, "yaml"),
+      Self::Toml => write!(f, "toml"),
     }
   }
 }
