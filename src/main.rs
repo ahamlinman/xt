@@ -56,8 +56,9 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
     }
     Some(Format::Json) => {
       let reader = get_input_reader(opt.input_file)?;
-      let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, &opt.to, &mut w, pretty)?;
+      for result in serde_json::Deserializer::from_reader(reader).into_iter::<serde_json::Value>() {
+        transcode_to(result?, &opt.to, &mut w, pretty)?;
+      }
     }
     Some(Format::Toml) => {
       let slice = get_input_slice(opt.input_file)?;
