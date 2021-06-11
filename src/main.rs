@@ -151,9 +151,10 @@ where
 /// This version of jyt supports the following formats, which may be specified
 /// by their full name or first character (e.g. '-ty' == '-t yaml'):
 ///
-///   json: Input and output
-///   yaml: Input and output
-///   toml: Input only
+///   json: Input and output, multi-document with self-delineating values
+///         (object, array, string) and / or whitespace between values
+///   yaml: Input and output, multi-document with "---" syntax
+///   toml: Input only, single document
 ///
 /// With file inputs, jyt will try to detect the input format based on file
 /// extensions. Otherwise it defaults to '-f yaml', which supports YAML and JSON
