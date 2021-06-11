@@ -135,8 +135,7 @@ where
       serde_transcode::transcode(de, &mut ser)?;
     }
     _ => {
-      // TODO: Validate before reaching the output step?
-      return Err(format!("{} output is not supported", to))?;
+      panic!("attempted output to unsupported format {}", to)
     }
   }
   Ok(())
@@ -161,7 +160,12 @@ where
 /// Where a distinction is possible, jyt will print "pretty" output to
 /// terminals, and "compact" output to other destinations.
 struct Opt {
-  #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
+  #[structopt(
+    short = "t",
+    help = "Format to convert to",
+    default_value = "json",
+    parse(try_from_str = Opt::parse_to)
+  )]
   to: Format,
 
   #[structopt(short = "f", help = "Format to convert from")]
@@ -176,6 +180,15 @@ struct Opt {
 }
 
 impl Opt {
+  fn parse_to(s: &str) -> Result<Format, <Format as FromStr>::Err> {
+    let f = Format::from_str(s)?;
+    if f.can_output() {
+      Ok(f)
+    } else {
+      Err(format!("{} output is not supported", f))
+    }
+  }
+
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
       return self.from.clone();
@@ -198,6 +211,15 @@ enum Format {
   Json,
   Yaml,
   Toml,
+}
+
+impl Format {
+  fn can_output(&self) -> bool {
+    match self {
+      Self::Json | Self::Yaml => true,
+      Self::Toml => false,
+    }
+  }
 }
 
 impl FromStr for Format {
