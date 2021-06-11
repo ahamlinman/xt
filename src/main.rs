@@ -50,19 +50,20 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       // buffers all the reader's contents into a byte vector, so we may as well
       // give it a slice directly.
       let slice = get_input_slice(opt.input_file)?;
-      let de = serde_yaml::Deserializer::from_slice(&slice);
-      transcode_to(de, opt.to, &mut w, pretty)?;
+      for de in serde_yaml::Deserializer::from_slice(&slice) {
+        transcode_to(de, &opt.to, &mut w, pretty)?;
+      }
     }
     Some(Format::Json) => {
       let reader = get_input_reader(opt.input_file)?;
       let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to, &mut w, pretty)?;
+      transcode_to(&mut de, &opt.to, &mut w, pretty)?;
     }
     Some(Format::Toml) => {
       let slice = get_input_slice(opt.input_file)?;
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to, &mut w, pretty)?;
+      transcode_to(&mut de, &opt.to, &mut w, pretty)?;
     }
   }
 
@@ -114,7 +115,7 @@ where
   path.filter(|p| p.as_ref().to_str() != Some("-"))
 }
 
-fn transcode_to<'de, D, W>(de: D, to: Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
+fn transcode_to<'de, D, W>(de: D, to: &Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
 where
   D: serde::de::Deserializer<'de>,
   W: Write,
