@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufWriter, Read, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -43,34 +43,28 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
   let pretty = atty::is(atty::Stream::Stdout);
-  let input_path = opt.input_path();
+
+  // serde_json implements a from_reader method, however with file input it is
+  // significantly slower than reading from a mmap'ed slice, and with stdin it
+  // seems to be no better (time or memory wise) than full buffering. serde_yaml
+  // also implements a from_reader method, but as of this writing it simply
+  // buffers the reader into a byte vector and defers to from_slice. TL;DR
+  // there's no benefit to anything other than slice input.
+  let slice = get_input_slice(opt.input_path())?;
 
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
-      // serde_yaml has a "from_reader" method, however as of this writing it
-      // buffers all the reader's contents into a byte vector, so we may as well
-      // give it a slice directly.
-      let slice = get_input_slice(input_path)?;
       for de in serde_yaml::Deserializer::from_slice(&slice) {
         transcode_to(de, &opt.to, &mut w, pretty)?;
       }
     }
-    Some(Format::Json) if input_path.is_none() => {
-      let reader = BufReader::new(io::stdin());
-      let mut de = serde_json::Deserializer::from_reader(reader);
-      while let Err(_) = de.end() {
-        transcode_to(&mut de, &opt.to, &mut w, pretty)?;
-      }
-    }
     Some(Format::Json) => {
-      let slice = get_input_slice(input_path)?;
       let mut de = serde_json::Deserializer::from_slice(&slice);
       while let Err(_) = de.end() {
         transcode_to(&mut de, &opt.to, &mut w, pretty)?;
       }
     }
     Some(Format::Toml) => {
-      let slice = get_input_slice(input_path)?;
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
       transcode_to(&mut de, &opt.to, &mut w, pretty)?;
