@@ -43,26 +43,34 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
   let pretty = atty::is(atty::Stream::Stdout);
+  let input_path = opt.input_path();
 
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
       // serde_yaml has a "from_reader" method, however as of this writing it
       // buffers all the reader's contents into a byte vector, so we may as well
       // give it a slice directly.
-      let slice = get_input_slice(opt.input_file)?;
+      let slice = get_input_slice(input_path)?;
       for de in serde_yaml::Deserializer::from_slice(&slice) {
         transcode_to(de, &opt.to, &mut w, pretty)?;
       }
     }
-    Some(Format::Json) => {
-      let reader = get_input_reader(opt.input_file)?;
+    Some(Format::Json) if input_path.is_none() => {
+      let reader = BufReader::new(io::stdin());
       let mut de = serde_json::Deserializer::from_reader(reader);
       while let Err(_) = de.end() {
         transcode_to(&mut de, &opt.to, &mut w, pretty)?;
       }
     }
+    Some(Format::Json) => {
+      let slice = get_input_slice(input_path)?;
+      let mut de = serde_json::Deserializer::from_slice(&slice);
+      while let Err(_) = de.end() {
+        transcode_to(&mut de, &opt.to, &mut w, pretty)?;
+      }
+    }
     Some(Format::Toml) => {
-      let slice = get_input_slice(opt.input_file)?;
+      let slice = get_input_slice(input_path)?;
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
       transcode_to(&mut de, &opt.to, &mut w, pretty)?;
@@ -73,22 +81,11 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn get_input_reader<P>(path: Option<P>) -> io::Result<impl Read>
-where
-  P: AsRef<Path>,
-{
-  let reader: Box<dyn Read> = match filter_stdin_path(path) {
-    None => Box::new(io::stdin()),
-    Some(p) => Box::new(File::open(p)?),
-  };
-  Ok(BufReader::new(reader))
-}
-
 fn get_input_slice<P>(path: Option<P>) -> io::Result<Box<dyn Deref<Target = [u8]>>>
 where
   P: AsRef<Path>,
 {
-  let mut input: Box<dyn Read> = match filter_stdin_path(path) {
+  let mut input: Box<dyn Read> = match path {
     None => Box::new(io::stdin()),
     Some(p) => {
       // mmap the file to represent it directly as a slice, or fall back to
@@ -108,13 +105,6 @@ where
   let mut buf = Vec::new();
   input.read_to_end(&mut buf)?;
   Ok(Box::new(buf))
-}
-
-fn filter_stdin_path<P>(path: Option<P>) -> Option<P>
-where
-  P: AsRef<Path>,
-{
-  path.filter(|p| p.as_ref().to_str() != Some("-"))
 }
 
 fn transcode_to<'de, D, W>(de: D, to: &Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
@@ -180,7 +170,7 @@ struct Opt {
     help = "File to read input from [default: stdin]",
     parse(from_os_str)
   )]
-  input_file: Option<PathBuf>,
+  input_filename: Option<PathBuf>,
 }
 
 impl Opt {
@@ -198,7 +188,7 @@ impl Opt {
       return self.from.clone();
     }
 
-    match &self.input_file {
+    match &self.input_filename {
       None => None,
       Some(p) => match p.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
@@ -207,6 +197,13 @@ impl Opt {
         _ => None,
       },
     }
+  }
+
+  fn input_path(&self) -> Option<&PathBuf> {
+    self
+      .input_filename
+      .as_ref()
+      .filter(|p| p.to_str() != Some("-"))
   }
 }
 
