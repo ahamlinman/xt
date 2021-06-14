@@ -13,27 +13,33 @@ use structopt::StructOpt;
 fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
-    Err(e) => match e.kind {
-      clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => e.exit(),
+    Err(err) => match err.kind {
+      clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
         // include an "error:" prefix, so this gives consistent formatting for
         // both argument and translation errors. It is a bit fragile, since it's
         // unlikely that clap's error message format is guaranteed to be stable.
-        eprint!("jyt {}\n", e.message);
+        eprint!("jyt {}\n", err.message);
         process::exit(1);
       }
     },
   };
 
-  if let Err(e) = jyt(opt) {
-    match e.downcast_ref::<io::Error>() {
-      Some(e) if e.kind() == io::ErrorKind::BrokenPipe => return,
-      _ => {}
+  if let Err(err) = jyt(opt) {
+    if is_broken_pipe(err.as_ref()) {
+      return;
     }
-    eprint!("jyt error: {}\n", e);
+    eprint!("jyt error: {}\n", err);
     process::exit(1);
   }
+}
+
+fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
+  return matches!(
+    err.downcast_ref::<io::Error>(),
+    Some(ioerr) if ioerr.kind() == io::ErrorKind::BrokenPipe
+  );
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
@@ -176,12 +182,12 @@ impl Opt {
 
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
-      return self.from.clone();
+      return self.from;
     }
 
     match &self.input_filename {
       None => None,
-      Some(p) => match p.extension().map(|ext| ext.to_str()).flatten() {
+      Some(path) => match path.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
         Some("yaml") | Some("yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
@@ -197,7 +203,7 @@ impl Opt {
         if path.to_str() == Some("-") {
           InputSource::Stdin
         } else {
-          InputSource::File(&path)
+          InputSource::File(path)
         }
       }
     }
