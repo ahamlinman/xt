@@ -144,8 +144,8 @@ where
 ///   toml: Input only, single document
 ///
 /// With file inputs, jyt will try to detect the input format based on file
-/// extensions. Otherwise it defaults to '-f yaml', which supports YAML and JSON
-/// input (but is less efficient than '-f json' for the latter). jyt's behavior
+/// extensions. Otherwise it defaults to '-f yaml', which is also compatible
+/// with single-document JSON input (but slower than '-f json'). jyt's behavior
 /// is undefined if an input file is modified while jyt is running.
 ///
 /// Where a distinction is possible, jyt will print "pretty" output to
