@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::str::{self, FromStr};
 
@@ -50,7 +50,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // also implements a from_reader method, but as of this writing it simply
   // buffers the reader into a byte vector and defers to from_slice. TL;DR
   // there's no benefit to anything other than slice input.
-  let slice = get_input_slice(opt.input_path())?;
+  let slice = get_input_slice(opt.input_source())?;
 
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
@@ -75,20 +75,17 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn get_input_slice<P>(path: Option<P>) -> io::Result<Box<dyn Deref<Target = [u8]>>>
-where
-  P: AsRef<Path>,
-{
-  let mut input: Box<dyn Read> = match path {
-    None => Box::new(io::stdin()),
-    Some(p) => {
+fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
+  let mut input: Box<dyn Read> = match source {
+    InputSource::Stdin => Box::new(io::stdin()),
+    InputSource::File(path) => {
       // mmap the file to represent it directly as a slice, or fall back to
       // standard buffering if that fails.
       //
       // This is marked unsafe as modifying a mapped file outside of the process
       // can produce undefined behavior. Our dirty "solution" is to document
       // this for users.
-      let file = File::open(p)?;
+      let file = File::open(path)?;
       match unsafe { MmapOptions::new().populate().map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
         Err(_) => Box::new(file),
@@ -193,11 +190,17 @@ impl Opt {
     }
   }
 
-  fn input_path(&self) -> Option<&PathBuf> {
-    self
-      .input_filename
-      .as_ref()
-      .filter(|p| p.to_str() != Some("-"))
+  fn input_source(&self) -> InputSource {
+    match &self.input_filename {
+      None => InputSource::Stdin,
+      Some(path) => {
+        if path.to_str() == Some("-") {
+          InputSource::Stdin
+        } else {
+          InputSource::File(&path)
+        }
+      }
+    }
   }
 }
 
@@ -238,4 +241,9 @@ impl Display for Format {
       Self::Toml => write!(f, "toml"),
     }
   }
+}
+
+enum InputSource<'p> {
+  Stdin,
+  File(&'p PathBuf),
 }
