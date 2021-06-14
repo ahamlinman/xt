@@ -55,19 +55,19 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.detect_from() {
     None | Some(Format::Yaml) => {
       for de in serde_yaml::Deserializer::from_slice(&slice) {
-        transcode_to(de, &opt.to, &mut w, pretty)?;
+        transcode_to(de, opt.to, &mut w, pretty)?;
       }
     }
     Some(Format::Json) => {
       let mut de = serde_json::Deserializer::from_slice(&slice);
       while let Err(_) = de.end() {
-        transcode_to(&mut de, &opt.to, &mut w, pretty)?;
+        transcode_to(&mut de, opt.to, &mut w, pretty)?;
       }
     }
     Some(Format::Toml) => {
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, &opt.to, &mut w, pretty)?;
+      transcode_to(&mut de, opt.to, &mut w, pretty)?;
     }
   }
 
@@ -98,7 +98,7 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
   Ok(Box::new(buf))
 }
 
-fn transcode_to<'de, D, W>(de: D, to: &Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
+fn transcode_to<'de, D, W>(de: D, to: Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
 where
   D: serde::de::Deserializer<'de>,
   W: Write,
@@ -204,7 +204,7 @@ impl Opt {
   }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 enum Format {
   Json,
   Yaml,
