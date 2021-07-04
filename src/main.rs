@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::ops::Deref;
@@ -69,7 +68,10 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       transcode_all_input(&input, from, output)?;
     }
     Format::Toml => {
-      let output = TomlOutput::new(&mut w);
+      let output = TomlOutput {
+        w: &mut w,
+        used: false,
+      };
       transcode_all_input(&input, from, output)?;
     }
   }
@@ -169,15 +171,6 @@ where
 struct TomlOutput<W> {
   w: W,
   used: bool,
-}
-
-impl<W> TomlOutput<W>
-where
-  W: Write,
-{
-  fn new(w: W) -> TomlOutput<W> {
-    TomlOutput { w, used: false }
-  }
 }
 
 impl<W> Output for TomlOutput<W>
@@ -291,16 +284,6 @@ impl FromStr for Format {
       "y" | "yaml" => Ok(Self::Yaml),
       "t" | "toml" => Ok(Self::Toml),
       _ => Err(format!("'{}' is not a valid format", s)),
-    }
-  }
-}
-
-impl Display for Format {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Self::Json => write!(f, "json"),
-      Self::Yaml => write!(f, "yaml"),
-      Self::Toml => write!(f, "toml"),
     }
   }
 }
