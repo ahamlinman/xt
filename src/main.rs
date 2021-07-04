@@ -241,26 +241,22 @@ where
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// This version of jyt supports the following formats for input and output,
-/// each of which may be specified by full name or first character
-/// (e.g. '-ty' == '-t yaml'):
+/// This version of jyt supports the following formats, each of which may be
+/// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
 ///   json: Multi-document with self-delineating values (object, array, string)
-///         and / or whitespace between values. Default format for .json input
-///         files.
+///         and / or whitespace between values. Default format for .json files.
 ///
 ///   yaml: Multi-document with "---" syntax. Default format for .yaml and .yml
-///         input files.
+///         files.
 ///
 ///   toml: Single documents only. Does not support null values. Default format
-///         for .toml input files.
+///         for .toml files.
 ///
-/// When the input format is not specified manually or detected from a file
+/// When the input format is not specified with -f or detected from a file
 /// extension, jyt will attempt to auto-detect it by parsing the input as
-/// different formats until one works.
-///
-/// jyt's behavior is undefined if an input file is modified while jyt is
-/// running.
+/// different formats in an unspecified order until one works. jyt's behavior is
+/// undefined if an input file is modified while jyt is running.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
