@@ -60,12 +60,8 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   let from = opt.detect_from().unwrap_or(Format::Yaml);
 
   match opt.to {
-    Format::Json if atty::is(atty::Stream::Stdout) => {
-      let output = JsonOutput(&mut w, serde_json::ser::PrettyFormatter::new());
-      transcode_all_input(&input, from, output)?;
-    }
     Format::Json => {
-      let output = JsonOutput(&mut w, serde_json::ser::CompactFormatter);
+      let output = JsonOutput(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Yaml => {
@@ -110,15 +106,15 @@ where
   O: Output,
 {
   match from {
-    Format::Yaml => {
-      for de in serde_yaml::Deserializer::from_slice(input) {
-        output.transcode_from(de)?;
-      }
-    }
     Format::Json => {
       let mut de = serde_json::Deserializer::from_slice(input);
       while let Err(_) = de.end() {
         output.transcode_from(&mut de)?;
+      }
+    }
+    Format::Yaml => {
+      for de in serde_yaml::Deserializer::from_slice(input) {
+        output.transcode_from(de)?;
       }
     }
     Format::Toml => {
@@ -137,18 +133,17 @@ trait Output {
     D: serde::de::Deserializer<'de>;
 }
 
-struct JsonOutput<W, F>(W, F);
+struct JsonOutput<W>(W);
 
-impl<W, F> Output for JsonOutput<W, F>
+impl<W> Output for JsonOutput<W>
 where
   W: Write,
-  F: serde_json::ser::Formatter + Clone,
 {
   fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de>,
   {
-    let mut ser = serde_json::Serializer::with_formatter(&mut self.0, self.1.clone());
+    let mut ser = serde_json::Serializer::new(&mut self.0);
     serde_transcode::transcode(de, &mut ser)?;
     writeln!(&mut self.0, "")?;
     Ok(())
@@ -224,12 +219,11 @@ where
 /// (e.g. '-ty' == '-t yaml'):
 ///
 ///   json: Multi-document with self-delineating values (object, array, string)
-///         and / or whitespace between values. Pretty output to terminals and
-///         compact output to other destinations.
+///         and / or whitespace between values.
 ///
-///   yaml: Multi-document with "---" syntax. Consistent output format.
+///   yaml: Multi-document with "---" syntax.
 ///
-///   toml: Single documents only. Consistent output format.
+///   toml: Single documents only. Does not support null values.
 ///
 /// With file inputs, jyt will try to detect the input format based on file
 /// extensions. Otherwise it defaults to '-f yaml', which is also compatible

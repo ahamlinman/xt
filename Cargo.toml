@@ -7,7 +7,6 @@ edition = "2018"
 resolver = "2"
 
 [dependencies]
-atty = "0.2"
 memmap2 = "0.2"
 serde = "1"
 serde-transcode = "1"
