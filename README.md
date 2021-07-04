@@ -11,10 +11,6 @@ Among its features, jyt…
   overridden with a simple flag.
 - …outputs JSON by default for convenient use with [jq][jq].
 
-_**Note:** jyt v0.3 is a ground-up rewrite that shares no history with jyt
-v0.2. The legacy version remains available on the `v0.2` branch, but is not
-actively maintained._
-
 ## Installation
 
 ```sh
