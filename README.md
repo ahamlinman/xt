@@ -29,9 +29,9 @@ shorthand for `-f toml` to override the default YAML / JSON input parser.
 
 ```sh
 $ jyt -ft Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
-atty
 dtoa
 hashbrown
+heck
 # etc.
 ```
 
