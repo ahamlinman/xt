@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufWriter, Read, Write};
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::str::{self, FromStr};
 
+use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
 use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
@@ -13,56 +14,73 @@ use structopt::StructOpt;
 fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
-    Err(e) => match e.kind {
-      clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => e.exit(),
+    Err(err) => match err.kind {
+      HelpDisplayed | VersionDisplayed => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
         // include an "error:" prefix, so this gives consistent formatting for
         // both argument and translation errors. It is a bit fragile, since it's
         // unlikely that clap's error message format is guaranteed to be stable.
-        eprint!("jyt {}\n", e.message);
+        eprint!("jyt {}\n", err.message);
         process::exit(1);
       }
     },
   };
 
-  if let Err(e) = jyt(opt) {
-    match e.downcast_ref::<io::Error>() {
-      Some(e) if e.kind() == io::ErrorKind::BrokenPipe => return,
-      _ => {}
+  match jyt(opt) {
+    Ok(_) => {}
+    Err(err) if is_broken_pipe(err.as_ref()) => return,
+    Err(err) => {
+      eprint!("jyt error: {}\n", err);
+      process::exit(1);
     }
-    eprint!("jyt error: {}\n", e);
-    process::exit(1);
   }
 }
 
+fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
+  return matches!(
+    err.downcast_ref::<io::Error>(),
+    Some(ioerr) if ioerr.kind() == io::ErrorKind::BrokenPipe
+  );
+}
+
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
+  // serde_json implements a from_reader method, however with file input it is
+  // significantly slower than reading from a mmap'ed slice, and with stdin it
+  // seems to be no better (time or memory wise) than full buffering. serde_yaml
+  // also implements a from_reader method, but as of this writing it simply
+  // buffers the reader into a byte vector and defers to from_slice. TL;DR
+  // there's no benefit to anything other than slice input.
+  let input = get_input_slice(opt.input_source())?;
+  let from = match opt.detect_from() {
+    Some(format) => format,
+    None => match detect_format(&input) {
+      Some(format) => format,
+      None => Err("cannot parse input as any known format")?,
+    },
+  };
+
   // Note that BufWriter attempts to flush when dropped, but ignores flush
   // errors. This is fine, we only drop before flushing if a transcode error
   // forces us to abort early, in which case the real error happened during
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
-  let pretty = atty::is(atty::Stream::Stdout);
 
-  match opt.detect_from() {
-    None | Some(Format::Yaml) => {
-      // serde_yaml has a "from_reader" method, however as of this writing it
-      // buffers all the reader's contents into a byte vector, so we may as well
-      // give it a slice directly.
-      let slice = get_input_slice(opt.input_file)?;
-      let de = serde_yaml::Deserializer::from_slice(&slice);
-      transcode_to(de, opt.to, &mut w, pretty)?;
+  match opt.to {
+    Format::Json => {
+      let output = JsonOutput(&mut w);
+      transcode_all_input(&input, from, output)?;
     }
-    Some(Format::Json) => {
-      let reader = get_input_reader(opt.input_file)?;
-      let mut de = serde_json::Deserializer::from_reader(reader);
-      transcode_to(&mut de, opt.to, &mut w, pretty)?;
+    Format::Yaml => {
+      let output = YamlOutput(&mut w);
+      transcode_all_input(&input, from, output)?;
     }
-    Some(Format::Toml) => {
-      let slice = get_input_slice(opt.input_file)?;
-      let input_str = str::from_utf8(&slice)?;
-      let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to, &mut w, pretty)?;
+    Format::Toml => {
+      let output = TomlOutput {
+        w: &mut w,
+        used: false,
+      };
+      transcode_all_input(&input, from, output)?;
     }
   }
 
@@ -70,31 +88,17 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn get_input_reader<P>(path: Option<P>) -> io::Result<impl Read>
-where
-  P: AsRef<Path>,
-{
-  let reader: Box<dyn Read> = match filter_stdin_path(path) {
-    None => Box::new(io::stdin()),
-    Some(p) => Box::new(File::open(p)?),
-  };
-  Ok(BufReader::new(reader))
-}
-
-fn get_input_slice<P>(path: Option<P>) -> io::Result<Box<dyn Deref<Target = [u8]>>>
-where
-  P: AsRef<Path>,
-{
-  let mut input: Box<dyn Read> = match filter_stdin_path(path) {
-    None => Box::new(io::stdin()),
-    Some(p) => {
+fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
+  let mut input: Box<dyn Read> = match source {
+    InputSource::Stdin => Box::new(io::stdin()),
+    InputSource::File(path) => {
       // mmap the file to represent it directly as a slice, or fall back to
       // standard buffering if that fails.
       //
       // This is marked unsafe as modifying a mapped file outside of the process
       // can produce undefined behavior. Our dirty "solution" is to document
       // this for users.
-      let file = File::open(p)?;
+      let file = File::open(path)?;
       match unsafe { MmapOptions::new().populate().map(&file) } {
         Ok(map) => return Ok(Box::new(map)),
         Err(_) => Box::new(file),
@@ -107,78 +111,152 @@ where
   Ok(Box::new(buf))
 }
 
-fn filter_stdin_path<P>(path: Option<P>) -> Option<P>
-where
-  P: AsRef<Path>,
-{
-  path.filter(|p| p.as_ref().to_str() != Some("-"))
+fn detect_format(input: &[u8]) -> Option<Format> {
+  // Formats are organized, in rough terms, from least to most "permissive."
+  // It's important that YAML be last, since it seems like just about any input
+  // that doesn't contain ":" can be parsed as a YAML string. This also matches
+  // the behavior of older versions of jyt that always used YAML as the fallback
+  // for unknown input types.
+  for from in [Format::Json, Format::Toml, Format::Yaml] {
+    if let Ok(_) = transcode_all_input(input, from, DiscardOutput) {
+      return Some(from);
+    }
+  }
+  None
 }
 
-fn transcode_to<'de, D, W>(de: D, to: Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
+fn transcode_all_input<O>(input: &[u8], from: Format, mut output: O) -> Result<(), Box<dyn Error>>
 where
-  D: serde::de::Deserializer<'de>,
-  W: Write,
+  O: Output,
 {
-  match to {
-    Format::Json if pretty => {
-      let mut ser = serde_json::Serializer::pretty(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
-      writeln!(&mut w, "")?;
-    }
+  match from {
     Format::Json => {
-      let mut ser = serde_json::Serializer::new(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
-      writeln!(&mut w, "")?;
+      let mut de = serde_json::Deserializer::from_slice(input);
+      while let Err(_) = de.end() {
+        output.transcode_from(&mut de)?;
+      }
     }
     Format::Yaml => {
-      let mut ser = serde_yaml::Serializer::new(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
+      for de in serde_yaml::Deserializer::from_slice(input) {
+        output.transcode_from(de)?;
+      }
     }
     Format::Toml => {
-      // TOML requires that all non-table values appear before any tables at a
-      // given "level." We can't enforce that JSON and YAML inputs put all
-      // objects / maps before other types, so instead of the normal transcode
-      // workflow we buffer these inputs into a toml::Value, which will
-      // serialize them back out in the necessary order.
-      //
-      // The error type here is bound by the lifetime of the deserializer;
-      // converting to a string allows us to maintain 'static on the error this
-      // function returns.
-      let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
-
-      // TODO: Write directly to stdout if / when the toml crate gains support.
-      let output_buf = toml::to_string(&value)?;
-      w.write_all(output_buf.as_bytes())?;
+      let input_str = str::from_utf8(input)?;
+      let mut de = toml::Deserializer::new(input_str);
+      output.transcode_from(&mut de)?;
     }
   }
   Ok(())
+}
+
+trait Output {
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>;
+}
+
+struct DiscardOutput;
+
+impl Output for DiscardOutput {
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    serde::de::IgnoredAny::deserialize(de)
+      .and(Ok(()))
+      .or_else(|e| Err(e.to_string())?)
+  }
+}
+
+struct JsonOutput<W>(W);
+
+impl<W> Output for JsonOutput<W>
+where
+  W: Write,
+{
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    let mut ser = serde_json::Serializer::new(&mut self.0);
+    serde_transcode::transcode(de, &mut ser)?;
+    writeln!(&mut self.0, "")?;
+    Ok(())
+  }
+}
+
+struct YamlOutput<W>(W);
+
+impl<W> Output for YamlOutput<W>
+where
+  W: Write,
+{
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    let mut ser = serde_yaml::Serializer::new(&mut self.0);
+    serde_transcode::transcode(de, &mut ser)?;
+    Ok(())
+  }
+}
+
+struct TomlOutput<W> {
+  w: W,
+  used: bool,
+}
+
+impl<W> Output for TomlOutput<W>
+where
+  W: Write,
+{
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    self.used = match self.used {
+      false => true,
+      true => Err("toml does not support multi-document output")?,
+    };
+
+    // TOML requires that all non-table values appear before any tables at a
+    // given "level." Since we can't enforce this for all input types, we buffer
+    // the inputs into a toml::Value, which will serialize them back out in the
+    // necessary order.
+    //
+    // The error type here is bound by the deserializer's lifetime. Converting
+    // to a string allows us to maintain 'static bounds on the error this
+    // function returns.
+    let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
+
+    // As of this writing, the toml crate can't output directly to a writer.
+    let output_buf = toml::to_string_pretty(&value)?;
+    self.w.write_all(output_buf.as_bytes())?;
+    Ok(())
+  }
 }
 
 #[derive(StructOpt)]
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// Supported formats are: json, yaml, and toml. Formats can be specified using
-/// the first character of the name, e.g. '-ty' is the same as '-t yaml'.
+/// This version of jyt supports the following formats, each of which may be
+/// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
-/// jyt will try to detect an input format for files based on their extension.
-/// Otherwise it defaults to '-f yaml', which supports YAML and JSON input (but
-/// is slightly less efficient than '-f json' for the latter). To read TOML from
-/// stdin or a file with a non-standard extension, specify '-f toml' (a.k.a.
-/// '-ft') explicitly.
+///   json: Multi-document with self-delineating values (object, array, string)
+///         and / or whitespace between values. Default format for .json files.
 ///
-/// When reading files, jyt may attempt to map the file into memory. jyt's
-/// behavior is undefined if a mapped file is modified while jyt is running.
+///   yaml: Multi-document with "---" syntax. Default format for .yaml and .yml
+///         files.
 ///
-/// With JSON and YAML output, jyt will output values in the same order as the
-/// input. With TOML output, jyt will parse all input into memory, then sort
-/// non-table values before table values in the output to ensure it is valid
-/// TOML. TOML does not support null values; translation will fail if the input
-/// contains one.
+///   toml: Single documents only. Does not support null values. Default format
+///         for .toml files.
 ///
-/// With JSON output, jyt pretty-prints if outputting to a terminal, and prints
-/// compactly otherwise. jyt outputs YAML and TOML with consistent formatting to
-/// all destinations.
+/// When the input format is not specified with -f or detected from a file
+/// extension, jyt will attempt to auto-detect it by parsing the input as
+/// different formats in an unspecified order until one works. jyt's behavior is
+/// undefined if an input file is modified while jyt is running.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
@@ -191,18 +269,18 @@ struct Opt {
     help = "File to read input from [default: stdin]",
     parse(from_os_str)
   )]
-  input_file: Option<PathBuf>,
+  input_filename: Option<PathBuf>,
 }
 
 impl Opt {
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
-      return self.from.clone();
+      return self.from;
     }
 
-    match &self.input_file {
+    match &self.input_filename {
       None => None,
-      Some(p) => match p.extension().map(|ext| ext.to_str()).flatten() {
+      Some(path) => match path.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
         Some("yaml") | Some("yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
@@ -210,9 +288,22 @@ impl Opt {
       },
     }
   }
+
+  fn input_source(&self) -> InputSource {
+    match &self.input_filename {
+      None => InputSource::Stdin,
+      Some(path) => {
+        if path.to_str() == Some("-") {
+          InputSource::Stdin
+        } else {
+          InputSource::File(path)
+        }
+      }
+    }
+  }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 enum Format {
   Json,
   Yaml,
@@ -227,7 +318,12 @@ impl FromStr for Format {
       "j" | "json" => Ok(Self::Json),
       "y" | "yaml" => Ok(Self::Yaml),
       "t" | "toml" => Ok(Self::Toml),
-      _ => Err(format!("unknown format '{}'", s)),
+      _ => Err(format!("'{}' is not a valid format", s)),
     }
   }
+}
+
+enum InputSource<'p> {
+  Stdin,
+  File(&'p PathBuf),
 }
