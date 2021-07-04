@@ -217,7 +217,7 @@ where
   {
     self.used = match self.used {
       false => true,
-      true => Err("toml does not support multi-document output")?,
+      true => Err("TOML does not support multi-document output")?,
     };
 
     // TOML requires that all non-table values appear before any tables at a
@@ -237,7 +237,7 @@ where
     // for some of these representations, such as dumping each element of an
     // array of tables with an empty name, i.e. with a "[[]]" header.
     if !value.is_table() {
-      Err("root of toml output must be a table")?;
+      Err("root of TOML output must be a table")?;
     }
 
     // As of this writing, the toml crate can't output directly to a writer.
