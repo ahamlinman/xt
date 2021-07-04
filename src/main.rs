@@ -151,21 +151,24 @@ where
 }
 
 trait Output {
-  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
   where
-    D: serde::de::Deserializer<'de>;
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static;
 }
 
 struct DiscardOutput;
 
 impl Output for DiscardOutput {
-  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
-    D: serde::de::Deserializer<'de>,
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
   {
-    serde::de::IgnoredAny::deserialize(de)
-      .and(Ok(()))
-      .or_else(|e| Err(e.to_string())?)
+    match serde::de::IgnoredAny::deserialize(de) {
+      Ok(_) => Ok(()),
+      Err(err) => Err(err)?,
+    }
   }
 }
 
@@ -175,9 +178,10 @@ impl<W> Output for JsonOutput<W>
 where
   W: Write,
 {
-  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
-    D: serde::de::Deserializer<'de>,
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
   {
     let mut ser = serde_json::Serializer::new(&mut self.0);
     serde_transcode::transcode(de, &mut ser)?;
@@ -192,9 +196,10 @@ impl<W> Output for YamlOutput<W>
 where
   W: Write,
 {
-  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
-    D: serde::de::Deserializer<'de>,
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
   {
     let mut ser = serde_yaml::Serializer::new(&mut self.0);
     serde_transcode::transcode(de, &mut ser)?;
@@ -211,9 +216,10 @@ impl<W> Output for TomlOutput<W>
 where
   W: Write,
 {
-  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
-    D: serde::de::Deserializer<'de>,
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
   {
     self.used = match self.used {
       false => true,
@@ -224,11 +230,7 @@ where
     // given "level." Since we can't enforce this for all input types, we buffer
     // the inputs into a toml::Value, which will serialize them back out in the
     // necessary order.
-    //
-    // The error type here is bound by the deserializer's lifetime. Converting
-    // to a string allows us to maintain 'static bounds on the error this
-    // function returns.
-    let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
+    let value = toml::Value::deserialize(de)?;
 
     // From the spec: "TOML is designed to map unambiguously to a hash table."
     // Without this check, the other input types could produce something like a
