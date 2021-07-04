@@ -52,7 +52,13 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // buffers the reader into a byte vector and defers to from_slice. TL;DR
   // there's no benefit to anything other than slice input.
   let input = get_input_slice(opt.input_source())?;
-  let from = opt.detect_from().unwrap_or(Format::Yaml);
+  let from = match opt.detect_from() {
+    Some(format) => format,
+    None => match detect_format(&input) {
+      Some(format) => format,
+      None => Err("cannot parse input as any known format")?,
+    },
+  };
 
   // Note that BufWriter attempts to flush when dropped, but ignores flush
   // errors. This is fine, we only drop before flushing if a transcode error
@@ -105,6 +111,20 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
   Ok(Box::new(buf))
 }
 
+fn detect_format(input: &[u8]) -> Option<Format> {
+  // Formats are organized, in rough terms, from least to most "permissive."
+  // It's important that YAML be last, since it seems like just about any input
+  // that doesn't contain ":" can be parsed as a YAML string. This also matches
+  // the behavior of older versions of jyt that always used YAML as the fallback
+  // for unknown input types.
+  for from in [Format::Json, Format::Toml, Format::Yaml] {
+    if let Ok(_) = transcode_all_input(input, from, DiscardOutput) {
+      return Some(from);
+    }
+  }
+  None
+}
+
 fn transcode_all_input<O>(input: &[u8], from: Format, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: Output,
@@ -134,6 +154,19 @@ trait Output {
   fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de>;
+}
+
+struct DiscardOutput;
+
+impl Output for DiscardOutput {
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    serde::de::IgnoredAny::deserialize(de)
+      .and(Ok(()))
+      .or_else(|e| Err(e.to_string())?)
+  }
 }
 
 struct JsonOutput<W>(W);
@@ -213,16 +246,21 @@ where
 /// (e.g. '-ty' == '-t yaml'):
 ///
 ///   json: Multi-document with self-delineating values (object, array, string)
-///         and / or whitespace between values.
+///         and / or whitespace between values. Default format for .json input
+///         files.
 ///
-///   yaml: Multi-document with "---" syntax.
+///   yaml: Multi-document with "---" syntax. Default format for .yaml and .yml
+///         input files.
 ///
-///   toml: Single documents only. Does not support null values.
+///   toml: Single documents only. Does not support null values. Default format
+///         for .toml input files.
 ///
-/// With file inputs, jyt will try to detect the input format based on file
-/// extensions. Otherwise it defaults to '-f yaml', which is also compatible
-/// with single-document JSON input (but slower than '-f json'). jyt's behavior
-/// is undefined if an input file is modified while jyt is running.
+/// When the input format is not specified manually or detected from a file
+/// extension, jyt will attempt to auto-detect it by parsing the input as
+/// different formats until one works.
+///
+/// jyt's behavior is undefined if an input file is modified while jyt is
+/// running.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
