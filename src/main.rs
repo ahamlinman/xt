@@ -49,35 +49,66 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
   let pretty = atty::is(atty::Stream::Stdout);
+  let source = opt.input_source();
+  let from = opt.detect_from().unwrap_or(Format::Yaml);
 
+  match opt.to {
+    Format::Json if pretty => {
+      let output = JsonOutput(&mut w, serde_json::ser::PrettyFormatter::new());
+      transcode_all_input(source, from, output)?;
+    }
+    Format::Json => {
+      let output = JsonOutput(&mut w, serde_json::ser::CompactFormatter);
+      transcode_all_input(source, from, output)?;
+    }
+    Format::Yaml => {
+      let output = YamlOutput(&mut w);
+      transcode_all_input(source, from, output)?;
+    }
+    fmt => {
+      panic!("attempted output to unsupported format {}", fmt);
+    }
+  }
+
+  w.flush()?;
+  Ok(())
+}
+
+fn transcode_all_input<O>(
+  source: InputSource,
+  from: Format,
+  mut output: O,
+) -> Result<(), Box<dyn Error>>
+where
+  O: Output,
+{
   // serde_json implements a from_reader method, however with file input it is
   // significantly slower than reading from a mmap'ed slice, and with stdin it
   // seems to be no better (time or memory wise) than full buffering. serde_yaml
   // also implements a from_reader method, but as of this writing it simply
   // buffers the reader into a byte vector and defers to from_slice. TL;DR
   // there's no benefit to anything other than slice input.
-  let slice = get_input_slice(opt.input_source())?;
+  let slice = get_input_slice(source)?;
 
-  match opt.detect_from() {
-    None | Some(Format::Yaml) => {
+  match from {
+    Format::Yaml => {
       for de in serde_yaml::Deserializer::from_slice(&slice) {
-        transcode_to(de, opt.to, &mut w, pretty)?;
+        output.transcode_from(de)?;
       }
     }
-    Some(Format::Json) => {
+    Format::Json => {
       let mut de = serde_json::Deserializer::from_slice(&slice);
       while let Err(_) = de.end() {
-        transcode_to(&mut de, opt.to, &mut w, pretty)?;
+        output.transcode_from(&mut de)?;
       }
     }
-    Some(Format::Toml) => {
+    Format::Toml => {
       let input_str = str::from_utf8(&slice)?;
       let mut de = toml::Deserializer::new(input_str);
-      transcode_to(&mut de, opt.to, &mut w, pretty)?;
+      output.transcode_from(&mut de)?;
     }
   }
 
-  w.flush()?;
   Ok(())
 }
 
@@ -104,31 +135,44 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
   Ok(Box::new(buf))
 }
 
-fn transcode_to<'de, D, W>(de: D, to: Format, mut w: W, pretty: bool) -> Result<(), Box<dyn Error>>
+trait Output {
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>;
+}
+
+struct JsonOutput<W, F>(W, F);
+
+impl<W, F> Output for JsonOutput<W, F>
 where
-  D: serde::de::Deserializer<'de>,
+  W: Write,
+  F: serde_json::ser::Formatter + Clone,
+{
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    let mut ser = serde_json::Serializer::with_formatter(&mut self.0, self.1.clone());
+    serde_transcode::transcode(de, &mut ser)?;
+    writeln!(&mut self.0, "")?;
+    Ok(())
+  }
+}
+
+struct YamlOutput<W>(W);
+
+impl<W> Output for YamlOutput<W>
+where
   W: Write,
 {
-  match to {
-    Format::Json if pretty => {
-      let mut ser = serde_json::Serializer::pretty(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
-      writeln!(&mut w, "")?;
-    }
-    Format::Json => {
-      let mut ser = serde_json::Serializer::new(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
-      writeln!(&mut w, "")?;
-    }
-    Format::Yaml => {
-      let mut ser = serde_yaml::Serializer::new(&mut w);
-      serde_transcode::transcode(de, &mut ser)?;
-    }
-    _ => {
-      panic!("attempted output to unsupported format {}", to)
-    }
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    let mut ser = serde_yaml::Serializer::new(&mut self.0);
+    serde_transcode::transcode(de, &mut ser)?;
+    Ok(())
   }
-  Ok(())
 }
 
 #[derive(StructOpt)]
