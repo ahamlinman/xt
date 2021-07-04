@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process;
 use std::str::{self, FromStr};
 
+use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
 use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
@@ -14,7 +15,7 @@ fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
     Err(err) => match err.kind {
-      clap::ErrorKind::HelpDisplayed | clap::ErrorKind::VersionDisplayed => err.exit(),
+      HelpDisplayed | VersionDisplayed => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
         // include an "error:" prefix, so this gives consistent formatting for
@@ -26,12 +27,13 @@ fn main() {
     },
   };
 
-  if let Err(err) = jyt(opt) {
-    if is_broken_pipe(err.as_ref()) {
-      return;
+  match jyt(opt) {
+    Ok(_) => {}
+    Err(err) if is_broken_pipe(err.as_ref()) => return,
+    Err(err) => {
+      eprint!("jyt error: {}\n", err);
+      process::exit(1);
     }
-    eprint!("jyt error: {}\n", err);
-    process::exit(1);
   }
 }
 
@@ -50,13 +52,13 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // buffers the reader into a byte vector and defers to from_slice. TL;DR
   // there's no benefit to anything other than slice input.
   let input = get_input_slice(opt.input_source())?;
+  let from = opt.detect_from().unwrap_or(Format::Yaml);
 
   // Note that BufWriter attempts to flush when dropped, but ignores flush
   // errors. This is fine, we only drop before flushing if a transcode error
   // forces us to abort early, in which case the real error happened during
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
-  let from = opt.detect_from().unwrap_or(Format::Yaml);
 
   match opt.to {
     Format::Json => {
@@ -125,7 +127,6 @@ where
       output.transcode_from(&mut de)?;
     }
   }
-
   Ok(())
 }
 
