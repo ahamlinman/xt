@@ -43,27 +43,33 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
+  // serde_json implements a from_reader method, however with file input it is
+  // significantly slower than reading from a mmap'ed slice, and with stdin it
+  // seems to be no better (time or memory wise) than full buffering. serde_yaml
+  // also implements a from_reader method, but as of this writing it simply
+  // buffers the reader into a byte vector and defers to from_slice. TL;DR
+  // there's no benefit to anything other than slice input.
+  let input = get_input_slice(opt.input_source())?;
+
   // Note that BufWriter attempts to flush when dropped, but ignores flush
   // errors. This is fine, we only drop before flushing if a transcode error
   // forces us to abort early, in which case the real error happened during
   // transcoding.
   let mut w = BufWriter::new(io::stdout());
-  let pretty = atty::is(atty::Stream::Stdout);
-  let source = opt.input_source();
   let from = opt.detect_from().unwrap_or(Format::Yaml);
 
   match opt.to {
-    Format::Json if pretty => {
+    Format::Json if atty::is(atty::Stream::Stdout) => {
       let output = JsonOutput(&mut w, serde_json::ser::PrettyFormatter::new());
-      transcode_all_input(source, from, output)?;
+      transcode_all_input(&input, from, output)?;
     }
     Format::Json => {
       let output = JsonOutput(&mut w, serde_json::ser::CompactFormatter);
-      transcode_all_input(source, from, output)?;
+      transcode_all_input(&input, from, output)?;
     }
     Format::Yaml => {
       let output = YamlOutput(&mut w);
-      transcode_all_input(source, from, output)?;
+      transcode_all_input(&input, from, output)?;
     }
     fmt => {
       panic!("attempted output to unsupported format {}", fmt);
@@ -71,44 +77,6 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   }
 
   w.flush()?;
-  Ok(())
-}
-
-fn transcode_all_input<O>(
-  source: InputSource,
-  from: Format,
-  mut output: O,
-) -> Result<(), Box<dyn Error>>
-where
-  O: Output,
-{
-  // serde_json implements a from_reader method, however with file input it is
-  // significantly slower than reading from a mmap'ed slice, and with stdin it
-  // seems to be no better (time or memory wise) than full buffering. serde_yaml
-  // also implements a from_reader method, but as of this writing it simply
-  // buffers the reader into a byte vector and defers to from_slice. TL;DR
-  // there's no benefit to anything other than slice input.
-  let slice = get_input_slice(source)?;
-
-  match from {
-    Format::Yaml => {
-      for de in serde_yaml::Deserializer::from_slice(&slice) {
-        output.transcode_from(de)?;
-      }
-    }
-    Format::Json => {
-      let mut de = serde_json::Deserializer::from_slice(&slice);
-      while let Err(_) = de.end() {
-        output.transcode_from(&mut de)?;
-      }
-    }
-    Format::Toml => {
-      let input_str = str::from_utf8(&slice)?;
-      let mut de = toml::Deserializer::new(input_str);
-      output.transcode_from(&mut de)?;
-    }
-  }
-
   Ok(())
 }
 
@@ -133,6 +101,32 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
   let mut buf = Vec::new();
   input.read_to_end(&mut buf)?;
   Ok(Box::new(buf))
+}
+
+fn transcode_all_input<O>(input: &[u8], from: Format, mut output: O) -> Result<(), Box<dyn Error>>
+where
+  O: Output,
+{
+  match from {
+    Format::Yaml => {
+      for de in serde_yaml::Deserializer::from_slice(input) {
+        output.transcode_from(de)?;
+      }
+    }
+    Format::Json => {
+      let mut de = serde_json::Deserializer::from_slice(input);
+      while let Err(_) = de.end() {
+        output.transcode_from(&mut de)?;
+      }
+    }
+    Format::Toml => {
+      let input_str = str::from_utf8(input)?;
+      let mut de = toml::Deserializer::new(input_str);
+      output.transcode_from(&mut de)?;
+    }
+  }
+
+  Ok(())
 }
 
 trait Output {
