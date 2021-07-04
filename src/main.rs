@@ -8,6 +8,7 @@ use std::process;
 use std::str::{self, FromStr};
 
 use memmap2::MmapOptions;
+use serde::Deserialize;
 use structopt::StructOpt;
 
 fn main() {
@@ -71,8 +72,9 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       let output = YamlOutput(&mut w);
       transcode_all_input(&input, from, output)?;
     }
-    fmt => {
-      panic!("attempted output to unsupported format {}", fmt);
+    Format::Toml => {
+      let output = TomlOutput::new(&mut w);
+      transcode_all_input(&input, from, output)?;
     }
   }
 
@@ -169,32 +171,72 @@ where
   }
 }
 
+struct TomlOutput<W> {
+  w: W,
+  used: bool,
+}
+
+impl<W> TomlOutput<W>
+where
+  W: Write,
+{
+  fn new(w: W) -> TomlOutput<W> {
+    TomlOutput { w, used: false }
+  }
+}
+
+impl<W> Output for TomlOutput<W>
+where
+  W: Write,
+{
+  fn transcode_from<'de, D>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de>,
+  {
+    self.used = match self.used {
+      false => true,
+      true => Err("toml does not support multi-document output")?,
+    };
+
+    // TOML requires that all non-table values appear before any tables at a
+    // given "level." Since we can't enforce this for all input types, we buffer
+    // the inputs into a toml::Value, which will serialize them back out in the
+    // necessary order.
+    //
+    // The error type here is bound by the deserializer's lifetime. Converting
+    // to a string allows us to maintain 'static bounds on the error this
+    // function returns.
+    let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
+
+    // As of this writing, the toml crate can't output directly to a writer.
+    let output_buf = toml::to_string_pretty(&value)?;
+    self.w.write_all(output_buf.as_bytes())?;
+    Ok(())
+  }
+}
+
 #[derive(StructOpt)]
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// This version of jyt supports the following formats, which may be specified
-/// by their full name or first character (e.g. '-ty' == '-t yaml'):
+/// This version of jyt supports the following formats for input and output,
+/// each of which may be specified by full name or first character
+/// (e.g. '-ty' == '-t yaml'):
 ///
-///   json: Input and output, multi-document with self-delineating values
-///         (object, array, string) and / or whitespace between values
-///   yaml: Input and output, multi-document with "---" syntax
-///   toml: Input only, single document
+///   json: Multi-document with self-delineating values (object, array, string)
+///         and / or whitespace between values. Pretty output to terminals and
+///         compact output to other destinations.
+///
+///   yaml: Multi-document with "---" syntax. Consistent output format.
+///
+///   toml: Single documents only. Consistent output format.
 ///
 /// With file inputs, jyt will try to detect the input format based on file
 /// extensions. Otherwise it defaults to '-f yaml', which is also compatible
 /// with single-document JSON input (but slower than '-f json'). jyt's behavior
 /// is undefined if an input file is modified while jyt is running.
-///
-/// Where a distinction is possible, jyt will print "pretty" output to
-/// terminals, and "compact" output to other destinations.
 struct Opt {
-  #[structopt(
-    short = "t",
-    help = "Format to convert to",
-    default_value = "json",
-    parse(try_from_str = Opt::parse_to)
-  )]
+  #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
 
   #[structopt(short = "f", help = "Format to convert from")]
@@ -209,15 +251,6 @@ struct Opt {
 }
 
 impl Opt {
-  fn parse_to(s: &str) -> Result<Format, <Format as FromStr>::Err> {
-    let f = Format::from_str(s)?;
-    if f.can_output() {
-      Ok(f)
-    } else {
-      Err(format!("{} output is not supported", f))
-    }
-  }
-
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
       return self.from;
@@ -253,15 +286,6 @@ enum Format {
   Json,
   Yaml,
   Toml,
-}
-
-impl Format {
-  fn can_output(&self) -> bool {
-    match self {
-      Self::Json | Self::Yaml => true,
-      Self::Toml => false,
-    }
-  }
 }
 
 impl FromStr for Format {
