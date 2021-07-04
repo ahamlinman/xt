@@ -230,6 +230,16 @@ where
     // function returns.
     let value = toml::Value::deserialize(de).map_err(|e| e.to_string())?;
 
+    // From the spec: "TOML is designed to map unambiguously to a hash table."
+    // Without this check, the other input types could produce something like a
+    // boolean or array that we would attempt to dump the TOML representation of
+    // without a second thought. The toml crate can even produce invalid TOML
+    // for some of these representations, such as dumping each element of an
+    // array of tables with an empty name, i.e. with a "[[]]" header.
+    if !value.is_table() {
+      Err("root of toml output must be a table")?;
+    }
+
     // As of this writing, the toml crate can't output directly to a writer.
     let output_buf = toml::to_string_pretty(&value)?;
     self.w.write_all(output_buf.as_bytes())?;
