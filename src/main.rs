@@ -29,7 +29,7 @@ fn main() {
 
   match jyt(opt) {
     Ok(_) => {}
-    Err(err) if is_broken_pipe(err.as_ref()) => return,
+    Err(err) if is_broken_pipe(err.as_ref()) => {}
     Err(err) => {
       eprint!("jyt error: {}\n", err);
       process::exit(1);
@@ -45,12 +45,12 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
-  // serde_json implements a from_reader method, however with file input it is
-  // significantly slower than reading from a mmap'ed slice, and with stdin it
-  // seems to be no better (time or memory wise) than full buffering. serde_yaml
-  // also implements a from_reader method, but as of this writing it simply
-  // buffers the reader into a byte vector and defers to from_slice. TL;DR
-  // there's no benefit to anything other than slice input.
+  // serde_json and serde_yaml support deserializing from readers rather than
+  // slices, however there's no real benefit to doing this. serde_json is much
+  // slower with readers, and memory use isn't much different between buffering
+  // stdin and streaming it to the parser (presumably it borrows from the input
+  // instead of allocating a bunch of stuff?). serde_yaml buffers the contents
+  // of the reader into a slice under the hood, so it's no different at all.
   let input = get_input_slice(opt.input_source())?;
   let from = match opt.detect_from() {
     Some(format) => format,
@@ -92,15 +92,14 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
   let mut input: Box<dyn Read> = match source {
     InputSource::Stdin => Box::new(io::stdin()),
     InputSource::File(path) => {
-      // mmap the file to represent it directly as a slice, or fall back to
-      // standard buffering if that fails.
-      //
-      // This is marked unsafe as modifying a mapped file outside of the process
-      // can produce undefined behavior. Our dirty "solution" is to document
-      // this for users.
       let file = File::open(path)?;
+      // Safety: Modification of the mapped file outside the process triggers
+      // undefined behavior. Our dirty "solution" is to document this in the
+      // help output.
       match unsafe { MmapOptions::new().populate().map(&file) } {
+        // Per memmap2 docs, it's safe to drop the file once mmap succeeds.
         Ok(map) => return Ok(Box::new(map)),
+        // If mmap fails, we can still try regular buffering.
         Err(_) => Box::new(file),
       }
     }
@@ -294,7 +293,7 @@ impl Opt {
       None => None,
       Some(path) => match path.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
-        Some("yaml") | Some("yml") => Some(Format::Yaml),
+        Some("yaml" | "yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
         _ => None,
       },
@@ -304,13 +303,8 @@ impl Opt {
   fn input_source(&self) -> InputSource {
     match &self.input_filename {
       None => InputSource::Stdin,
-      Some(path) => {
-        if path.to_str() == Some("-") {
-          InputSource::Stdin
-        } else {
-          InputSource::File(path)
-        }
-      }
+      Some(path) if path.to_str() == Some("-") => InputSource::Stdin,
+      Some(path) => InputSource::File(path),
     }
   }
 }
