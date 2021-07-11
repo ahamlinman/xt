@@ -323,22 +323,24 @@ where
 /// This version of jyt supports the following formats, each of which may be
 /// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
-/// json     Multi-document with self-delineating values (object, array, string)
-///          and / or whitespace between values. Default format for .json files.
+///      json  Multi-document with self-delineating values (object, array,
+///            string) and / or whitespace between values. Default format for
+///            .json files.
 ///
-/// yaml     Multi-document with "---" syntax. Default format for .yaml and .yml
-///          files.
+///      yaml  Multi-document with "---" syntax. Default format for .yaml and
+///            .yml files.
 ///
-/// toml     Single documents only. Does not support all values supported by
-///          other formats. Default format for .toml files.
+///      toml  Single documents only. Default format for .toml files.
 ///
-/// msgpack  Multi-document as values are naturally self-delineating.
+///   msgpack  Multi-document as values are naturally self-delineating.
 ///
 /// When the input format is not specified with -f or detected from a file
 /// extension, jyt will attempt to auto-detect it from the input using an
 /// unspecified algorithm that is subject to change over time.
 ///
-/// jyt's behavior is undefined if an input file is modified while running.
+/// jyt does not guarantee that every conversion is possible, or lossless, or
+/// reversible. jyt's behavior is undefined if an input file is modified while
+/// running.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
