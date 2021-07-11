@@ -129,21 +129,39 @@ fn detect_format(input: &[u8]) -> Option<Format> {
   // I'll ever want to understand YAML well enough to explain this. Cargo.lock
   // generally exhibits the behavior, if you're curious.
   //
-  // Putting YAML last also matches the behavior of older versions of jyt that
-  // always used YAML as the fallback for unknown input types.
-  //
-  // MessagePack is not auto-detected, as our current usage of rmp_serde
-  // requires using a reader instead of a slice, and it appears that the
-  // implementation in this case will sometimes allocate buffers using lengths
-  // specified in the input and zero-fill them with an explicit loop (using
-  // Vec::resize). While jyt does not make any guarantees on how it handles
-  // untrusted input, I don't want the wrong few bytes to burn a ton of CPU and
-  // memory without having to at least do *something* special.
+  // YAML rounds out the text-based formats to help match the behavior of older
+  // versions of jyt, which always used YAML as the fallback for unknown input
+  // types (I guess if you really do want the giant string behavior).
   for from in [Format::Json, Format::Toml, Format::Yaml] {
     if let Ok(_) = transcode_all_input(input, from, DiscardOutput) {
       return Some(from);
     }
   }
+
+  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
+  // That means any ASCII text input is effectively a valid multi-document
+  // MessagePack stream, where every "document" is practically meaningless. To
+  // prevent these kinds of weird matches, we only attempt to auto-detect
+  // MessagePack when the first byte of input indicates that the next value will
+  // be a map or array. Arbitrary non-ASCII input that happens to match one of
+  // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
+  // unlikely to be a valid sequence of MessagePack values.
+  match input.get(0).map(|b| rmp::Marker::from_u8(*b)) {
+    Some(
+      rmp::Marker::FixArray(_)
+      | rmp::Marker::Array16
+      | rmp::Marker::Array32
+      | rmp::Marker::FixMap(_)
+      | rmp::Marker::Map16
+      | rmp::Marker::Map32,
+    ) => {
+      if let Ok(_) = transcode_all_input(input, Format::Msgpack, DiscardOutput) {
+        return Some(Format::Msgpack);
+      }
+    }
+    _ => {}
+  }
+
   None
 }
 
@@ -307,21 +325,18 @@ where
 ///
 /// json     Multi-document with self-delineating values (object, array, string)
 ///          and / or whitespace between values. Default format for .json files.
-///          Supports input auto-detection.
 ///
 /// yaml     Multi-document with "---" syntax. Default format for .yaml and .yml
-///          files. Supports input auto-detection.
+///          files.
 ///
 /// toml     Single documents only. Does not support all values supported by
-///          other formats. Default format for .toml files. Supports
-///          input auto-detection.
+///          other formats. Default format for .toml files.
 ///
-/// msgpack  Multi-document as values are naturally self-delineating. Does not
-///          support input auto-detection.
+/// msgpack  Multi-document as values are naturally self-delineating.
 ///
 /// When the input format is not specified with -f or detected from a file
-/// extension, jyt will repeatedly parse the input using the formats that
-/// support input auto-detection in an unspecified order until one works.
+/// extension, jyt will attempt to auto-detect it from the input using an
+/// unspecified algorithm that is subject to change over time.
 ///
 /// jyt's behavior is undefined if an input file is modified while running.
 struct Opt {
