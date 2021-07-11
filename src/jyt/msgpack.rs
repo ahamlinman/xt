@@ -2,6 +2,23 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display};
 
+/// Returns the size in bytes of the MessagePack value at the start of the input
+/// slice.
+///
+/// Data after the MessagePack value at the start of the input is ignored. The
+/// size of an empty input slice is 0.
+///
+/// This function performs all necessary checks to guarantee that the input can
+/// be sliced to the returned size without panicking.
+///
+/// # Examples
+///
+/// ```
+/// # // NOTE: This test case is copied to `test_doc_example` below.
+/// # // See https://github.com/rust-lang/rust/issues/50784.
+/// let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
+/// assert_eq!(next_value_size(&input), Ok(4));
+/// ```
 pub fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
   use rmp::Marker::*;
 
@@ -111,10 +128,15 @@ __impl_try_read_u8_slice_prefix!(u8);
 __impl_try_read_u8_slice_prefix!(u16);
 __impl_try_read_u8_slice_prefix!(u32);
 
+/// The error type that may be returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReadSizeError {
+  /// The MessagePack value in the input was truncated.
   UnexpectedEof,
+  /// The MessagePack value in the input contained the reserved marker byte
+  /// 0xc1.
   InvalidMarker,
+  /// The size of the MessagePack value cannot be represented in a usize.
   ValueTooLarge,
 }
 
@@ -210,6 +232,12 @@ mod tests {
     for input in VALID_INPUTS {
       assert_eq!(next_value_size(input), Ok(input.len()));
     }
+  }
+
+  #[test]
+  fn test_doc_example() {
+    let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
+    assert_eq!(next_value_size(&input), Ok(4));
   }
 
   #[test]
