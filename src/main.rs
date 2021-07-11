@@ -11,7 +11,7 @@ use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
-mod jyt;
+mod msgpack;
 
 fn main() {
   let opt = match Opt::from_args_safe() {
@@ -189,7 +189,7 @@ where
     Format::Msgpack => {
       let mut input = input;
       while input.len() > 0 {
-        let size = jyt::msgpack::next_value_size(input)?;
+        let size = msgpack::next_value_size(input)?;
         let (next, rest) = input.split_at(size);
         let mut de = rmp_serde::Deserializer::from_read_ref(next);
         output.transcode_from(&mut de)?;
