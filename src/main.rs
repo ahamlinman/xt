@@ -86,7 +86,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
     }
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
-        Err("refusing to output msgpack to a terminal")?;
+        Err("refusing to output MessagePack to a terminal")?;
       }
       let output = MsgpackOutput(&mut w);
       transcode_all_input(&input, from, output)?;
