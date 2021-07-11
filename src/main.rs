@@ -11,6 +11,8 @@ use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
+mod jyt;
+
 fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
@@ -167,17 +169,13 @@ where
       output.transcode_from(&mut de)?;
     }
     Format::Msgpack => {
-      // Per docs on the impl of Read for &[u8]: "reading updates the slice to
-      // point to the yet unread part. The slice will be empty when EOF is
-      // reached." Right now this is the easiest way I can think of to handle
-      // multi-document deserialization for MessagePack. Unfortunately it does
-      // require copying from the input slice.
-      //
-      // TODO: Detect the length of MessagePack input.
       let mut input = input;
       while input.len() > 0 {
-        let mut de = rmp_serde::Deserializer::new(&mut input);
+        let size = jyt::msgpack::next_value_size(input)?;
+        let (next, rest) = input.split_at(size);
+        let mut de = rmp_serde::Deserializer::from_read_ref(next);
         output.transcode_from(&mut de)?;
+        input = rest;
       }
     }
   }

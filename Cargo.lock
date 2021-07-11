@@ -73,6 +73,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex-literal"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76505e26b6ca3bbdbbb360b68472abbb80998c5fa5dc43672eca34f28258e138"
+
+[[package]]
 name = "indexmap"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -90,11 +96,13 @@ checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
 name = "jyt"
-version = "0.5.2-msgpack.1"
+version = "0.5.2-msgpack.2"
 dependencies = [
  "atty",
  "clap",
+ "hex-literal",
  "memmap2",
+ "rmp",
  "rmp-serde",
  "serde",
  "serde-transcode",
