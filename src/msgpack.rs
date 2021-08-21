@@ -8,8 +8,10 @@ use std::fmt::{self, Display};
 /// Data after the MessagePack value at the start of the input is ignored. The
 /// size of an empty input slice is 0.
 ///
-/// This function performs all necessary checks to guarantee that the input can
-/// be sliced to the returned size without panicking.
+/// This function guarantees that the input can be sliced to the returned size
+/// without panicking, even if the input is not well-formed. For example, a
+/// MessagePack str or bin value with a reported length larger than the
+/// remainder of the input slice will produce an error.
 ///
 /// # Examples
 ///
@@ -39,58 +41,55 @@ pub fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
     FixExt4 => 5,
     FixExt8 => 9,
     FixExt16 => 17,
-    Ext8 => 2 + try_read_length::<u8>(input)? as u64,
-    Ext16 => 3 + try_read_length::<u16>(input)? as u64,
-    Ext32 => 5 + try_read_length::<u32>(input)? as u64,
-    FixStr(n) => n as u64,
-    Str8 | Bin8 => 1 + try_read_length::<u8>(input)? as u64,
-    Str16 | Bin16 => 2 + try_read_length::<u16>(input)? as u64,
-    Str32 | Bin32 => 4 + try_read_length::<u32>(input)? as u64,
+    Ext8 => 2 + try_read_length::<u8>(input)? as usize,
+    Ext16 => 3 + try_read_length::<u16>(input)? as usize,
+    Ext32 => 5 + try_read_length::<u32>(input)? as usize,
+    FixStr(n) => n as usize,
+    Str8 | Bin8 => 1 + try_read_length::<u8>(input)? as usize,
+    Str16 | Bin16 => 2 + try_read_length::<u16>(input)? as usize,
+    Str32 | Bin32 => 4 + try_read_length::<u32>(input)? as usize,
     FixArray(count) => total_sequence_size(&input[1..], count as u64)?,
     Array16 => {
       let count = try_read_length::<u16>(input)? as u64;
-      let seq = input.get(3..).ok_or(ReadSizeError::UnexpectedEof)?;
+      let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
       2 + total_sequence_size(seq, count)?
     }
     Array32 => {
       let count = try_read_length::<u32>(input)? as u64;
-      let seq = input.get(5..).ok_or(ReadSizeError::UnexpectedEof)?;
+      let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
       4 + total_sequence_size(seq, count)?
     }
-    FixMap(count) => total_sequence_size(&input[1..], count as u64 * 2)?,
+    FixMap(pair_count) => total_sequence_size(&input[1..], pair_count as u64 * 2)?,
     Map16 => {
-      let count = try_read_length::<u16>(input)? as u64;
-      let seq = input.get(3..).ok_or(ReadSizeError::UnexpectedEof)?;
-      2 + total_sequence_size(seq, count * 2)?
+      let pair_count = try_read_length::<u16>(input)? as u64;
+      let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
+      2 + total_sequence_size(seq, pair_count * 2)?
     }
     Map32 => {
-      let count = try_read_length::<u32>(input)? as u64;
-      let seq = input.get(5..).ok_or(ReadSizeError::UnexpectedEof)?;
-      4 + total_sequence_size(seq, count * 2)?
+      let pair_count = try_read_length::<u32>(input)? as u64;
+      let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
+      4 + total_sequence_size(seq, pair_count * 2)?
     }
   };
 
-  let total_size: usize = (1 + size_after_marker)
-    .try_into()
-    .or(Err(ReadSizeError::ValueTooLarge))?;
-
+  let total_size: usize = 1 + size_after_marker;
   if total_size <= input.len() {
     Ok(total_size)
   } else {
-    Err(ReadSizeError::UnexpectedEof)
+    Err(ReadSizeError::Truncated)
   }
 }
 
-fn total_sequence_size(input: &[u8], count: u64) -> Result<u64, ReadSizeError> {
+fn total_sequence_size(input: &[u8], count: u64) -> Result<usize, ReadSizeError> {
   let mut total = 0;
   let mut seq = input;
 
   for _ in 0..count {
     if seq.len() == 0 {
-      return Err(ReadSizeError::UnexpectedEof);
+      return Err(ReadSizeError::Truncated);
     }
     let size = next_value_size(seq)?;
-    total += size as u64;
+    total += size;
     seq = &seq[size..];
   }
 
@@ -103,7 +102,7 @@ where
 {
   match <&[u8] as TryReadPrefix<T>>::try_read_prefix(&input[1..]) {
     Some(n) => Ok(n),
-    None => Err(ReadSizeError::UnexpectedEof),
+    None => Err(ReadSizeError::Truncated),
   }
 }
 
@@ -128,16 +127,13 @@ __impl_try_read_u8_slice_prefix!(u8);
 __impl_try_read_u8_slice_prefix!(u16);
 __impl_try_read_u8_slice_prefix!(u32);
 
-/// The error type that may be returned by [`next_value_size`].
+/// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReadSizeError {
-  /// The MessagePack value in the input was truncated.
-  UnexpectedEof,
-  /// The MessagePack value in the input contained the reserved marker byte
-  /// 0xc1.
+  /// A MessagePack value in the input was truncated.
+  Truncated,
+  /// A MessagePack value in the input contained the reserved marker byte 0xc1.
   InvalidMarker,
-  /// The size of the MessagePack value cannot be represented in a usize.
-  ValueTooLarge,
 }
 
 impl Error for ReadSizeError {}
@@ -146,9 +142,8 @@ impl Display for ReadSizeError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     use ReadSizeError::*;
     match self {
-      UnexpectedEof => write!(f, "unexpected end of MessagePack input"),
+      Truncated => write!(f, "unexpected end of MessagePack input"),
       InvalidMarker => write!(f, "invalid MessagePack marker in input"),
-      ValueTooLarge => write!(f, "MessagePack value is too large to handle"),
     }
   }
 }
@@ -241,12 +236,21 @@ mod tests {
   }
 
   #[test]
-  fn test_unexpected_eof() {
+  fn test_truncated_valid_inputs() {
     for input in VALID_INPUTS.iter().filter(|i| i.len() > 1) {
       for len in 1..(input.len() - 1) {
-        assert_eq!(next_value_size(&input[..len]), Err(UnexpectedEof))
+        assert_eq!(next_value_size(&input[..len]), Err(Truncated))
       }
     }
+  }
+
+  #[test]
+  fn test_nonsensically_large_input() {
+    // The string "jyt," but with a reported length of 2^32-1 bytes.
+    assert_eq!(
+      next_value_size(&hex!("db ff ff ff ff 6a 79 74")),
+      Err(Truncated)
+    );
   }
 
   #[test]
