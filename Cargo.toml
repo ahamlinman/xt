@@ -1,14 +1,17 @@
 [package]
 name = "jyt"
 description = "Translate between serialized data formats"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2018"
 resolver = "2"
 
 [dependencies]
+atty = "0.2"
 memmap2 = "0.2"
+rmp = "0.8"
+rmp-serde = "0.15"
 serde = "1"
 serde-transcode = "1"
 serde_json = "1"
@@ -25,6 +28,9 @@ default-features = false
 [dependencies.toml]
 version = "0.5"
 features = ["preserve_order"]
+
+[dev-dependencies]
+hex-literal = "0.3"
 
 [profile.dev]
 panic = "abort"

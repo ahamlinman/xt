@@ -1,7 +1,7 @@
 # jyt
 
-jyt translates between three common serialized data formats: JSON, YAML, and
-TOML.
+jyt translates between a number of common serialized data formats: JSON, YAML,
+TOML, and MessagePack.
 
 Among its features, jyt…
 
@@ -29,6 +29,7 @@ auto-detection to determine that it is a TOML file.
 
 ```sh
 $ jyt Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
+atty
 dtoa
 hashbrown
 heck

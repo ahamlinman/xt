@@ -11,6 +11,8 @@ use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
+mod msgpack;
+
 fn main() {
   let opt = match Opt::from_args_safe() {
     Ok(opt) => opt,
@@ -82,6 +84,13 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       };
       transcode_all_input(&input, from, output)?;
     }
+    Format::Msgpack => {
+      if atty::is(atty::Stream::Stdout) {
+        Err("refusing to output MessagePack to a terminal")?;
+      }
+      let output = MsgpackOutput(&mut w);
+      transcode_all_input(&input, from, output)?;
+    }
   }
 
   w.flush()?;
@@ -111,16 +120,48 @@ fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8
 }
 
 fn detect_format(input: &[u8]) -> Option<Format> {
-  // Formats are organized, in rough terms, from least to most "permissive."
-  // It's important that YAML be last, since it seems like just about any input
-  // that doesn't contain ":" can be parsed as a YAML string. This also matches
-  // the behavior of older versions of jyt that always used YAML as the fallback
-  // for unknown input types.
+  // JSON comes first as it is relatively restrictive compared to the other
+  // formats. For example, a "#" comment at the start of a doc could be TOML or
+  // YAML, but definitely not JSON, so we can abort parsing fairly early.
+  //
+  // TOML comes next for a surprising reason… the YAML parser will sometimes
+  // accept a TOML file, parsing its contents as a giant string! I'm not sure
+  // I'll ever want to understand YAML well enough to explain this. Cargo.lock
+  // generally exhibits the behavior, if you're curious.
+  //
+  // YAML rounds out the text-based formats to help match the behavior of older
+  // versions of jyt, which always used YAML as the fallback for unknown input
+  // types (I guess if you really do want the giant string behavior).
   for from in [Format::Json, Format::Toml, Format::Yaml] {
     if let Ok(_) = transcode_all_input(input, from, DiscardOutput) {
       return Some(from);
     }
   }
+
+  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
+  // That means any ASCII text input is effectively a valid multi-document
+  // MessagePack stream, where every "document" is practically meaningless. To
+  // prevent these kinds of weird matches, we only attempt to auto-detect
+  // MessagePack when the first byte of input indicates that the next value will
+  // be a map or array. Arbitrary non-ASCII input that happens to match one of
+  // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
+  // unlikely to be a valid sequence of MessagePack values.
+  match input.get(0).map(|b| rmp::Marker::from_u8(*b)) {
+    Some(
+      rmp::Marker::FixArray(_)
+      | rmp::Marker::Array16
+      | rmp::Marker::Array32
+      | rmp::Marker::FixMap(_)
+      | rmp::Marker::Map16
+      | rmp::Marker::Map32,
+    ) => {
+      if let Ok(_) = transcode_all_input(input, Format::Msgpack, DiscardOutput) {
+        return Some(Format::Msgpack);
+      }
+    }
+    _ => {}
+  }
+
   None
 }
 
@@ -144,6 +185,16 @@ where
       let input_str = str::from_utf8(input)?;
       let mut de = toml::Deserializer::new(input_str);
       output.transcode_from(&mut de)?;
+    }
+    Format::Msgpack => {
+      let mut input = input;
+      while input.len() > 0 {
+        let size = msgpack::next_value_size(input)?;
+        let (next, rest) = input.split_at(size);
+        let mut de = rmp_serde::Deserializer::from_read_ref(next);
+        output.transcode_from(&mut de)?;
+        input = rest;
+      }
     }
   }
   Ok(())
@@ -248,6 +299,23 @@ where
   }
 }
 
+struct MsgpackOutput<W>(W);
+
+impl<W> Output for MsgpackOutput<W>
+where
+  W: Write,
+{
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
+  {
+    let mut ser = rmp_serde::Serializer::new(&mut self.0);
+    serde_transcode::transcode(de, &mut ser)?;
+    Ok(())
+  }
+}
+
 #[derive(StructOpt)]
 #[structopt(verbatim_doc_comment)]
 /// Translate between serialized data formats
@@ -255,19 +323,24 @@ where
 /// This version of jyt supports the following formats, each of which may be
 /// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
-///   json: Multi-document with self-delineating values (object, array, string)
-///         and / or whitespace between values. Default format for .json files.
+///      json  Multi-document with self-delineating values (object, array,
+///            string) and / or whitespace between values. Default format for
+///            .json files.
 ///
-///   yaml: Multi-document with "---" syntax. Default format for .yaml and .yml
-///         files.
+///      yaml  Multi-document with "---" syntax. Default format for .yaml and
+///            .yml files.
 ///
-///   toml: Single documents only. Does not support null values. Default format
-///         for .toml files.
+///      toml  Single documents only. Default format for .toml files.
+///
+///   msgpack  Multi-document as values are naturally self-delineating.
 ///
 /// When the input format is not specified with -f or detected from a file
-/// extension, jyt will attempt to auto-detect it by parsing the input as
-/// different formats in an unspecified order until one works. jyt's behavior is
-/// undefined if an input file is modified while jyt is running.
+/// extension, jyt will attempt to auto-detect it from the input using an
+/// unspecified algorithm that is subject to change over time.
+///
+/// jyt does not guarantee that every conversion is possible, or lossless, or
+/// reversible. jyt's behavior is undefined if an input file is modified while
+/// running.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,
@@ -314,6 +387,7 @@ enum Format {
   Json,
   Yaml,
   Toml,
+  Msgpack,
 }
 
 impl FromStr for Format {
@@ -324,6 +398,7 @@ impl FromStr for Format {
       "j" | "json" => Ok(Self::Json),
       "y" | "yaml" => Ok(Self::Yaml),
       "t" | "toml" => Ok(Self::Toml),
+      "m" | "msgpack" => Ok(Self::Msgpack),
       _ => Err(format!("'{}' is not a valid format", s)),
     }
   }
