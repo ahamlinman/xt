@@ -86,7 +86,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
-      let output = MsgpackOutput(&mut w);
+      let output = msgpack::Output(&mut w);
       transcode_all_input(&input, from, output)?;
     }
   }
@@ -293,23 +293,6 @@ where
     // As of this writing, the toml crate can't output directly to a writer.
     let output_buf = toml::to_string_pretty(&value)?;
     self.w.write_all(output_buf.as_bytes())?;
-    Ok(())
-  }
-}
-
-struct MsgpackOutput<W>(W);
-
-impl<W> Output for MsgpackOutput<W>
-where
-  W: Write,
-{
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
-  {
-    let mut ser = rmp_serde::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
     Ok(())
   }
 }
