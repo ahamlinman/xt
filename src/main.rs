@@ -47,12 +47,10 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
-  // serde_json and serde_yaml support deserializing from readers rather than
-  // slices, however there's no real benefit to doing this. serde_json is much
-  // slower with readers, and memory use isn't much different between buffering
-  // stdin and streaming it to the parser (presumably it borrows from the input
-  // instead of allocating a bunch of stuff?). serde_yaml buffers the contents
-  // of the reader into a slice under the hood, so it's no different at all.
+  // For the time being, jyt does not support streaming input, and assumes that
+  // the input can be fully buffered before processing it. The current YAML and
+  // TOML parsers require this anyways, theoretically it's not necessary for
+  // JSON or MessagePack but we're keeping things consistent for now.
   let input = get_input_slice(opt.input_source())?;
   let from = match opt.detect_from() {
     Some(format) => format,
