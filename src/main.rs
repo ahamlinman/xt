@@ -11,7 +11,10 @@ use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
+mod json;
 mod msgpack;
+mod toml;
+mod yaml;
 
 fn main() {
   let opt = match Opt::from_args_safe() {
@@ -68,15 +71,15 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
 
   match opt.to {
     Format::Json => {
-      let output = JsonOutput(&mut w);
+      let output = json::Output(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Yaml => {
-      let output = YamlOutput(&mut w);
+      let output = yaml::Output(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Toml => {
-      let output = TomlOutput {
+      let output = toml::Output {
         w: &mut w,
         used: false,
       };
@@ -181,7 +184,7 @@ where
     }
     Format::Toml => {
       let input_str = str::from_utf8(input)?;
-      let mut de = toml::Deserializer::new(input_str);
+      let mut de = ::toml::Deserializer::new(input_str);
       output.transcode_from(&mut de)?;
     }
     Format::Msgpack => {
@@ -217,83 +220,6 @@ impl Output for DiscardOutput {
       Ok(_) => Ok(()),
       Err(err) => Err(err)?,
     }
-  }
-}
-
-struct JsonOutput<W>(W);
-
-impl<W> Output for JsonOutput<W>
-where
-  W: Write,
-{
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
-  {
-    let mut ser = serde_json::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
-    writeln!(&mut self.0, "")?;
-    Ok(())
-  }
-}
-
-struct YamlOutput<W>(W);
-
-impl<W> Output for YamlOutput<W>
-where
-  W: Write,
-{
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
-  {
-    let mut ser = serde_yaml::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
-    Ok(())
-  }
-}
-
-struct TomlOutput<W> {
-  w: W,
-  used: bool,
-}
-
-impl<W> Output for TomlOutput<W>
-where
-  W: Write,
-{
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
-  {
-    self.used = match self.used {
-      false => true,
-      true => Err("TOML does not support multi-document output")?,
-    };
-
-    // TOML requires that all non-table values appear before any tables at a
-    // given "level." Since we can't enforce this for all input types, we buffer
-    // the inputs into a toml::Value, which will serialize them back out in the
-    // necessary order.
-    let value = toml::Value::deserialize(de)?;
-
-    // From the spec: "TOML is designed to map unambiguously to a hash table."
-    // Without this check, the other input types could produce something like a
-    // boolean or array that we would attempt to dump the TOML representation of
-    // without a second thought. The toml crate can even produce invalid TOML
-    // for some of these representations, such as dumping each element of an
-    // array of tables with an empty name, i.e. with a "[[]]" header.
-    if !value.is_table() {
-      Err("root of TOML output must be a table")?;
-    }
-
-    // As of this writing, the toml crate can't output directly to a writer.
-    let output_buf = toml::to_string_pretty(&value)?;
-    self.w.write_all(output_buf.as_bytes())?;
-    Ok(())
   }
 }
 
