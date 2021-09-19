@@ -34,13 +34,22 @@ fn main() {
     },
   };
 
-  match jyt(opt) {
+  macro_rules! jyt_exit {
+    ($err:tt) => {{
+      eprint!("jyt error: {}\n", $err);
+      process::exit(1);
+    }};
+  }
+
+  let input = match opt.input() {
+    Ok(input) => input,
+    Err(err) => jyt_exit!(err),
+  };
+
+  match jyt(input, opt.detect_from(), opt.to, io::stdout()) {
     Ok(_) => {}
     Err(err) if is_broken_pipe(err.as_ref()) => {}
-    Err(err) => {
-      eprint!("jyt error: {}\n", err);
-      process::exit(1);
-    }
+    Err(err) => jyt_exit!(err),
   }
 }
 
@@ -51,9 +60,16 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   );
 }
 
-fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
-  let mut input = opt.input()?;
-  let from = match opt.detect_from() {
+fn jyt<W>(
+  mut input: InputRef,
+  from: Option<Format>,
+  to: Format,
+  output: W,
+) -> Result<(), Box<dyn Error>>
+where
+  W: Write,
+{
+  let from = match from {
     Some(format) => format,
     None => match detect_format(input.try_clone()?)? {
       Some(format) => format,
@@ -65,9 +81,8 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // errors. This is fine, we only drop before flushing if a transcode error
   // forces us to abort early, in which case the real error happened during
   // transcoding.
-  let mut w = BufWriter::new(io::stdout());
-
-  match opt.to {
+  let mut w = BufWriter::new(output);
+  match to {
     Format::Json => transcode_input(input, from, json::Output::new(&mut w))?,
     Format::Yaml => transcode_input(input, from, yaml::Output::new(&mut w))?,
     Format::Toml => transcode_input(input, from, toml::Output::new(&mut w))?,
@@ -78,7 +93,6 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
       transcode_input(input, from, msgpack::Output::new(&mut w))?
     }
   };
-
   w.flush()?;
   Ok(())
 }
