@@ -31,4 +31,12 @@ impl<W: Write> TranscodeFrom for Output<W> {
     serde_transcode::transcode(de, &mut ser)?;
     Ok(())
   }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    serde_yaml::to_writer(&mut self.0, &value)?;
+    Ok(())
+  }
 }

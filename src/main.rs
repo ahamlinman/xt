@@ -98,6 +98,10 @@ trait TranscodeFrom {
   where
     D: serde::de::Deserializer<'de, Error = E>,
     E: serde::de::Error + 'static;
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error + 'static>>
+  where
+    S: serde::ser::Serialize;
 }
 
 fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
@@ -158,6 +162,17 @@ impl TranscodeFrom for DiscardOutput {
       Ok(_) => Ok(()),
       Err(err) => Err(err)?,
     }
+  }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    // Picking MessagePack as it's probably the fastest real serializer we have.
+    // I would love to have a "discard" serializer of some sort but I haven't
+    // found one yet.
+    value.serialize(&mut rmp_serde::Serializer::new(io::sink()))?;
+    Ok(())
   }
 }
 

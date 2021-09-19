@@ -26,16 +26,23 @@ impl<W: Write> Output<W> {
   }
 }
 
+impl<W: Write> Output<W> {
+  fn use_once(&mut self) -> Result<(), &'static str> {
+    self.used = match self.used {
+      false => true,
+      true => return Err("TOML does not support multi-document output"),
+    };
+    Ok(())
+  }
+}
+
 impl<W: Write> TranscodeFrom for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,
     E: serde::de::Error + 'static,
   {
-    self.used = match self.used {
-      false => true,
-      true => Err("TOML does not support multi-document output")?,
-    };
+    self.use_once()?;
 
     // TOML requires that all non-table values appear before any tables at a
     // given "level." Since we can't enforce this for all input types, we buffer
@@ -54,6 +61,16 @@ impl<W: Write> TranscodeFrom for Output<W> {
     }
 
     // As of this writing, the toml crate can't output directly to a writer.
+    let output_buf = ::toml::to_string_pretty(&value)?;
+    self.w.write_all(output_buf.as_bytes())?;
+    Ok(())
+  }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    self.use_once()?;
     let output_buf = ::toml::to_string_pretty(&value)?;
     self.w.write_all(output_buf.as_bytes())?;
     Ok(())

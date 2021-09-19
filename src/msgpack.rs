@@ -38,6 +38,14 @@ impl<W: Write> TranscodeFrom for Output<W> {
     serde_transcode::transcode(de, &mut ser)?;
     Ok(())
   }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    value.serialize(&mut rmp_serde::Serializer::new(&mut self.0))?;
+    Ok(())
+  }
 }
 
 /// Returns the size in bytes of the MessagePack value at the start of the input
