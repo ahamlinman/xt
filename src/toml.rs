@@ -3,15 +3,18 @@ use std::io::Write;
 
 use serde::Deserialize;
 
-pub struct Output<W> {
-  pub w: W,
-  pub used: bool,
+pub struct Output<W: Write> {
+  w: W,
+  used: bool,
 }
 
-impl<W> crate::Output for Output<W>
-where
-  W: Write,
-{
+impl<W: Write> Output<W> {
+  pub fn new(w: W) -> Output<W> {
+    Output { w: w, used: false }
+  }
+}
+
+impl<W: Write> crate::Output for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,

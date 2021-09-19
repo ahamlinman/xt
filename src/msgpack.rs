@@ -3,12 +3,15 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::Write;
 
-pub struct Output<W>(pub W);
+pub struct Output<W: Write>(W);
 
-impl<W> crate::Output for Output<W>
-where
-  W: Write,
-{
+impl<W: Write> Output<W> {
+  pub fn new(w: W) -> Output<W> {
+    Output(w)
+  }
+}
+
+impl<W: Write> crate::Output for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,

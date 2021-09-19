@@ -71,25 +71,22 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
 
   match opt.to {
     Format::Json => {
-      let output = json::Output(&mut w);
+      let output = json::Output::new(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Yaml => {
-      let output = yaml::Output(&mut w);
+      let output = yaml::Output::new(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Toml => {
-      let output = toml::Output {
-        w: &mut w,
-        used: false,
-      };
+      let output = toml::Output::new(&mut w);
       transcode_all_input(&input, from, output)?;
     }
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
-      let output = msgpack::Output(&mut w);
+      let output = msgpack::Output::new(&mut w);
       transcode_all_input(&input, from, output)?;
     }
   }
