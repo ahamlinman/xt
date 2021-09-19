@@ -54,7 +54,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   // the input can be fully buffered before processing it. The current YAML and
   // TOML parsers require this anyways, theoretically it's not necessary for
   // JSON or MessagePack but we're keeping things consistent for now.
-  let input = get_input_slice(opt.input_source())?;
+  let input = get_input_slice(opt.input_opt())?;
   let from = match opt.detect_from() {
     Some(format) => format,
     None => match detect_format(&input) {
@@ -114,10 +114,10 @@ trait TranscodeFrom {
     E: serde::de::Error + 'static;
 }
 
-fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
-  let mut input: Box<dyn Read> = match source {
-    InputSource::Stdin => Box::new(io::stdin()),
-    InputSource::File(path) => {
+fn get_input_slice(input_opt: InputOpt) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
+  let mut input: Box<dyn Read> = match input_opt {
+    InputOpt::Stdin => Box::new(io::stdin()),
+    InputOpt::File(path) => {
       let file = File::open(path)?;
       // Safety: Modification of the mapped file outside the process triggers
       // undefined behavior. Our dirty "solution" is to document this in the
@@ -254,13 +254,18 @@ impl Opt {
     }
   }
 
-  fn input_source(&self) -> InputSource {
+  fn input_opt(&self) -> InputOpt {
     match &self.input_filename {
-      None => InputSource::Stdin,
-      Some(path) if path.to_str() == Some("-") => InputSource::Stdin,
-      Some(path) => InputSource::File(path),
+      None => InputOpt::Stdin,
+      Some(path) if path.to_str() == Some("-") => InputOpt::Stdin,
+      Some(path) => InputOpt::File(path),
     }
   }
+}
+
+enum InputOpt<'p> {
+  Stdin,
+  File(&'p PathBuf),
 }
 
 #[derive(Copy, Clone)]
@@ -283,9 +288,4 @@ impl FromStr for Format {
       _ => Err(format!("'{}' is not a valid format", s)),
     }
   }
-}
-
-enum InputSource<'p> {
-  Stdin,
-  File(&'p PathBuf),
 }
