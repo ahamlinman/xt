@@ -66,26 +66,16 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   let mut w = BufWriter::new(io::stdout());
 
   match opt.to {
-    Format::Json => {
-      let output = json::Output::new(&mut w);
-      transcode_input(input, from, output)?;
-    }
-    Format::Yaml => {
-      let output = yaml::Output::new(&mut w);
-      transcode_input(input, from, output)?;
-    }
-    Format::Toml => {
-      let output = toml::Output::new(&mut w);
-      transcode_input(input, from, output)?;
-    }
+    Format::Json => transcode_input(input, from, json::Output::new(&mut w))?,
+    Format::Yaml => transcode_input(input, from, yaml::Output::new(&mut w))?,
+    Format::Toml => transcode_input(input, from, toml::Output::new(&mut w))?,
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
-      let output = msgpack::Output::new(&mut w);
-      transcode_input(input, from, output)?;
+      transcode_input(input, from, msgpack::Output::new(&mut w))?
     }
-  }
+  };
 
   w.flush()?;
   Ok(())
