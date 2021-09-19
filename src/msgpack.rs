@@ -67,7 +67,7 @@ impl<W: Write> crate::Output for Output<W> {
 /// let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
 /// assert_eq!(next_value_size(&input), Ok(4));
 /// ```
-pub fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
+fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
   use rmp::Marker::*;
 
   if input.len() < 1 {
