@@ -1,6 +1,16 @@
 use std::error::Error;
 use std::io::Write;
 
+pub(crate) fn transcode<O>(input: &[u8], mut output: O) -> Result<(), Box<dyn Error>>
+where
+  O: crate::Output,
+{
+  for de in serde_yaml::Deserializer::from_slice(input) {
+    output.transcode_from(de)?;
+  }
+  Ok(())
+}
+
 pub struct Output<W: Write>(W);
 
 impl<W: Write> Output<W> {

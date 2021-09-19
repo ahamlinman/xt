@@ -3,6 +3,21 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::Write;
 
+pub(crate) fn transcode<O>(input: &[u8], mut output: O) -> Result<(), Box<dyn Error>>
+where
+  O: crate::Output,
+{
+  let mut input = input;
+  while input.len() > 0 {
+    let size = next_value_size(input)?;
+    let (next, rest) = input.split_at(size);
+    let mut de = rmp_serde::Deserializer::from_read_ref(next);
+    output.transcode_from(&mut de)?;
+    input = rest;
+  }
+  Ok(())
+}
+
 pub struct Output<W: Write>(W);
 
 impl<W: Write> Output<W> {

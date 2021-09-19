@@ -1,7 +1,17 @@
 use std::error::Error;
 use std::io::Write;
+use std::str;
 
 use serde::Deserialize;
+
+pub(crate) fn transcode<O>(input: &[u8], mut output: O) -> Result<(), Box<dyn Error>>
+where
+  O: crate::Output,
+{
+  let input_str = str::from_utf8(input)?;
+  let mut de = ::toml::Deserializer::new(input_str);
+  output.transcode_from(&mut de)
+}
 
 pub struct Output<W: Write> {
   w: W,

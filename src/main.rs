@@ -72,27 +72,46 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.to {
     Format::Json => {
       let output = json::Output::new(&mut w);
-      transcode_all_input(&input, from, output)?;
+      transcode_input_slice(&input, from, output)?;
     }
     Format::Yaml => {
       let output = yaml::Output::new(&mut w);
-      transcode_all_input(&input, from, output)?;
+      transcode_input_slice(&input, from, output)?;
     }
     Format::Toml => {
       let output = toml::Output::new(&mut w);
-      transcode_all_input(&input, from, output)?;
+      transcode_input_slice(&input, from, output)?;
     }
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
       let output = msgpack::Output::new(&mut w);
-      transcode_all_input(&input, from, output)?;
+      transcode_input_slice(&input, from, output)?;
     }
   }
 
   w.flush()?;
   Ok(())
+}
+
+fn transcode_input_slice<O>(input: &[u8], from: Format, output: O) -> Result<(), Box<dyn Error>>
+where
+  O: Output,
+{
+  match from {
+    Format::Json => json::transcode(input, output),
+    Format::Yaml => yaml::transcode(input, output),
+    Format::Toml => toml::transcode(input, output),
+    Format::Msgpack => msgpack::transcode(input, output),
+  }
+}
+
+trait Output {
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
+  where
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static;
 }
 
 fn get_input_slice(source: InputSource) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
@@ -131,7 +150,7 @@ fn detect_format(input: &[u8]) -> Option<Format> {
   // versions of jyt, which always used YAML as the fallback for unknown input
   // types (I guess if you really do want the giant string behavior).
   for from in [Format::Json, Format::Toml, Format::Yaml] {
-    if let Ok(_) = transcode_all_input(input, from, DiscardOutput) {
+    if let Ok(_) = transcode_input_slice(input, from, DiscardOutput) {
       return Some(from);
     }
   }
@@ -153,7 +172,7 @@ fn detect_format(input: &[u8]) -> Option<Format> {
       | rmp::Marker::Map16
       | rmp::Marker::Map32,
     ) => {
-      if let Ok(_) = transcode_all_input(input, Format::Msgpack, DiscardOutput) {
+      if let Ok(_) = transcode_input_slice(input, Format::Msgpack, DiscardOutput) {
         return Some(Format::Msgpack);
       }
     }
@@ -161,48 +180,6 @@ fn detect_format(input: &[u8]) -> Option<Format> {
   }
 
   None
-}
-
-fn transcode_all_input<O>(input: &[u8], from: Format, mut output: O) -> Result<(), Box<dyn Error>>
-where
-  O: Output,
-{
-  match from {
-    Format::Json => {
-      let mut de = serde_json::Deserializer::from_slice(input);
-      while let Err(_) = de.end() {
-        output.transcode_from(&mut de)?;
-      }
-    }
-    Format::Yaml => {
-      for de in serde_yaml::Deserializer::from_slice(input) {
-        output.transcode_from(de)?;
-      }
-    }
-    Format::Toml => {
-      let input_str = str::from_utf8(input)?;
-      let mut de = ::toml::Deserializer::new(input_str);
-      output.transcode_from(&mut de)?;
-    }
-    Format::Msgpack => {
-      let mut input = input;
-      while input.len() > 0 {
-        let size = msgpack::next_value_size(input)?;
-        let (next, rest) = input.split_at(size);
-        let mut de = rmp_serde::Deserializer::from_read_ref(next);
-        output.transcode_from(&mut de)?;
-        input = rest;
-      }
-    }
-  }
-  Ok(())
-}
-
-trait Output {
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static;
 }
 
 struct DiscardOutput;
