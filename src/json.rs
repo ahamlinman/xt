@@ -1,9 +1,11 @@
 use std::error::Error;
 use std::io::Write;
 
-pub(crate) fn transcode<O>(input: &[u8], mut output: O) -> Result<(), Box<dyn Error>>
+use crate::TranscodeFrom;
+
+pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
 where
-  O: crate::Output,
+  T: TranscodeFrom,
 {
   let mut de = serde_json::Deserializer::from_slice(input);
   while let Err(_) = de.end() {
@@ -20,7 +22,7 @@ impl<W: Write> Output<W> {
   }
 }
 
-impl<W: Write> crate::Output for Output<W> {
+impl<W: Write> TranscodeFrom for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,

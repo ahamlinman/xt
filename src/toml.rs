@@ -4,9 +4,11 @@ use std::str;
 
 use serde::Deserialize;
 
-pub(crate) fn transcode<O>(input: &[u8], mut output: O) -> Result<(), Box<dyn Error>>
+use crate::TranscodeFrom;
+
+pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
 where
-  O: crate::Output,
+  T: TranscodeFrom,
 {
   let input_str = str::from_utf8(input)?;
   let mut de = ::toml::Deserializer::new(input_str);
@@ -24,7 +26,7 @@ impl<W: Write> Output<W> {
   }
 }
 
-impl<W: Write> crate::Output for Output<W> {
+impl<W: Write> TranscodeFrom for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,
