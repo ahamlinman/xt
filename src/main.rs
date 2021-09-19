@@ -133,15 +133,9 @@ fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
   // be a map or array. Arbitrary non-ASCII input that happens to match one of
   // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
   // unlikely to be a valid sequence of MessagePack values.
+  use rmp::Marker::*;
   match input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)) {
-    Some(
-      rmp::Marker::FixArray(_)
-      | rmp::Marker::Array16
-      | rmp::Marker::Array32
-      | rmp::Marker::FixMap(_)
-      | rmp::Marker::Map16
-      | rmp::Marker::Map32,
-    ) => {
+    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32) => {
       if let Ok(_) = transcode_input(input, Format::Msgpack, DiscardOutput) {
         return Ok(Some(Format::Msgpack));
       }
@@ -187,18 +181,24 @@ impl Output for DiscardOutput {
 ///
 ///      json  Multi-document with self-delineating values (object, array,
 ///            string) and / or whitespace between values. Default format for
-///            .json files.
+///            .json files. Supports streaming input.
 ///
 ///      yaml  Multi-document with "---" syntax. Default format for .yaml and
 ///            .yml files.
 ///
 ///      toml  Single documents only. Default format for .toml files.
 ///
-///   msgpack  Multi-document as values are naturally self-delineating.
+///   msgpack  Multi-document as values are naturally self-delineating. Supports
+///            streaming input.
 ///
-/// When the input format is not specified with -f or detected from a file
-/// extension, jyt will attempt to auto-detect it from the input using an
-/// unspecified algorithm that is subject to change over time.
+/// Some multi-document input formats can translate a stream of documents
+/// without buffering all input into memory first. The input format must be
+/// known in advance, usually with an explicit -f.
+///
+/// When the input format is not known in advance with an explicit -f or file
+/// extension detection, jyt will attempt to auto-detect it by buffering all
+/// input into memory and running an unspecified algorithm that is subject to
+/// change over time.
 ///
 /// jyt does not guarantee that every conversion is possible, or lossless, or
 /// reversible. jyt's behavior is undefined if an input file is modified while
