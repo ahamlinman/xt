@@ -1,15 +1,25 @@
 use std::error::Error;
-use std::io::Write;
+use std::io::{BufReader, Write};
 
-use crate::TranscodeFrom;
+use crate::{Input, TranscodeFrom};
 
-pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(input: Input, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
-  let mut de = serde_json::Deserializer::from_slice(input);
-  while let Err(_) = de.end() {
-    output.transcode_from(&mut de)?;
+  match input {
+    Input::Buffered(buf) => {
+      let mut de = serde_json::Deserializer::from_slice(&buf);
+      while let Err(_) = de.end() {
+        output.transcode_from(&mut de)?;
+      }
+    }
+    Input::Unbuffered(r) => {
+      let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
+      while let Err(_) = de.end() {
+        output.transcode_from(&mut de)?;
+      }
+    }
   }
   Ok(())
 }

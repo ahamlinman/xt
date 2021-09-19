@@ -1,9 +1,11 @@
+use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::process;
+use std::rc::Rc;
 use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
@@ -50,14 +52,10 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
-  // For the time being, jyt does not support streaming input, and assumes that
-  // the input can be fully buffered before processing it. The current YAML and
-  // TOML parsers require this anyways, theoretically it's not necessary for
-  // JSON or MessagePack but we're keeping things consistent for now.
-  let input = get_input_slice(opt.input_opt())?;
+  let mut input: Input = opt.input_opt().try_into()?;
   let from = match opt.detect_from() {
     Some(format) => format,
-    None => match detect_format(&input) {
+    None => match detect_format(input.try_clone()?)? {
       Some(format) => format,
       None => Err("cannot parse input as any known format")?,
     },
@@ -72,22 +70,22 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   match opt.to {
     Format::Json => {
       let output = json::Output::new(&mut w);
-      transcode_input_slice(&input, from, output)?;
+      transcode_input(input, from, output)?;
     }
     Format::Yaml => {
       let output = yaml::Output::new(&mut w);
-      transcode_input_slice(&input, from, output)?;
+      transcode_input(input, from, output)?;
     }
     Format::Toml => {
       let output = toml::Output::new(&mut w);
-      transcode_input_slice(&input, from, output)?;
+      transcode_input(input, from, output)?;
     }
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
       let output = msgpack::Output::new(&mut w);
-      transcode_input_slice(&input, from, output)?;
+      transcode_input(input, from, output)?;
     }
   }
 
@@ -95,7 +93,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn transcode_input_slice<T>(input: &[u8], from: Format, output: T) -> Result<(), Box<dyn Error>>
+fn transcode_input<T>(input: Input, from: Format, output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
@@ -114,29 +112,60 @@ trait TranscodeFrom {
     E: serde::de::Error + 'static;
 }
 
-fn get_input_slice(input_opt: InputOpt) -> io::Result<Box<dyn Deref<Target = [u8]>>> {
-  let mut input: Box<dyn Read> = match input_opt {
-    InputOpt::Stdin => Box::new(io::stdin()),
-    InputOpt::File(path) => {
-      let file = File::open(path)?;
-      // Safety: Modification of the mapped file outside the process triggers
-      // undefined behavior. Our dirty "solution" is to document this in the
-      // help output.
-      match unsafe { MmapOptions::new().populate().map(&file) } {
-        // Per memmap2 docs, it's safe to drop the file once mmap succeeds.
-        Ok(map) => return Ok(Box::new(map)),
-        // If mmap fails, we can still try regular buffering.
-        Err(_) => Box::new(file),
-      }
-    }
-  };
-
-  let mut buf = Vec::new();
-  input.read_to_end(&mut buf)?;
-  Ok(Box::new(buf))
+enum Input {
+  Buffered(Rc<dyn Deref<Target = [u8]>>),
+  Unbuffered(Box<dyn Read>),
 }
 
-fn detect_format(input: &[u8]) -> Option<Format> {
+impl Input {
+  fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
+    *self = match self {
+      Self::Buffered(ref buf) => return Ok(buf.as_ref()),
+      Self::Unbuffered(r) => {
+        let mut buf = Vec::new();
+        r.read_to_end(&mut buf)?;
+        Self::Buffered(Rc::new(buf))
+      }
+    };
+    self.try_buffer()
+  }
+
+  fn try_clone(&mut self) -> io::Result<Input> {
+    *self = match self {
+      Self::Buffered(buf) => return Ok(Self::Buffered(Rc::clone(buf))),
+      Self::Unbuffered(r) => {
+        let mut buf = Vec::new();
+        r.read_to_end(&mut buf)?;
+        Self::Buffered(Rc::new(buf))
+      }
+    };
+    self.try_clone()
+  }
+}
+
+impl TryFrom<InputOpt<'_>> for Input {
+  type Error = io::Error;
+
+  fn try_from(input_opt: InputOpt) -> io::Result<Input> {
+    match input_opt {
+      InputOpt::Stdin => Ok(Self::Unbuffered(Box::new(io::stdin()))),
+      InputOpt::File(path) => {
+        let file = File::open(path)?;
+        // Safety: Modification of the mapped file outside the process triggers
+        // undefined behavior. Our dirty "solution" is to document this in the
+        // help output.
+        match unsafe { MmapOptions::new().populate().map(&file) } {
+          // Per memmap2 docs, it's safe to drop the file once mmap succeeds.
+          Ok(map) => return Ok(Self::Buffered(Rc::new(map))),
+          // If mmap fails, we can still try regular buffering.
+          Err(_) => Ok(Self::Unbuffered(Box::new(file))),
+        }
+      }
+    }
+  }
+}
+
+fn detect_format(mut input: Input) -> io::Result<Option<Format>> {
   // JSON comes first as it is relatively restrictive compared to the other
   // formats. For example, a "#" comment at the start of a doc could be TOML or
   // YAML, but definitely not JSON, so we can abort parsing fairly early.
@@ -150,8 +179,8 @@ fn detect_format(input: &[u8]) -> Option<Format> {
   // versions of jyt, which always used YAML as the fallback for unknown input
   // types (I guess if you really do want the giant string behavior).
   for from in [Format::Json, Format::Toml, Format::Yaml] {
-    if let Ok(_) = transcode_input_slice(input, from, DiscardOutput) {
-      return Some(from);
+    if let Ok(_) = transcode_input(input.try_clone()?, from, DiscardOutput) {
+      return Ok(Some(from));
     }
   }
 
@@ -163,7 +192,7 @@ fn detect_format(input: &[u8]) -> Option<Format> {
   // be a map or array. Arbitrary non-ASCII input that happens to match one of
   // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
   // unlikely to be a valid sequence of MessagePack values.
-  match input.get(0).map(|b| rmp::Marker::from_u8(*b)) {
+  match input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)) {
     Some(
       rmp::Marker::FixArray(_)
       | rmp::Marker::Array16
@@ -172,14 +201,14 @@ fn detect_format(input: &[u8]) -> Option<Format> {
       | rmp::Marker::Map16
       | rmp::Marker::Map32,
     ) => {
-      if let Ok(_) = transcode_input_slice(input, Format::Msgpack, DiscardOutput) {
-        return Some(Format::Msgpack);
+      if let Ok(_) = transcode_input(input, Format::Msgpack, DiscardOutput) {
+        return Ok(Some(Format::Msgpack));
       }
     }
     _ => {}
   }
 
-  None
+  Ok(None)
 }
 
 struct DiscardOutput;

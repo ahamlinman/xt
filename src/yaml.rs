@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::io::Write;
 
-use crate::TranscodeFrom;
+use crate::{Input, TranscodeFrom};
 
-pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(mut input: Input, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
-  for de in serde_yaml::Deserializer::from_slice(input) {
+  for de in serde_yaml::Deserializer::from_slice(input.try_buffer()?) {
     output.transcode_from(de)?;
   }
   Ok(())

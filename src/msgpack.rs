@@ -3,13 +3,13 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::Write;
 
-use crate::TranscodeFrom;
+use crate::{Input, TranscodeFrom};
 
-pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(mut input: Input, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
-  let mut input = input;
+  let mut input = input.try_buffer()?.as_ref();
   while input.len() > 0 {
     let size = next_value_size(input)?;
     let (next, rest) = input.split_at(size);

@@ -4,13 +4,13 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::TranscodeFrom;
+use crate::{Input, TranscodeFrom};
 
-pub(crate) fn transcode<T>(input: &[u8], mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(mut input: Input, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
-  let input_str = str::from_utf8(input)?;
+  let input_str = str::from_utf8(input.try_buffer()?)?;
   let mut de = ::toml::Deserializer::new(input_str);
   output.transcode_from(&mut de)
 }
