@@ -3,13 +3,6 @@ use std::io::{self, Read};
 use std::ops::Deref;
 use std::rc::Rc;
 
-/// A container for the program's input data, which may be a buffer or an unused
-/// reader.
-pub enum Input {
-  Buffered(Rc<dyn Deref<Target = [u8]>>),
-  Unbuffered(Box<dyn Read>),
-}
-
 /// An opaque, possibly shared reference to the program's original input data.
 ///
 /// An unbuffered reference contains an unused reader that will provide the
@@ -17,7 +10,18 @@ pub enum Input {
 /// slice. Any operation that requires a buffer, such as cloning the reference
 /// to read input more than once, will transform an unbuffered reference into a
 /// buffered reference if necessary by reading all input into a byte vector.
+///
+/// Readers should avoid internal buffering. Clients that extract a reader from
+/// an unbuffered reference should consider wrapping with [`std::io::BufReader`]
+/// before use.
 pub struct InputRef(Input);
+
+/// A container for the program's input data, which may be a buffer or an unused
+/// reader.
+pub enum Input {
+  Buffered(Rc<dyn Deref<Target = [u8]>>),
+  Unbuffered(Box<dyn Read>),
+}
 
 impl Into<Input> for InputRef {
   /// Extracts the referenced input.
