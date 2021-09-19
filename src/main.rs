@@ -202,7 +202,7 @@ impl Output for DiscardOutput {
 ///
 /// jyt does not guarantee that every conversion is possible, or lossless, or
 /// reversible. jyt's behavior is undefined if an input file is modified while
-/// running.
+/// running. jyt is not designed for use with untrusted input.
 struct Opt {
   #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
   to: Format,

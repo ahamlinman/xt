@@ -1,23 +1,45 @@
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display};
-use std::io::Write;
+use std::io::{self, BufRead, BufReader, Read, Write};
 
-use crate::InputRef;
+use crate::{Input, InputRef};
 
-pub(crate) fn transcode<O>(mut input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
-  let mut input = input.try_buffer()?.as_ref();
-  while input.len() > 0 {
-    let size = next_value_size(input)?;
-    let (next, rest) = input.split_at(size);
-    let mut de = rmp_serde::Deserializer::from_read_ref(next);
-    output.transcode_from(&mut de)?;
-    input = rest;
+  match input.into() {
+    Input::Buffered(buf) => {
+      let mut buf = buf.deref();
+      while buf.len() > 0 {
+        let size = next_value_size(buf)?;
+        let (next, rest) = buf.split_at(size);
+        let mut de = rmp_serde::Deserializer::from_read_ref(next);
+        output.transcode_from(&mut de)?;
+        buf = rest;
+      }
+    }
+    Input::Unbuffered(r) => {
+      // Note that in reader mode, the MessagePack deserializer will eagerly
+      // allocate zero-filled buffers for binary and string data based on the
+      // length specified in the input. Our dirty "solution" is to document in
+      // the help output that jyt is not designed for use with untrusted input.
+      let mut r = BufReader::new(r);
+      while has_data_left(&mut r)? {
+        let mut de = rmp_serde::Deserializer::new(&mut r);
+        output.transcode_from(&mut de)?;
+      }
+    }
   }
   Ok(())
+}
+
+fn has_data_left<R>(r: &mut BufReader<R>) -> io::Result<bool>
+where
+  R: Read,
+{
+  r.fill_buf().map(|b| !b.is_empty())
 }
 
 pub struct Output<W: Write>(W);
