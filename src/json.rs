@@ -5,11 +5,11 @@ use std::io::{BufReader, Write};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Input, InputRef, TranscodeFrom};
+use crate::{Input, InputRef};
 
-pub(crate) fn transcode<T>(input: InputRef, mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
 where
-  T: TranscodeFrom,
+  O: crate::Output,
 {
   // The two implementations here were chosen based on some simple performance
   // testing with various inputs. Deserializer::from_slice generally performs
@@ -46,7 +46,7 @@ impl<W: Write> Output<W> {
   }
 }
 
-impl<W: Write> TranscodeFrom for Output<W> {
+impl<W: Write> crate::Output for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,

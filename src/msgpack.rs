@@ -3,11 +3,11 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::Write;
 
-use crate::{InputRef, TranscodeFrom};
+use crate::InputRef;
 
-pub(crate) fn transcode<T>(mut input: InputRef, mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(mut input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
 where
-  T: TranscodeFrom,
+  O: crate::Output,
 {
   let mut input = input.try_buffer()?.as_ref();
   while input.len() > 0 {
@@ -28,7 +28,7 @@ impl<W: Write> Output<W> {
   }
 }
 
-impl<W: Write> TranscodeFrom for Output<W> {
+impl<W: Write> crate::Output for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,

@@ -81,9 +81,9 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn transcode_input<T>(input: InputRef, from: Format, output: T) -> Result<(), Box<dyn Error>>
+fn transcode_input<O>(input: InputRef, from: Format, output: O) -> Result<(), Box<dyn Error>>
 where
-  T: TranscodeFrom,
+  O: Output,
 {
   match from {
     Format::Json => json::transcode(input, output),
@@ -93,7 +93,7 @@ where
   }
 }
 
-trait TranscodeFrom {
+trait Output {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
   where
     D: serde::de::Deserializer<'de, Error = E>,
@@ -152,7 +152,7 @@ fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
 
 struct DiscardOutput;
 
-impl TranscodeFrom for DiscardOutput {
+impl Output for DiscardOutput {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,
