@@ -9,7 +9,16 @@ where
 {
   match input.into() {
     Input::Buffered(buf) => {
-      let mut de = serde_json::Deserializer::from_slice(&buf);
+      // de.end() can be VERY expensive to compute with slice input, apparently
+      // since it tries to generate line and column information on-demand when
+      // constructing the error. Using the slice as a reader is about 50% slower
+      // on a single large input, but a couple orders of magnitude faster on
+      // large multi-document streams.
+      //
+      // TODO: Consider something better than relying on de.end(), that still
+      // allows us to transcode without allocating unnecessary values.
+      let mut buf = buf.deref();
+      let mut de = serde_json::Deserializer::from_reader(&mut buf);
       while let Err(_) = de.end() {
         output.transcode_from(&mut de)?;
       }
