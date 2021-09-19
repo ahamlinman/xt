@@ -1,22 +1,20 @@
-use std::convert::{TryFrom, TryInto};
 use std::error::Error;
-use std::fs::File;
-use std::io::{self, BufWriter, Read, Write};
-use std::ops::Deref;
+use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::process;
-use std::rc::Rc;
 use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
-use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
+mod input;
 mod json;
 mod msgpack;
 mod toml;
 mod yaml;
+
+use input::{Input, InputRef};
 
 fn main() {
   let opt = match Opt::from_args_safe() {
@@ -52,7 +50,7 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 }
 
 fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
-  let mut input: Input = opt.input_opt().try_into()?;
+  let mut input = opt.input()?;
   let from = match opt.detect_from() {
     Some(format) => format,
     None => match detect_format(input.try_clone()?)? {
@@ -93,7 +91,7 @@ fn jyt(opt: Opt) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn transcode_input<T>(input: Input, from: Format, output: T) -> Result<(), Box<dyn Error>>
+fn transcode_input<T>(input: InputRef, from: Format, output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
@@ -112,60 +110,7 @@ trait TranscodeFrom {
     E: serde::de::Error + 'static;
 }
 
-enum Input {
-  Buffered(Rc<dyn Deref<Target = [u8]>>),
-  Unbuffered(Box<dyn Read>),
-}
-
-impl Input {
-  fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
-    *self = match self {
-      Self::Buffered(ref buf) => return Ok(buf.as_ref()),
-      Self::Unbuffered(r) => {
-        let mut buf = Vec::new();
-        r.read_to_end(&mut buf)?;
-        Self::Buffered(Rc::new(buf))
-      }
-    };
-    self.try_buffer()
-  }
-
-  fn try_clone(&mut self) -> io::Result<Input> {
-    *self = match self {
-      Self::Buffered(buf) => return Ok(Self::Buffered(Rc::clone(buf))),
-      Self::Unbuffered(r) => {
-        let mut buf = Vec::new();
-        r.read_to_end(&mut buf)?;
-        Self::Buffered(Rc::new(buf))
-      }
-    };
-    self.try_clone()
-  }
-}
-
-impl TryFrom<InputOpt<'_>> for Input {
-  type Error = io::Error;
-
-  fn try_from(input_opt: InputOpt) -> io::Result<Input> {
-    match input_opt {
-      InputOpt::Stdin => Ok(Self::Unbuffered(Box::new(io::stdin()))),
-      InputOpt::File(path) => {
-        let file = File::open(path)?;
-        // Safety: Modification of the mapped file outside the process triggers
-        // undefined behavior. Our dirty "solution" is to document this in the
-        // help output.
-        match unsafe { MmapOptions::new().populate().map(&file) } {
-          // Per memmap2 docs, it's safe to drop the file once mmap succeeds.
-          Ok(map) => return Ok(Self::Buffered(Rc::new(map))),
-          // If mmap fails, we can still try regular buffering.
-          Err(_) => Ok(Self::Unbuffered(Box::new(file))),
-        }
-      }
-    }
-  }
-}
-
-fn detect_format(mut input: Input) -> io::Result<Option<Format>> {
+fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
   // JSON comes first as it is relatively restrictive compared to the other
   // formats. For example, a "#" comment at the start of a doc could be TOML or
   // YAML, but definitely not JSON, so we can abort parsing fairly early.
@@ -283,18 +228,13 @@ impl Opt {
     }
   }
 
-  fn input_opt(&self) -> InputOpt {
+  fn input(&self) -> io::Result<InputRef> {
     match &self.input_filename {
-      None => InputOpt::Stdin,
-      Some(path) if path.to_str() == Some("-") => InputOpt::Stdin,
-      Some(path) => InputOpt::File(path),
+      None => Ok(InputRef::from_reader(io::stdin())),
+      Some(path) if path.to_str() == Some("-") => Ok(InputRef::from_reader(io::stdin())),
+      Some(path) => InputRef::from_file(path),
     }
   }
-}
-
-enum InputOpt<'p> {
-  Stdin,
-  File(&'p PathBuf),
 }
 
 #[derive(Copy, Clone)]

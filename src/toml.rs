@@ -4,9 +4,9 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::{Input, TranscodeFrom};
+use crate::{InputRef, TranscodeFrom};
 
-pub(crate) fn transcode<T>(mut input: Input, mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(mut input: InputRef, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {

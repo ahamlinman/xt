@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::io::{BufReader, Write};
 
-use crate::{Input, TranscodeFrom};
+use crate::{Input, InputRef, TranscodeFrom};
 
-pub(crate) fn transcode<T>(input: Input, mut output: T) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<T>(input: InputRef, mut output: T) -> Result<(), Box<dyn Error>>
 where
   T: TranscodeFrom,
 {
-  match input {
+  match input.into() {
     Input::Buffered(buf) => {
       let mut de = serde_json::Deserializer::from_slice(&buf);
       while let Err(_) = de.end() {
