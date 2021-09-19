@@ -1,11 +1,7 @@
 use std::convert::Into;
-use std::fs::File;
 use std::io::{self, Read};
 use std::ops::Deref;
-use std::path::Path;
 use std::rc::Rc;
-
-use memmap2::MmapOptions;
 
 /// A container for the program's input data, which may be a buffer or an unused
 /// reader.
@@ -39,23 +35,12 @@ impl InputRef {
     InputRef(Input::Unbuffered(Box::new(r)))
   }
 
-  /// Attempts to create a buffered reference by mmap-ing the file at the
-  /// provided path. If this fails (for example, if the file is something like a
-  /// named pipe), creates an unbuffered reference using the open file as a
-  /// reader.
-  pub fn from_file<P>(path: P) -> io::Result<InputRef>
+  /// Creates a buffered reference to input from the provided buffer.
+  pub fn from_buffer<B>(buf: B) -> InputRef
   where
-    P: AsRef<Path>,
+    B: Deref<Target = [u8]> + 'static,
   {
-    let file = File::open(&path)?;
-    // Safety: Modification of the mapped file outside the process triggers
-    // undefined behavior. Our dirty "solution" is to document this in the
-    // help output.
-    match unsafe { MmapOptions::new().populate().map(&file) } {
-      // Per memmap2 docs, it's safe to drop file once mmap succeeds.
-      Ok(map) => Ok(InputRef(Input::Buffered(Rc::new(map)))),
-      Err(_) => Ok(InputRef(Input::Unbuffered(Box::new(file)))),
-    }
+    InputRef(Input::Buffered(Rc::new(buf)))
   }
 
   /// Returns the input as a buffered slice, transforming `self` into a buffered

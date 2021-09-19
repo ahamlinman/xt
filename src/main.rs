@@ -1,10 +1,12 @@
 use std::error::Error;
+use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::process;
 use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
+use memmap2::MmapOptions;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -237,7 +239,19 @@ impl Opt {
     match &self.input_filename {
       None => Ok(InputRef::from_reader(io::stdin())),
       Some(path) if path.to_str() == Some("-") => Ok(InputRef::from_reader(io::stdin())),
-      Some(path) => InputRef::from_file(path),
+      Some(path) => {
+        let file = File::open(&path)?;
+        // Safety: Modification of the mapped file outside the process triggers
+        // undefined behavior. Our dirty "solution" is to document this in the
+        // help output.
+        match unsafe { MmapOptions::new().populate().map(&file) } {
+          // Per memmap2 docs, it's safe to drop file once mmap succeeds.
+          Ok(map) => Ok(InputRef::from_buffer(map)),
+          // Fall back to using a reader, in case the file is actually something
+          // like a named pipe.
+          Err(_) => Ok(InputRef::from_reader(file)),
+        }
+      }
     }
   }
 }
