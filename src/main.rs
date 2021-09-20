@@ -46,11 +46,19 @@ fn main() {
     Ok(input) => input,
     Err(err) => jyt_exit!(err),
   };
+  let mut output = BufWriter::new(io::stdout());
 
-  match jyt(input, opt.detect_from(), opt.to, io::stdout()) {
-    Ok(_) => {}
-    Err(err) if is_broken_pipe(err.as_ref()) => {}
-    Err(err) => jyt_exit!(err),
+  let jyt_err = jyt(input, opt.detect_from(), opt.to, &mut output);
+
+  if let Err(err) = output.flush() {
+    match is_broken_pipe(&err) {
+      true => return,
+      false => jyt_exit!(err),
+    }
+  }
+
+  if let Err(err) = jyt_err {
+    jyt_exit!(err);
   }
 }
 
@@ -78,23 +86,17 @@ where
     },
   };
 
-  // Note that BufWriter attempts to flush when dropped, but ignores flush
-  // errors. This is fine, we only drop before flushing if a transcode error
-  // forces us to abort early, in which case the real error happened during
-  // transcoding.
-  let mut w = BufWriter::new(output);
   match to {
-    Format::Json => transcode_input(input, from, json::Output::new(&mut w))?,
-    Format::Yaml => transcode_input(input, from, yaml::Output::new(&mut w))?,
-    Format::Toml => transcode_input(input, from, toml::Output::new(&mut w))?,
+    Format::Json => transcode_input(input, from, json::Output::new(output))?,
+    Format::Yaml => transcode_input(input, from, yaml::Output::new(output))?,
+    Format::Toml => transcode_input(input, from, toml::Output::new(output))?,
     Format::Msgpack => {
       if atty::is(atty::Stream::Stdout) {
         Err("refusing to output MessagePack to a terminal")?;
       }
-      transcode_input(input, from, msgpack::Output::new(&mut w))?
+      transcode_input(input, from, msgpack::Output::new(output))?
     }
   };
-  w.flush()?;
   Ok(())
 }
 
