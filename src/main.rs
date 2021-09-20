@@ -14,6 +14,7 @@ mod input;
 mod json;
 mod msgpack;
 mod toml;
+mod transcode;
 mod yaml;
 
 use input::{Input, InputRef};
