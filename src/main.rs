@@ -207,14 +207,13 @@ impl Output for DiscardOutput {
 ///
 /// Some multi-document input formats can translate a stream of documents
 /// without buffering all input into memory first. The input format must be
-/// known in advance, usually with an explicit -f.
+/// known in advance to enable streaming, usually with an explicit -f.
 ///
 /// When the input format is not known in advance with an explicit -f or file
-/// extension detection, jyt will attempt to auto-detect it by buffering all
-/// input into memory and running an unspecified algorithm that is subject to
-/// change over time.
+/// extension, jyt will attempt to auto-detect it by buffering all input into
+/// memory and running an unspecified algorithm that is subject to change.
 ///
-/// jyt does not guarantee that every conversion is possible, or lossless, or
+/// jyt does not guarantee that every translation is possible, or lossless, or
 /// reversible. jyt's behavior is undefined if an input file is modified while
 /// running. jyt is not designed for use with untrusted input.
 struct Opt {

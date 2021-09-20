@@ -44,4 +44,12 @@ specify the output format using the shorthand for `-t yaml`.
 $ jyt -ty config.json > config.yaml
 ```
 
+Read an unbounded stream of events from a Kubernetes cluster and translate it to
+MessagePack for storage. Since auto-detection requires buffering the full input,
+we specify `-f json` explicitly to enable continuous streaming.
+
+```sh
+$ curl http://localhost:8001/apis/events.k8s.io/v1/events?watch | jyt -fj -tm > events.msgpack
+```
+
 [jq]: https://stedolan.github.io/jq/
