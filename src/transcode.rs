@@ -1,93 +1,155 @@
-use std::error::Error;
+use std::borrow::Cow;
 use std::fmt;
 
-use serde::{de, ser};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-pub fn transcode<'de, D, E, S, F>(d: D, s: S) -> Result<(), Box<dyn Error>>
-where
-  D: de::Deserializer<'de, Error = E>,
-  E: de::Error + 'static,
-  S: ser::Serializer<Error = F>,
-  F: ser::Error + 'static,
-{
-  match d.deserialize_any(Visitor(s)) {
-    Ok(None) => Ok(()),
-    Ok(Some(err)) => Err(err),
-    Err(err) => Err(err.into()),
+pub enum Value<'de> {
+  None,
+  Bool(bool),
+  I8(i8),
+  I16(i16),
+  I32(i32),
+  I64(i64),
+  I128(i128),
+  U8(u8),
+  U16(u16),
+  U32(u32),
+  U64(u64),
+  U128(u128),
+  F32(f32),
+  F64(f64),
+  Char(char),
+  String(Cow<'de, str>),
+  Bytes(Cow<'de, [u8]>),
+  Seq(Vec<Value<'de>>),
+  Map(Vec<(Value<'de>, Value<'de>)>),
+}
+
+impl<'de> Serialize for Value<'de> {
+  fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    use Value::*;
+    match self {
+      None => s.serialize_unit(),
+      Bool(b) => s.serialize_bool(*b),
+      I8(n) => s.serialize_i8(*n),
+      I16(n) => s.serialize_i16(*n),
+      I32(n) => s.serialize_i32(*n),
+      I64(n) => s.serialize_i64(*n),
+      I128(n) => s.serialize_i128(*n),
+      U8(n) => s.serialize_u8(*n),
+      U16(n) => s.serialize_u16(*n),
+      U32(n) => s.serialize_u32(*n),
+      U64(n) => s.serialize_u64(*n),
+      U128(n) => s.serialize_u128(*n),
+      F32(f) => s.serialize_f32(*f),
+      F64(f) => s.serialize_f64(*f),
+      Char(c) => s.serialize_char(*c),
+      String(v) => v.serialize(s),
+      Bytes(v) => v.serialize(s),
+      Seq(v) => v.serialize(s),
+      Map(m) => {
+        use serde::ser::SerializeMap;
+        let mut map = s.serialize_map(Some(m.len()))?;
+        for (k, v) in m {
+          map.serialize_entry(k, v)?;
+        }
+        map.end()
+      }
+    }
   }
 }
 
-struct Visitor<S>(S);
-
-macro_rules! __impl_simple_visitor {
-  ($visit:ident, $serialize:ident) => {
-    fn $visit<E: de::Error>(self) -> Result<Self::Value, E> {
-      Ok(match self.0.$serialize() {
-        Ok(_) => None,
-        Err(err) => Some(err.into()),
-      })
-    }
-  };
-  ($t:ty, $visit:ident, $serialize:ident) => {
-    fn $visit<E: de::Error>(self, v: $t) -> Result<Self::Value, E> {
-      Ok(match self.0.$serialize(v) {
-        Ok(_) => None,
-        Err(err) => Some(err.into()),
-      })
+macro_rules! __impl_visit_scalar {
+  ($ty:ty, $visit:ident, $variant:expr) => {
+    fn $visit<E: de::Error>(self, v: $ty) -> Result<Value<'de>, E> {
+      Ok($variant(v))
     }
   };
 }
 
-impl<'de, S, F> de::Visitor<'de> for Visitor<S>
-where
-  S: ser::Serializer<Error = F>,
-  F: ser::Error + 'static,
-{
-  type Value = Option<Box<dyn Error>>;
+impl<'de> Deserialize<'de> for Value<'de> {
+  fn deserialize<D>(d: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct Visitor;
 
-  fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-    write!(fmt, "any value")
+    impl<'de> de::Visitor<'de> for Visitor {
+      type Value = Value<'de>;
+
+      fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "any supported value")
+      }
+
+      fn visit_unit<E: de::Error>(self) -> Result<Value<'de>, E> {
+        Ok(Value::None)
+      }
+
+      __impl_visit_scalar!(bool, visit_bool, Value::Bool);
+      __impl_visit_scalar!(i8, visit_i8, Value::I8);
+      __impl_visit_scalar!(i16, visit_i16, Value::I16);
+      __impl_visit_scalar!(i32, visit_i32, Value::I32);
+      __impl_visit_scalar!(i64, visit_i64, Value::I64);
+      __impl_visit_scalar!(i128, visit_i128, Value::I128);
+      __impl_visit_scalar!(u8, visit_u8, Value::U8);
+      __impl_visit_scalar!(u16, visit_u16, Value::U16);
+      __impl_visit_scalar!(u32, visit_u32, Value::U32);
+      __impl_visit_scalar!(u64, visit_u64, Value::U64);
+      __impl_visit_scalar!(u128, visit_u128, Value::U128);
+      __impl_visit_scalar!(f32, visit_f32, Value::F32);
+      __impl_visit_scalar!(f64, visit_f64, Value::F64);
+      __impl_visit_scalar!(char, visit_char, Value::Char);
+
+      fn visit_str<E: de::Error>(self, v: &str) -> Result<Value<'de>, E> {
+        Ok(Value::String(Cow::Owned(v.to_owned())))
+      }
+
+      fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Value<'de>, E> {
+        Ok(Value::String(Cow::Borrowed(v)))
+      }
+
+      fn visit_string<E: de::Error>(self, v: String) -> Result<Value<'de>, E> {
+        Ok(Value::String(Cow::Owned(v)))
+      }
+
+      fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Value<'de>, E> {
+        Ok(Value::Bytes(Cow::Owned(v.to_owned())))
+      }
+
+      fn visit_borrowed_bytes<E: de::Error>(self, v: &'de [u8]) -> Result<Value<'de>, E> {
+        Ok(Value::Bytes(Cow::Borrowed(v)))
+      }
+
+      fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Value<'de>, E> {
+        Ok(Value::Bytes(Cow::Owned(v)))
+      }
+
+      fn visit_seq<V: de::SeqAccess<'de>>(self, mut v: V) -> Result<Value<'de>, V::Error> {
+        let mut vec = match v.size_hint() {
+          None => Vec::new(),
+          Some(s) => Vec::with_capacity(s),
+        };
+        while let Some(e) = v.next_element()? {
+          vec.push(e)
+        }
+        Ok(Value::Seq(vec))
+      }
+
+      fn visit_map<V: de::MapAccess<'de>>(self, mut v: V) -> Result<Value<'de>, V::Error> {
+        let mut vec = match v.size_hint() {
+          None => Vec::new(),
+          Some(s) => Vec::with_capacity(s),
+        };
+        while let Some(entry) = v.next_entry()? {
+          vec.push(entry)
+        }
+        Ok(Value::Map(vec))
+      }
+    }
+
+    d.deserialize_any(Visitor)
   }
-
-  __impl_simple_visitor!(bool, visit_bool, serialize_bool);
-
-  __impl_simple_visitor!(i8, visit_i8, serialize_i8);
-  __impl_simple_visitor!(i16, visit_i16, serialize_i16);
-  __impl_simple_visitor!(i32, visit_i32, serialize_i32);
-  __impl_simple_visitor!(i64, visit_i64, serialize_i64);
-  __impl_simple_visitor!(i128, visit_i128, serialize_i128);
-
-  __impl_simple_visitor!(u8, visit_u8, serialize_u8);
-  __impl_simple_visitor!(u16, visit_u16, serialize_u16);
-  __impl_simple_visitor!(u32, visit_u32, serialize_u32);
-  __impl_simple_visitor!(u64, visit_u64, serialize_u64);
-  __impl_simple_visitor!(u128, visit_u128, serialize_u128);
-
-  __impl_simple_visitor!(f32, visit_f32, serialize_f32);
-  __impl_simple_visitor!(f64, visit_f64, serialize_f64);
-
-  __impl_simple_visitor!(char, visit_char, serialize_char);
-  __impl_simple_visitor!(&str, visit_str, serialize_str);
-  __impl_simple_visitor!(&[u8], visit_bytes, serialize_bytes);
-
-  __impl_simple_visitor!(visit_unit, serialize_unit);
-  __impl_simple_visitor!(visit_none, serialize_none);
-
-  // Fundamental problem: We can't deal with any of the things that accept
-  // another deserializer, like visit_seq and visit_map. Our setup relies on the
-  // fact that the deserializer's error type has a 'static lifetime, but we are
-  // not allowed to specify that here as that would make the impl stricter than
-  // the trait.
-  //
-  // As an example, the borrow checker rejects the following:
-  //
-  // fn visit_some<D>(self, d: D) -> Result<Self::Value, D::Error>
-  // where
-  //   D: de::Deserializer<'de>,
-  // {
-  //   Ok(match transcode(d, self.0) {
-  //     Ok(()) => None,
-  //     Err(result) => Some(result),
-  //   })
-  // }
 }
