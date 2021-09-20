@@ -9,7 +9,7 @@ resolver = "2"
 
 [dependencies]
 atty = "0.2"
-memmap2 = "0.2"
+memmap2 = "0.5"
 rmp = "0.8"
 rmp-serde = "0.15"
 serde = "1"
