@@ -194,16 +194,16 @@ impl Output for DiscardOutput {
 /// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
 ///      json  Multi-document with self-delineating values (object, array,
-///            string) and / or whitespace between values. Default format for
-///            .json files. Supports streaming input.
+///            string) or whitespace between values. Default format for .json
+///            files. Supports streaming input.
 ///
 ///      yaml  Multi-document with "---" syntax. Default format for .yaml and
 ///            .yml files.
 ///
 ///      toml  Single documents only. Default format for .toml files.
 ///
-///   msgpack  Multi-document as values are naturally self-delineating. Supports
-///            streaming input.
+///   msgpack  Multi-document as values are naturally self-delineating. Default
+///            format for .msgpack files. Supports streaming input.
 ///
 /// Some multi-document input formats can translate a stream of documents
 /// without buffering all input into memory first. The input format must be
@@ -237,13 +237,13 @@ impl Opt {
     if self.from.is_some() {
       return self.from;
     }
-
     match &self.input_filename {
       None => None,
       Some(path) => match path.extension().map(|ext| ext.to_str()).flatten() {
         Some("json") => Some(Format::Json),
         Some("yaml" | "yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
+        Some("msgpack") => Some(Format::Msgpack),
         _ => None,
       },
     }
