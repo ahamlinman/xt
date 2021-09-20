@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
@@ -36,17 +37,24 @@ fn main() {
   };
 
   macro_rules! jyt_exit {
-    ($err:tt) => {{
-      eprint!("jyt error: {}\n", $err);
+    ($x:expr) => {
+      jyt_exit!("{}", $x);
+    };
+    ($fmt:literal, $($x:expr),*) => {{
+      eprint!(concat!("jyt error: ", $fmt, "\n"), $($x),*);
       process::exit(1);
     }};
+  }
+
+  let mut output = BufWriter::new(io::stdout());
+  if atty::is(atty::Stream::Stdout) && !opt.to.is_safe_for_terminal() {
+    jyt_exit!("refusing to output {} to a terminal", opt.to);
   }
 
   let input = match opt.input() {
     Ok(input) => input,
     Err(err) => jyt_exit!(err),
   };
-  let mut output = BufWriter::new(io::stdout());
 
   let jyt_err = jyt(input, opt.detect_from(), opt.to, &mut output);
 
@@ -87,17 +95,11 @@ where
   };
 
   match to {
-    Format::Json => transcode_input(input, from, json::Output::new(output))?,
-    Format::Yaml => transcode_input(input, from, yaml::Output::new(output))?,
-    Format::Toml => transcode_input(input, from, toml::Output::new(output))?,
-    Format::Msgpack => {
-      if atty::is(atty::Stream::Stdout) {
-        Err("refusing to output MessagePack to a terminal")?;
-      }
-      transcode_input(input, from, msgpack::Output::new(output))?
-    }
-  };
-  Ok(())
+    Format::Json => transcode_input(input, from, json::Output::new(output)),
+    Format::Yaml => transcode_input(input, from, yaml::Output::new(output)),
+    Format::Toml => transcode_input(input, from, toml::Output::new(output)),
+    Format::Msgpack => transcode_input(input, from, msgpack::Output::new(output)),
+  }
 }
 
 fn transcode_input<O>(input: InputRef, from: Format, output: O) -> Result<(), Box<dyn Error>>
@@ -280,9 +282,17 @@ enum Format {
   Msgpack,
 }
 
+impl Format {
+  fn is_safe_for_terminal(&self) -> bool {
+    match self {
+      Self::Msgpack => false,
+      _ => true,
+    }
+  }
+}
+
 impl FromStr for Format {
   type Err = String;
-
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
       "j" | "json" => Ok(Self::Json),
@@ -291,5 +301,16 @@ impl FromStr for Format {
       "m" | "msgpack" => Ok(Self::Msgpack),
       _ => Err(format!("'{}' is not a valid format", s)),
     }
+  }
+}
+
+impl fmt::Display for Format {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str(match self {
+      Self::Json => "json",
+      Self::Yaml => "yaml",
+      Self::Toml => "toml",
+      Self::Msgpack => "msgpack",
+    })
   }
 }
