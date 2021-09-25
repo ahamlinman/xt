@@ -7,24 +7,23 @@ pub(crate) fn transcode<O>(input: InputRef, mut output: O) -> Result<(), Box<dyn
 where
   O: crate::Output,
 {
-  // The two implementations here were chosen based on some simple performance
-  // testing with various inputs. Deserializer::from_slice generally performs
-  // better than Deserialize::from_reader (even when reading from a slice),
-  // however the .end method in slice mode is extremely slow. Creating a true
-  // iterator requires deserializing into a value, so jyt has a special, faster
-  // alternative to serde_json::Value that can capture borrowed data. In
-  // contrast, when streaming input from a reader, direct transcoding is much
-  // faster. My unproven guess is that it has to allocate Strings for
-  // BorrowedValue, where with direct transcoding it can forward buffered &str
-  // slices straight to the serializer.
   match input.into() {
     Input::Buffered(buf) => {
+      // Direct transcoding here would be nice, however the .end() method that
+      // we rely on is extremely slow in slice mode. serde_json only supports
+      // iteration if we allow it to deserialize into an actual value, so jyt
+      // implements a value type that can borrow strings from the input slice
+      // (one of serde's major features).
       let de = serde_json::Deserializer::from_slice(&buf);
       for value in de.into_iter::<transcode::Value>() {
         output.transcode_value(value?)?;
       }
     }
     Input::Unbuffered(r) => {
+      // In this case, direct transcoding performs better than deserializing
+      // into a value, probably because it can give the serializer &str slices
+      // of internal buffers rather than allocating new Strings to store in a
+      // transcode::Value.
       let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
       while let Err(_) = de.end() {
         output.transcode_from(&mut de)?;
