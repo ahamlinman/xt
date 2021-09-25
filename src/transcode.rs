@@ -3,7 +3,7 @@ use std::fmt;
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-pub enum Value<'de> {
+pub enum Value<'a> {
   None,
   Bool(bool),
   I8(i8),
@@ -19,13 +19,13 @@ pub enum Value<'de> {
   F32(f32),
   F64(f64),
   Char(char),
-  String(Cow<'de, str>),
-  Bytes(Cow<'de, [u8]>),
-  Seq(Vec<Value<'de>>),
-  Map(Vec<(Value<'de>, Value<'de>)>),
+  String(Cow<'a, str>),
+  Bytes(Cow<'a, [u8]>),
+  Seq(Vec<Value<'a>>),
+  Map(Vec<(Value<'a>, Value<'a>)>),
 }
 
-impl<'de> Serialize for Value<'de> {
+impl Serialize for Value<'_> {
   fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
@@ -64,27 +64,27 @@ impl<'de> Serialize for Value<'de> {
 
 macro_rules! __impl_visit_scalar {
   ($ty:ty, $visit:ident, $variant:expr) => {
-    fn $visit<E: de::Error>(self, v: $ty) -> Result<Value<'de>, E> {
+    fn $visit<E: de::Error>(self, v: $ty) -> Result<Value<'a>, E> {
       Ok($variant(v))
     }
   };
 }
 
-impl<'de> Deserialize<'de> for Value<'de> {
+impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
   fn deserialize<D>(d: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
     struct Visitor;
 
-    impl<'de> de::Visitor<'de> for Visitor {
-      type Value = Value<'de>;
+    impl<'a> de::Visitor<'a> for Visitor {
+      type Value = Value<'a>;
 
       fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "any supported value")
       }
 
-      fn visit_unit<E: de::Error>(self) -> Result<Value<'de>, E> {
+      fn visit_unit<E: de::Error>(self) -> Result<Value<'a>, E> {
         Ok(Value::None)
       }
 
@@ -103,31 +103,31 @@ impl<'de> Deserialize<'de> for Value<'de> {
       __impl_visit_scalar!(f64, visit_f64, Value::F64);
       __impl_visit_scalar!(char, visit_char, Value::Char);
 
-      fn visit_str<E: de::Error>(self, v: &str) -> Result<Value<'de>, E> {
+      fn visit_str<E: de::Error>(self, v: &str) -> Result<Value<'a>, E> {
         Ok(Value::String(Cow::Owned(v.to_owned())))
       }
 
-      fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Value<'de>, E> {
+      fn visit_borrowed_str<E: de::Error>(self, v: &'a str) -> Result<Value<'a>, E> {
         Ok(Value::String(Cow::Borrowed(v)))
       }
 
-      fn visit_string<E: de::Error>(self, v: String) -> Result<Value<'de>, E> {
+      fn visit_string<E: de::Error>(self, v: String) -> Result<Value<'a>, E> {
         Ok(Value::String(Cow::Owned(v)))
       }
 
-      fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Value<'de>, E> {
+      fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Value<'a>, E> {
         Ok(Value::Bytes(Cow::Owned(v.to_owned())))
       }
 
-      fn visit_borrowed_bytes<E: de::Error>(self, v: &'de [u8]) -> Result<Value<'de>, E> {
+      fn visit_borrowed_bytes<E: de::Error>(self, v: &'a [u8]) -> Result<Value<'a>, E> {
         Ok(Value::Bytes(Cow::Borrowed(v)))
       }
 
-      fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Value<'de>, E> {
+      fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Value<'a>, E> {
         Ok(Value::Bytes(Cow::Owned(v)))
       }
 
-      fn visit_seq<V: de::SeqAccess<'de>>(self, mut v: V) -> Result<Value<'de>, V::Error> {
+      fn visit_seq<V: de::SeqAccess<'a>>(self, mut v: V) -> Result<Value<'a>, V::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
@@ -138,7 +138,7 @@ impl<'de> Deserialize<'de> for Value<'de> {
         Ok(Value::Seq(vec))
       }
 
-      fn visit_map<V: de::MapAccess<'de>>(self, mut v: V) -> Result<Value<'de>, V::Error> {
+      fn visit_map<V: de::MapAccess<'a>>(self, mut v: V) -> Result<Value<'a>, V::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
