@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::io::Write;
 
-use crate::InputRef;
+use crate::{transcode, InputRef};
 
 pub(crate) fn transcode<O>(mut input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
 where
@@ -28,7 +28,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = serde_yaml::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
+    transcode::transcode(de, &mut ser)?;
     Ok(())
   }
 

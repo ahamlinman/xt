@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
-use crate::{Input, InputRef};
+use crate::{transcode, Input, InputRef};
 
 pub(crate) fn transcode<O>(input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
 where
@@ -57,7 +57,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = rmp_serde::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
+    transcode::transcode(de, &mut ser)?;
     Ok(())
   }
 

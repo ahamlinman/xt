@@ -48,7 +48,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = serde_json::Serializer::new(&mut self.0);
-    serde_transcode::transcode(de, &mut ser)?;
+    transcode::transcode(de, &mut ser)?;
     writeln!(&mut self.0, "")?;
     Ok(())
   }
