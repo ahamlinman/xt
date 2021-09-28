@@ -279,12 +279,12 @@ where
   {
     let mut ser = match self.0.serialize_seq(seq.size_hint()) {
       Ok(ser) => ser,
-      Err(ser_err) => return Ok(Err(ser_err)),
+      Err(err) => return Ok(Err(err)),
     };
 
-    while let Some(ser_result) = seq.next_element_seed(SeqSeed(&mut ser))? {
-      if let Err(ser_err) = ser_result {
-        return Ok(Err(ser_err));
+    while let Some(result) = seq.next_element_seed(SeqSeed(&mut ser))? {
+      if let Err(err) = result {
+        return Ok(Err(err));
       }
     }
 
@@ -297,15 +297,15 @@ where
   {
     let mut ser = match self.0.serialize_map(map.size_hint()) {
       Ok(ser) => ser,
-      Err(ser_err) => return Ok(Err(ser_err)),
+      Err(err) => return Ok(Err(err)),
     };
 
-    while let Some(ser_result) = map.next_key_seed(KeySeed(&mut ser))? {
-      if let Err(ser_err) = ser_result {
-        return Ok(Err(ser_err));
+    while let Some(result) = map.next_key_seed(KeySeed(&mut ser))? {
+      if let Err(err) = result {
+        return Ok(Err(err));
       }
-      if let Err(ser_err) = map.next_value_seed(ValueSeed(&mut ser))? {
-        return Ok(Err(ser_err));
+      if let Err(err) = map.next_value_seed(ValueSeed(&mut ser))? {
+        return Ok(Err(err));
       }
     }
 
@@ -330,9 +330,10 @@ macro_rules! impl_transcode_seed_type {
         let t = Transcoder::new(d);
         match self.0.$serializer_method(&t) {
           Ok(_) => Ok(Ok(())),
-          Err(ser_err) => match t.into_error() {
-            Some(de_err) => Err(de_err),
-            None => Ok(Err(ser_err)),
+          // See Transcoder documentation for an explanation of this part.
+          Err(serr) => match t.into_error() {
+            Some(derr) => Err(derr),
+            None => Ok(Err(serr)),
           },
         }
       }
@@ -381,7 +382,7 @@ where
     use TranscoderState::*;
     match self.0.into_inner() {
       New(_) => None,
-      Used(de_result) => de_result,
+      Used(result) => result,
     }
   }
 }
