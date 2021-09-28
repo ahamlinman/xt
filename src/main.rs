@@ -321,10 +321,10 @@ impl FromStr for Format {
 impl fmt::Display for Format {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.write_str(match self {
-      Self::Json => "json",
-      Self::Yaml => "yaml",
-      Self::Toml => "toml",
-      Self::Msgpack => "msgpack",
+      Self::Json => "JSON",
+      Self::Yaml => "YAML",
+      Self::Toml => "TOML",
+      Self::Msgpack => "MessagePack",
     })
   }
 }
