@@ -66,19 +66,19 @@ impl Serialize for Value<'_> {
   }
 }
 
-macro_rules! __impl_visit_for_value {
-  ($ty:ty, $visit:ident, $variant:expr) => {
-    fn $visit<E: de::Error>(self, v: $ty) -> Result<Value<'a>, E> {
-      Ok($variant(v))
-    }
-  };
-}
-
 impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
   fn deserialize<D>(d: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
+    macro_rules! impl_value_visitor_method {
+      ($ty:ty, $visitor_method:ident, $variant:expr) => {
+        fn $visitor_method<E: de::Error>(self, v: $ty) -> Result<Value<'a>, E> {
+          Ok($variant(v))
+        }
+      };
+    }
+
     struct Visitor;
 
     impl<'a> de::Visitor<'a> for Visitor {
@@ -92,20 +92,20 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         Ok(Value::None)
       }
 
-      __impl_visit_for_value!(bool, visit_bool, Value::Bool);
-      __impl_visit_for_value!(i8, visit_i8, Value::I8);
-      __impl_visit_for_value!(i16, visit_i16, Value::I16);
-      __impl_visit_for_value!(i32, visit_i32, Value::I32);
-      __impl_visit_for_value!(i64, visit_i64, Value::I64);
-      __impl_visit_for_value!(i128, visit_i128, Value::I128);
-      __impl_visit_for_value!(u8, visit_u8, Value::U8);
-      __impl_visit_for_value!(u16, visit_u16, Value::U16);
-      __impl_visit_for_value!(u32, visit_u32, Value::U32);
-      __impl_visit_for_value!(u64, visit_u64, Value::U64);
-      __impl_visit_for_value!(u128, visit_u128, Value::U128);
-      __impl_visit_for_value!(f32, visit_f32, Value::F32);
-      __impl_visit_for_value!(f64, visit_f64, Value::F64);
-      __impl_visit_for_value!(char, visit_char, Value::Char);
+      impl_value_visitor_method!(bool, visit_bool, Value::Bool);
+      impl_value_visitor_method!(i8, visit_i8, Value::I8);
+      impl_value_visitor_method!(i16, visit_i16, Value::I16);
+      impl_value_visitor_method!(i32, visit_i32, Value::I32);
+      impl_value_visitor_method!(i64, visit_i64, Value::I64);
+      impl_value_visitor_method!(i128, visit_i128, Value::I128);
+      impl_value_visitor_method!(u8, visit_u8, Value::U8);
+      impl_value_visitor_method!(u16, visit_u16, Value::U16);
+      impl_value_visitor_method!(u32, visit_u32, Value::U32);
+      impl_value_visitor_method!(u64, visit_u64, Value::U64);
+      impl_value_visitor_method!(u128, visit_u128, Value::U128);
+      impl_value_visitor_method!(f32, visit_f32, Value::F32);
+      impl_value_visitor_method!(f64, visit_f64, Value::F64);
+      impl_value_visitor_method!(char, visit_char, Value::Char);
 
       fn visit_str<E: de::Error>(self, v: &str) -> Result<Value<'a>, E> {
         Ok(Value::String(Cow::Owned(v.to_owned())))
@@ -158,20 +158,35 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
   }
 }
 
+/// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
+///
+/// Values produced by the `Deserializer` will be forwarded directly to the
+/// `Serializer` without collecting the input into an intermediate form in
+/// memory. An error on either side will halt further transcoding.
+///
+/// The implementation is heavily based on a general strategy pioneered by the
+/// `serde_transcode` crate, with modifications to preserve `Serializer` and
+/// `Deserializer` error types rather than stringifying them. It only implements
+/// a subset of the Serde types that `serde_transcode` does, focusing solely on
+/// the types that one of jyt's input formats could reasonably produce (e.g. no
+/// options or newtype structs), however the general implementation pattern
+/// could be extended to support such types.
 pub fn transcode<'de, D, S>(d: D, s: S) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
 where
   D: Deserializer<'de>,
   S: Serializer,
 {
+  use TranscodeError::*;
   match d.deserialize_any(Visitor(s)) {
     Ok(ser_result) => match ser_result {
       Ok(ser_value) => Ok(ser_value),
-      Err(ser_err) => Err(TranscodeError::Ser(ser_err)),
+      Err(ser_err) => Err(Ser(ser_err)),
     },
-    Err(de_err) => Err(TranscodeError::De(de_err)),
+    Err(de_err) => Err(De(de_err)),
   }
 }
 
+/// Holds an error produced during transcoding.
 #[derive(Debug)]
 pub enum TranscodeError<S, D> {
   Ser(S),
@@ -206,12 +221,23 @@ where
   }
 }
 
+/// Enables a Serde `Deserializer` to drive the contained Serde `Serializer`.
+///
+/// Where a normal visitor would deserialize valid input to some in-memory
+/// representation, this visitor effectively "deserializes" valid input to the
+/// `Result` produced by an attempt to serialize it.
+///
+/// When the serializer produces an error, we stop taking input from the
+/// deserializer and pass the error up the call stack, where it becomes the
+/// final value. Note that the Serde documentation does not indicate any
+/// requirement for a visitor to access every element of a sequence or map
+/// before returning a value.
 struct Visitor<S>(S);
 
-macro_rules! __impl_visit_for_transcode {
-  ($ty:ty, $visit:ident, $serialize:ident) => {
-    fn $visit<E: de::Error>(self, v: $ty) -> Result<Self::Value, E> {
-      Ok(self.0.$serialize(v))
+macro_rules! impl_transcode_visitor_method {
+  ($ty:ty, $visitor_method:ident, $serializer_method:ident) => {
+    fn $visitor_method<E: de::Error>(self, v: $ty) -> Result<Self::Value, E> {
+      Ok(self.0.$serializer_method(v))
     }
   };
 }
@@ -230,22 +256,22 @@ where
     Ok(self.0.serialize_unit())
   }
 
-  __impl_visit_for_transcode!(bool, visit_bool, serialize_bool);
-  __impl_visit_for_transcode!(i8, visit_i8, serialize_i8);
-  __impl_visit_for_transcode!(i16, visit_i16, serialize_i16);
-  __impl_visit_for_transcode!(i32, visit_i32, serialize_i32);
-  __impl_visit_for_transcode!(i64, visit_i64, serialize_i64);
-  __impl_visit_for_transcode!(i128, visit_i128, serialize_i128);
-  __impl_visit_for_transcode!(u8, visit_u8, serialize_u8);
-  __impl_visit_for_transcode!(u16, visit_u16, serialize_u16);
-  __impl_visit_for_transcode!(u32, visit_u32, serialize_u32);
-  __impl_visit_for_transcode!(u64, visit_u64, serialize_u64);
-  __impl_visit_for_transcode!(u128, visit_u128, serialize_u128);
-  __impl_visit_for_transcode!(f32, visit_f32, serialize_f32);
-  __impl_visit_for_transcode!(f64, visit_f64, serialize_f64);
-  __impl_visit_for_transcode!(char, visit_char, serialize_char);
-  __impl_visit_for_transcode!(&str, visit_str, serialize_str);
-  __impl_visit_for_transcode!(&[u8], visit_bytes, serialize_bytes);
+  impl_transcode_visitor_method!(bool, visit_bool, serialize_bool);
+  impl_transcode_visitor_method!(i8, visit_i8, serialize_i8);
+  impl_transcode_visitor_method!(i16, visit_i16, serialize_i16);
+  impl_transcode_visitor_method!(i32, visit_i32, serialize_i32);
+  impl_transcode_visitor_method!(i64, visit_i64, serialize_i64);
+  impl_transcode_visitor_method!(i128, visit_i128, serialize_i128);
+  impl_transcode_visitor_method!(u8, visit_u8, serialize_u8);
+  impl_transcode_visitor_method!(u16, visit_u16, serialize_u16);
+  impl_transcode_visitor_method!(u32, visit_u32, serialize_u32);
+  impl_transcode_visitor_method!(u64, visit_u64, serialize_u64);
+  impl_transcode_visitor_method!(u128, visit_u128, serialize_u128);
+  impl_transcode_visitor_method!(f32, visit_f32, serialize_f32);
+  impl_transcode_visitor_method!(f64, visit_f64, serialize_f64);
+  impl_transcode_visitor_method!(char, visit_char, serialize_char);
+  impl_transcode_visitor_method!(&str, visit_str, serialize_str);
+  impl_transcode_visitor_method!(&[u8], visit_bytes, serialize_bytes);
 
   fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
   where
@@ -287,75 +313,51 @@ where
   }
 }
 
-struct SeqSeed<'a, S: 'a>(&'a mut S);
+macro_rules! impl_transcode_seed_type {
+  ($name:ident, $serializer_trait:ident, $serializer_method:ident) => {
+    struct $name<'a, S: 'a>(&'a mut S);
 
-impl<'a, 'de, S> de::DeserializeSeed<'de> for SeqSeed<'a, S>
-where
-  S: SerializeSeq,
-{
-  type Value = Result<(), S::Error>;
+    impl<'a, 'de, S> de::DeserializeSeed<'de> for $name<'a, S>
+    where
+      S: $serializer_trait,
+    {
+      type Value = Result<(), S::Error>;
 
-  fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-  where
-    D: Deserializer<'de>,
-  {
-    let t = Transcoder::new(d);
-    match self.0.serialize_element(&t) {
-      Ok(()) => Ok(Ok(())),
-      Err(ser_err) => match t.into_error() {
-        Some(de_err) => Err(de_err),
-        None => Ok(Err(ser_err)),
-      },
+      fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
+      where
+        D: Deserializer<'de>,
+      {
+        let t = Transcoder::new(d);
+        match self.0.$serializer_method(&t) {
+          Ok(_) => Ok(Ok(())),
+          Err(ser_err) => match t.into_error() {
+            Some(de_err) => Err(de_err),
+            None => Ok(Err(ser_err)),
+          },
+        }
+      }
     }
-  }
+  };
 }
 
-struct KeySeed<'a, S: 'a>(&'a mut S);
+impl_transcode_seed_type!(SeqSeed, SerializeSeq, serialize_element);
+impl_transcode_seed_type!(KeySeed, SerializeMap, serialize_key);
+impl_transcode_seed_type!(ValueSeed, SerializeMap, serialize_value);
 
-impl<'a, 'de, S> de::DeserializeSeed<'de> for KeySeed<'a, S>
-where
-  S: SerializeMap,
-{
-  type Value = Result<(), S::Error>;
-
-  fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-  where
-    D: Deserializer<'de>,
-  {
-    let t = Transcoder::new(d);
-    match self.0.serialize_key(&t) {
-      Ok(()) => Ok(Ok(())),
-      Err(ser_err) => match t.into_error() {
-        Some(de_err) => Err(de_err),
-        None => Ok(Err(ser_err)),
-      },
-    }
-  }
-}
-
-struct ValueSeed<'a, S: 'a>(&'a mut S);
-
-impl<'a, 'de, S> de::DeserializeSeed<'de> for ValueSeed<'a, S>
-where
-  S: SerializeMap,
-{
-  type Value = Result<(), S::Error>;
-
-  fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-  where
-    D: Deserializer<'de>,
-  {
-    let t = Transcoder::new(d);
-    match self.0.serialize_value(&t) {
-      Ok(()) => Ok(Ok(())),
-      Err(ser_err) => match t.into_error() {
-        Some(de_err) => Err(de_err),
-        None => Ok(Err(ser_err)),
-      },
-    }
-  }
-}
-
+/// Implements `Serialize` for a `Deserializer`, allowing our transcoding
+/// visitor to forward complex values like sequences and maps.
+///
+/// **This is not a normal `Serialize` implementation!** Unlike most data types,
+/// serialization of a transcoder is not idempotent, as it advances the state of
+/// the contained deserializer. Serializing a transcoder more than once will
+/// panic.
+///
+/// On deserializer errors, a transcoder will store the original error
+/// internally, and return a fairly useless and generic serialization error.
+/// When `serialize` returns an error, typical usage is to first check for and
+/// return any underlying deserializer error before propagating the original
+/// serialization error. If there is no captured deserializer error, then the
+/// error was produced by the serializer itself.
 struct Transcoder<'de, D: Deserializer<'de>>(RefCell<TranscoderState<'de, D>>);
 
 enum TranscoderState<'de, D: Deserializer<'de>> {
@@ -367,14 +369,19 @@ impl<'de, D> Transcoder<'de, D>
 where
   D: Deserializer<'de>,
 {
+  /// Constructs a new `Transcoder`.
   fn new(d: D) -> Transcoder<'de, D> {
     Transcoder(RefCell::new(TranscoderState::New(Some(d))))
   }
 
+  /// Consumes a `Transcoder` and produces any error generated by the
+  /// deserializer. If this is `None`, then any error returned by `serialize`
+  /// was produced by the serializer itself.
   fn into_error(self) -> Option<D::Error> {
+    use TranscoderState::*;
     match self.0.into_inner() {
-      TranscoderState::New(_) => None,
-      TranscoderState::Used(de_result) => de_result,
+      New(_) => None,
+      Used(de_result) => de_result,
     }
   }
 }
@@ -383,14 +390,20 @@ impl<'de, D> ser::Serialize for Transcoder<'de, D>
 where
   D: Deserializer<'de>,
 {
+  /// Transcodes the contained deserializer.
+  ///
+  /// **This is not a normal `Serialize` implementation!** See the struct level
+  /// documentation for special usage considerations.
   fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
+    use ser::Error;
+    use TranscoderState::*;
+
     let de_result = match *self.0.borrow_mut() {
-      TranscoderState::Used(_) => panic!("transcoder may only be serialized once"),
-      TranscoderState::New(None) => unreachable!(),
-      TranscoderState::New(ref mut d) => {
+      Used(_) => panic!("transcoder may only be serialized once"),
+      New(ref mut d) => {
         let d = d.take().unwrap();
         d.deserialize_any(Visitor(s))
       }
@@ -398,12 +411,11 @@ where
 
     match de_result {
       Ok(ser_result) => {
-        *self.0.borrow_mut() = TranscoderState::Used(None);
+        *self.0.borrow_mut() = Used(None);
         ser_result
       }
       Err(de_err) => {
-        *self.0.borrow_mut() = TranscoderState::Used(Some(de_err));
-        use ser::Error;
+        *self.0.borrow_mut() = Used(Some(de_err));
         Err(S::Error::custom(
           "deserializer error, must unpack from transcoder",
         ))
