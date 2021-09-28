@@ -27,9 +27,10 @@ fn main() {
       HelpDisplayed | VersionDisplayed => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
-        // include an "error:" prefix, so this gives consistent formatting for
-        // both argument and translation errors. It is a bit fragile, since it's
-        // unlikely that clap's error message format is guaranteed to be stable.
+        // include an "error:" prefix, so this gives us consistent formatting
+        // for both argument and translation errors. It is a bit fragile, since
+        // it's unlikely that clap's error message format is guaranteed to be
+        // stable.
         eprint!("jyt {}\n", err.message);
         process::exit(1);
       }
@@ -58,6 +59,10 @@ fn main() {
 
   let jyt_err = jyt(input, opt.detect_from(), opt.to, &mut output);
 
+  // Some of our serializers, particularly the YAML serializer, don't expose
+  // underlying I/O errors in their error chain when they occur. This check
+  // gives us a more direct indication of errors related to writing output,
+  // particularly broken pipe errors which we'd prefer to hide.
   if let Err(err) = output.flush() {
     match is_broken_pipe(&err) {
       true => return,
@@ -71,10 +76,19 @@ fn main() {
 }
 
 fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
-  return matches!(
-    err.downcast_ref::<io::Error>(),
-    Some(ioerr) if ioerr.kind() == io::ErrorKind::BrokenPipe
-  );
+  use io::ErrorKind::BrokenPipe;
+
+  let mut next = Some(err);
+  while let Some(err) = next {
+    match err.downcast_ref::<io::Error>() {
+      Some(err) if err.kind() == BrokenPipe => return true,
+      _ => {
+        next = err.source();
+      }
+    }
+  }
+
+  false
 }
 
 fn jyt<W>(
