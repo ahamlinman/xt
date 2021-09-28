@@ -178,7 +178,7 @@ trait TryReadPrefix<T> {
   fn try_read_prefix(self) -> Option<T>;
 }
 
-macro_rules! __impl_try_read_u8_slice_prefix {
+macro_rules! impl_byte_slice_try_read_prefix {
   ($t:ty) => {
     impl TryReadPrefix<$t> for &[u8] {
       fn try_read_prefix(self) -> Option<$t> {
@@ -191,9 +191,10 @@ macro_rules! __impl_try_read_u8_slice_prefix {
     }
   };
 }
-__impl_try_read_u8_slice_prefix!(u8);
-__impl_try_read_u8_slice_prefix!(u16);
-__impl_try_read_u8_slice_prefix!(u32);
+
+impl_byte_slice_try_read_prefix!(u8);
+impl_byte_slice_try_read_prefix!(u16);
+impl_byte_slice_try_read_prefix!(u32);
 
 /// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
