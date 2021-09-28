@@ -8,9 +8,9 @@ use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
 use memmap2::MmapOptions;
-use serde::Deserialize;
 use structopt::StructOpt;
 
+mod detect;
 mod input;
 mod json;
 mod msgpack;
@@ -102,7 +102,7 @@ where
 {
   let from = match from {
     Some(format) => format,
-    None => match detect_format(input.try_clone()?)? {
+    None => match detect::detect_format(input.try_clone()?)? {
       Some(format) => format,
       None => Err("cannot parse input as any known format")?,
     },
@@ -137,72 +137,6 @@ trait Output {
   fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error + 'static>>
   where
     S: serde::ser::Serialize;
-}
-
-fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
-  // JSON comes first as it is relatively restrictive compared to the other
-  // formats. For example, a "#" comment at the start of a doc could be TOML or
-  // YAML, but definitely not JSON, so we can abort parsing fairly early.
-  //
-  // TOML comes next for a surprising reason… the YAML parser will sometimes
-  // accept a TOML file, parsing its contents as a giant string! I'm not sure
-  // I'll ever want to understand YAML well enough to explain this. Cargo.lock
-  // generally exhibits the behavior, if you're curious.
-  //
-  // YAML rounds out the text-based formats to help match the behavior of older
-  // versions of jyt, which always used YAML as the fallback for unknown input
-  // types (I guess if you really do want the giant string behavior).
-  for from in [Format::Json, Format::Toml, Format::Yaml] {
-    if let Ok(_) = transcode_input(input.try_clone()?, from, DiscardOutput) {
-      return Ok(Some(from));
-    }
-  }
-
-  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
-  // That means any ASCII text input is effectively a valid multi-document
-  // MessagePack stream, where every "document" is practically meaningless. To
-  // prevent these kinds of weird matches, we only attempt to auto-detect
-  // MessagePack when the first byte of input indicates that the next value will
-  // be a map or array. Arbitrary non-ASCII input that happens to match one of
-  // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
-  // unlikely to be a valid sequence of MessagePack values.
-  use rmp::Marker::*;
-  match input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)) {
-    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32) => {
-      if let Ok(_) = transcode_input(input, Format::Msgpack, DiscardOutput) {
-        return Ok(Some(Format::Msgpack));
-      }
-    }
-    _ => {}
-  }
-
-  Ok(None)
-}
-
-struct DiscardOutput;
-
-impl Output for DiscardOutput {
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
-  {
-    match serde::de::IgnoredAny::deserialize(de) {
-      Ok(_) => Ok(()),
-      Err(err) => Err(err)?,
-    }
-  }
-
-  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
-  where
-    S: serde::ser::Serialize,
-  {
-    // Picking MessagePack as it's probably the fastest real serializer we have.
-    // I would love to have a "discard" serializer of some sort but I haven't
-    // found one yet.
-    value.serialize(&mut rmp_serde::Serializer::new(io::sink()))?;
-    Ok(())
-  }
 }
 
 #[derive(StructOpt)]
