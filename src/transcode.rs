@@ -9,7 +9,12 @@ use serde::{
 };
 
 /// Implements methods of a [`serde::de::Visitor`] that do nothing more than
-/// shove the result of some expression into an `Ok` variant.
+/// shove the result of some expression into an `Ok` variant, using terms of the
+/// following form:
+///
+/// ```
+/// visit_<type>(<args>) => <return value>;
+/// ```
 macro_rules! impl_infallible_visitor_methods {
   ($($name:ident($($args:tt)*) => $result:expr;)*) => {
     $(
@@ -322,8 +327,7 @@ where
 /// Implements deserializer seed types that use a `Transcoder` to handle
 /// sequence and map elements.
 ///
-/// This macro is intentionally non-hygienic, and not intended for use outside
-/// of this module.
+/// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_seed_type {
   ($name:ident, $serializer_trait:ident, $serializer_method:ident) => {
     struct $name<'a, S: 'a>(&'a mut S);

@@ -75,14 +75,11 @@ impl Output for Discard {
 /// following form:
 ///
 /// ```
-/// (<function signature>): <type> => <value>;
+/// (<function signature>): <return type> => <return value>;
+/// (<function signature>); // returns Ok(())
 /// ```
 ///
-/// Optionally, a term can consist solely of the (parenthesized) function
-/// signature, and the resulting function will return `Ok(())`.
-///
-/// This macro is intentionally non-hygienic, and not intended for use outside
-/// of this module.
+/// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_infallible_serializer_methods {
   () => {};
   (($($decl:tt)*): $ty:ty => $result:expr; $($rest:tt)*) => {
@@ -167,77 +164,64 @@ impl Serializer for Discard {
   }
 }
 
-impl ser::SerializeSeq for Discard {
-  type Ok = ();
-  type Error = DiscardError;
+/// Implements the additional traits required of a [`serde::Serializer`] on our
+/// `Discard` type, using our special macro syntax for serializer methods.
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_discard_serializer_traits {
+  () => {};
+  ($ty:ty { $($body:tt)* }; $($rest:tt)*) => {
+    impl $ty for Discard {
+      type Ok = ();
+      type Error = DiscardError;
 
-  local_impl_infallible_serializer_methods! {
+      local_impl_infallible_serializer_methods! { $($body)* }
+    }
+
+    local_impl_discard_serializer_traits! { $($rest)* }
+  };
+}
+
+local_impl_discard_serializer_traits! {
+  ser::SerializeSeq {
     (serialize_element<T: ?Sized>(&mut self, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeTuple for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeTuple {
     (serialize_element<T: ?Sized>(&mut self, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeTupleStruct for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeTupleStruct {
     (serialize_field<T: ?Sized>(&mut self, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeTupleVariant for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeTupleVariant {
     (serialize_field<T: ?Sized>(&mut self, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeMap for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeMap {
     (serialize_key<T: ?Sized>(&mut self, _: &T));
     (serialize_value<T: ?Sized>(&mut self, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeStruct for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeStruct {
     (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
     (end(self));
-  }
-}
+  };
 
-impl ser::SerializeStructVariant for Discard {
-  type Ok = ();
-  type Error = DiscardError;
-
-  local_impl_infallible_serializer_methods! {
+  ser::SerializeStructVariant {
     (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
     (end(self));
-  }
+  };
 }
 
+/// An unconstructable error type for the [`Discard`] type's infallible
+/// implementation of [`serde::Serializer`].
 #[derive(Debug)]
 enum DiscardError {}
 
