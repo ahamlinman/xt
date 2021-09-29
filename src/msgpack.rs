@@ -10,7 +10,7 @@ where
   O: crate::Output,
 {
   match input.into() {
-    Input::Buffered(buf) => {
+    Input::Buffer(buf) => {
       let mut buf = buf.deref();
       while buf.len() > 0 {
         let size = next_value_size(buf)?;
@@ -20,7 +20,7 @@ where
         buf = rest;
       }
     }
-    Input::Unbuffered(r) => {
+    Input::Reader(r) => {
       // Note that in reader mode, the MessagePack deserializer will eagerly
       // allocate zero-filled buffers for binary and string data based on the
       // length specified in the input. Our dirty "solution" is to document in

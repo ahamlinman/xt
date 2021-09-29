@@ -8,7 +8,7 @@ where
   O: crate::Output,
 {
   match input.into() {
-    Input::Buffered(buf) => {
+    Input::Buffer(buf) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
       // iteration if we allow it to deserialize into an actual value, so jyt
@@ -19,7 +19,7 @@ where
         output.transcode_value(value?)?;
       }
     }
-    Input::Unbuffered(r) => {
+    Input::Reader(r) => {
       // In this case, direct transcoding performs better than deserializing
       // into a value, probably because it can give the serializer &str slices
       // of internal buffers rather than allocating new Strings to store in a

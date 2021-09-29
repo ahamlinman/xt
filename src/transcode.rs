@@ -410,7 +410,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         visit_byte_buf(self, v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
       }
 
-      fn visit_seq<V: de::SeqAccess<'a>>(self, mut v: V) -> Result<Self::Value, V::Error> {
+      fn visit_seq<A: de::SeqAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
@@ -421,7 +421,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         Ok(Value::Seq(vec))
       }
 
-      fn visit_map<V: de::MapAccess<'a>>(self, mut v: V) -> Result<Self::Value, V::Error> {
+      fn visit_map<A: de::MapAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
