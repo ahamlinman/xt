@@ -79,7 +79,7 @@ impl Output for Discard {
 /// ([function signature]) discards $expr;
 ///
 /// // Returns `Ok(Discard)` as a `Result<Discard, Self::Error>`
-/// ([function signature]) returns discarder;
+/// ([function signature]) returns Discard;
 ///
 /// // Returns Ok(())
 /// ([function signature]);
@@ -94,7 +94,7 @@ macro_rules! local_impl_discard_serializer_methods {
     }
     local_impl_discard_serializer_methods! { $($rest)* }
   };
-  (($($decl:tt)*) returns discarder; $($rest:tt)*) => {
+  (($($decl:tt)*) returns Discard; $($rest:tt)*) => {
     fn $($decl)* -> Result<Discard, Self::Error> {
       Ok(Discard)
     }
@@ -142,27 +142,27 @@ impl Serializer for Discard {
     (serialize_unit_struct(self, _: &'static str));
     (serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str));
 
-    (serialize_some<T: ?Sized + Serialize>(self, v: &T))
-      discards v;
-    (serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, v: &T))
-      discards v;
-    (serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, v: &T))
-      discards v;
+    (serialize_some<T: ?Sized + Serialize>(self, value: &T))
+      discards value;
+    (serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, value: &T))
+      discards value;
+    (serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, value: &T))
+      discards value;
 
     (serialize_seq(self, _: Option<usize>))
-      returns discarder;
+      returns Discard;
     (serialize_tuple(self, _: usize))
-      returns discarder;
+      returns Discard;
     (serialize_tuple_struct(self, _: &'static str, _: usize))
-      returns discarder;
+      returns Discard;
     (serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
-      returns discarder;
+      returns Discard;
     (serialize_map(self, _: Option<usize>))
-      returns discarder;
+      returns Discard;
     (serialize_struct(self, _: &'static str, _: usize))
-      returns discarder;
+      returns Discard;
     (serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
-      returns discarder;
+      returns Discard;
   }
 }
 
@@ -186,46 +186,46 @@ macro_rules! local_impl_discard_serializer_traits {
 
 local_impl_discard_serializer_traits! {
   ser::SerializeSeq {
-    (serialize_element<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
+    (serialize_element<T: ?Sized + Serialize>(&mut self, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeTuple {
-    (serialize_element<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
+    (serialize_element<T: ?Sized + Serialize>(&mut self, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeTupleStruct {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
+    (serialize_field<T: ?Sized + Serialize>(&mut self, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeTupleVariant {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
+    (serialize_field<T: ?Sized + Serialize>(&mut self, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeMap {
-    (serialize_key<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
-    (serialize_value<T: ?Sized + Serialize>(&mut self, v: &T))
-      discards v;
+    (serialize_key<T: ?Sized + Serialize>(&mut self, key: &T))
+      discards key;
+    (serialize_value<T: ?Sized + Serialize>(&mut self, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeStruct {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, v: &T))
-      discards v;
+    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T))
+      discards value;
     (end(self));
   };
 
   ser::SerializeStructVariant {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, v: &T))
-      discards v;
+    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T))
+      discards value;
     (end(self));
   };
 }
