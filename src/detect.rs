@@ -72,7 +72,7 @@ impl Output for Discard {
 }
 
 /// Implements the methods of a [`serde::Serializer`] that are useful for
-/// `Discard`, using terms of the following form:
+/// [`Discard`], using terms of the following form:
 ///
 /// ```
 /// // Returns the result of serializing `$expr` with the `Discard` serializer
@@ -81,7 +81,7 @@ impl Output for Discard {
 /// // Returns `Ok(Discard)` as a `Result<Discard, Self::Error>`
 /// ([function signature]) returns Discard;
 ///
-/// // Returns Ok(())
+/// // Returns `Ok(())`
 /// ([function signature]);
 /// ```
 ///
@@ -166,8 +166,8 @@ impl Serializer for Discard {
   }
 }
 
-/// Implements the additional traits required of a [`serde::Serializer`] on our
-/// `Discard` type, using our special macro syntax for serializer methods.
+/// Implements the additional traits required of a [`serde::Serializer`] on
+/// [`Discard`], using our special macro syntax for serializer methods.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_discard_serializer_traits {
