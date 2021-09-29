@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-use serde::{de, ser, Deserialize, Serializer};
+use serde::{de, ser, Deserialize, Serialize, Serializer};
 
 use crate::{transcode_input, Format, InputRef, Output};
 
@@ -64,36 +64,47 @@ impl Output for Discard {
 
   fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
   where
-    S: ser::Serialize,
+    S: Serialize,
   {
     value.serialize(Discard)?;
     Ok(())
   }
 }
 
-/// Implements the methods of a [`serde::Serializer`] that do nothing more than
-/// shove the result of some expression into an `Ok` variant, using terms of the
-/// following form:
+/// Implements the methods of a [`serde::Serializer`] that are useful for
+/// `Discard`, using terms of the following form:
 ///
 /// ```
-/// (<function signature>): <return type> => <return value>;
-/// (<function signature>); // returns Ok(())
+/// // Returns the result of serializing `$expr` with the `Discard` serializer
+/// ([function signature]) discards $expr;
+///
+/// // Returns `Ok(Discard)` as a `Result<Discard, Self::Error>`
+/// ([function signature]) returns discarder;
+///
+/// // Returns Ok(())
+/// ([function signature]);
 /// ```
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_infallible_serializer_methods {
+macro_rules! local_impl_discard_serializer_methods {
   () => {};
-  (($($decl:tt)*): $ty:ty => $result:expr; $($rest:tt)*) => {
-    fn $($decl)* -> Result<$ty, Self::Error> {
-      Ok($result)
+  (($($decl:tt)*) discards $value:expr; $($rest:tt)*) => {
+    fn $($decl)* -> Result<Self::Ok, Self::Error> {
+      Serialize::serialize($value, Discard)
     }
-    local_impl_infallible_serializer_methods! { $($rest)* }
+    local_impl_discard_serializer_methods! { $($rest)* }
+  };
+  (($($decl:tt)*) returns discarder; $($rest:tt)*) => {
+    fn $($decl)* -> Result<Discard, Self::Error> {
+      Ok(Discard)
+    }
+    local_impl_discard_serializer_methods! { $($rest)* }
   };
   (($($decl:tt)*); $($rest:tt)*) => {
     fn $($decl)* -> Result<(), Self::Error> {
       Ok(())
     }
-    local_impl_infallible_serializer_methods! { $($rest)* }
+    local_impl_discard_serializer_methods! { $($rest)* }
   };
 }
 
@@ -109,7 +120,7 @@ impl Serializer for Discard {
   type SerializeStruct = Discard;
   type SerializeStructVariant = Discard;
 
-  local_impl_infallible_serializer_methods! {
+  local_impl_discard_serializer_methods! {
     (serialize_unit(self));
     (serialize_bool(self, _: bool));
     (serialize_i8(self, _: i8));
@@ -131,34 +142,27 @@ impl Serializer for Discard {
     (serialize_unit_struct(self, _: &'static str));
     (serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str));
 
-    // Strictly speaking, a proper implementation should try to serialize the
-    // provided values for each of these. This isn't a big deal for jyt's use
-    // case, since we would not expect any of our input formats to generate
-    // these kinds of Rust-specific types.
-    (serialize_some<T: ?Sized>(self, _: &T));
-    (serialize_newtype_struct<T: ?Sized>(self, _: &'static str, _: &T));
-    (serialize_newtype_variant<T: ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T));
+    (serialize_some<T: ?Sized + Serialize>(self, v: &T))
+      discards v;
+    (serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, v: &T))
+      discards v;
+    (serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, v: &T))
+      discards v;
 
-    (serialize_seq(self, _: Option<usize>)):
-      Self::SerializeSeq => Discard;
-
-    (serialize_tuple(self, _: usize)):
-      Self::SerializeTuple => Discard;
-
-    (serialize_tuple_struct(self, _: &'static str, _: usize)):
-      Self::SerializeTupleStruct => Discard;
-
-    (serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)):
-      Self::SerializeTupleVariant => Discard;
-
-    (serialize_map(self, _: Option<usize>)):
-      Self::SerializeMap => Discard;
-
-    (serialize_struct(self, _: &'static str, _: usize)):
-      Self::SerializeStruct => Discard;
-
-    (serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)):
-      Self::SerializeStructVariant => Discard;
+    (serialize_seq(self, _: Option<usize>))
+      returns discarder;
+    (serialize_tuple(self, _: usize))
+      returns discarder;
+    (serialize_tuple_struct(self, _: &'static str, _: usize))
+      returns discarder;
+    (serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
+      returns discarder;
+    (serialize_map(self, _: Option<usize>))
+      returns discarder;
+    (serialize_struct(self, _: &'static str, _: usize))
+      returns discarder;
+    (serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
+      returns discarder;
   }
 }
 
@@ -173,7 +177,7 @@ macro_rules! local_impl_discard_serializer_traits {
       type Ok = ();
       type Error = DiscardError;
 
-      local_impl_infallible_serializer_methods! { $($body)* }
+      local_impl_discard_serializer_methods! { $($body)* }
     }
 
     local_impl_discard_serializer_traits! { $($rest)* }
@@ -182,61 +186,66 @@ macro_rules! local_impl_discard_serializer_traits {
 
 local_impl_discard_serializer_traits! {
   ser::SerializeSeq {
-    (serialize_element<T: ?Sized>(&mut self, _: &T));
+    (serialize_element<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeTuple {
-    (serialize_element<T: ?Sized>(&mut self, _: &T));
+    (serialize_element<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeTupleStruct {
-    (serialize_field<T: ?Sized>(&mut self, _: &T));
+    (serialize_field<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeTupleVariant {
-    (serialize_field<T: ?Sized>(&mut self, _: &T));
+    (serialize_field<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeMap {
-    (serialize_key<T: ?Sized>(&mut self, _: &T));
-    (serialize_value<T: ?Sized>(&mut self, _: &T));
+    (serialize_key<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
+    (serialize_value<T: ?Sized + Serialize>(&mut self, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeStruct {
-    (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
+    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, v: &T))
+      discards v;
     (end(self));
   };
 
   ser::SerializeStructVariant {
-    (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
+    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, v: &T))
+      discards v;
     (end(self));
   };
 }
 
-/// An unconstructable error type for the [`Discard`] type's largely infallible
-/// implementation of [`serde::Serializer`].
-///
-/// Critically, we assume that users of the `Discard` serializer will never
-/// generate a custom error, and will panic if this assumption proves to be
-/// wrong.
+/// An error type for the [`Discard`] type's mostly infallible implementation of
+/// [`serde::Serializer`]. It can only be constructed when the value being
+/// serialized invokes the `custom` function.
 #[derive(Debug)]
-enum DiscardError {}
+struct DiscardError(String);
 
 impl fmt::Display for DiscardError {
-  fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
-    unreachable!(); // since we can't construct a value
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fmt::Display::fmt(&self.0, f)
   }
 }
 
 impl Error for DiscardError {}
 
 impl ser::Error for DiscardError {
-  fn custom<T: fmt::Display>(_: T) -> Self {
-    unimplemented!();
+  fn custom<T: fmt::Display>(msg: T) -> Self {
+    DiscardError(msg.to_string())
   }
 }
