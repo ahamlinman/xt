@@ -7,7 +7,6 @@ use std::process;
 use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
-use memmap2::MmapOptions;
 use structopt::StructOpt;
 
 mod detect;
@@ -210,7 +209,7 @@ impl Opt {
         // Safety: Modification of the mapped file outside the process triggers
         // undefined behavior. Our dirty "solution" is to document this in the
         // help output.
-        match unsafe { MmapOptions::new().populate().map(&file) } {
+        match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
           // Per memmap2 docs, it's safe to drop file once mmap succeeds.
           Ok(map) => Ok(InputRef::from_buffer(map)),
           // Fall back to using a reader, in case the file is actually something

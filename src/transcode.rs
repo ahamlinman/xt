@@ -8,6 +8,21 @@ use serde::{
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
+/// Temporarily represents a deserialized value in memory.
+///
+/// On occasion, a Serde data format will not allow direct access to a usable
+/// `Serializer` or `Deserializer` for use with the [`transcode`] function, but
+/// will instead require the use of an intermediate (de)serializable value.
+/// `Value` is optimized to support this use case within jyt, distinguishing
+/// itself from alternative implementations by:
+///
+/// - Faithfully representing all Serde types that a jyt input format could
+///   produce (all integer sizes, raw bytes), but no more (options, etc.).
+/// - Borrowing from the deserializer whenever possible, avoiding new
+///   allocations but limiting the lifetime of the value.
+/// - Representing maps as a vector of 2-tuples, preserving the original order
+///   of values but avoiding the features (and overhead) of an order-preserving
+///   hash table.
 pub enum Value<'a> {
   None,
   Bool(bool),
