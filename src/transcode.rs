@@ -78,14 +78,13 @@ where
 /// ```
 /// visit_<type>(<args>) => <return value>;
 /// ```
-macro_rules! impl_infallible_visitor_methods {
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_infallible_visitor_methods {
   ($($name:ident($($args:tt)*) => $result:expr;)*) => {
     $(
-      fn $name<E>($($args)*) -> ::std::result::Result<Self::Value, E>
-      where
-        E: ::serde::de::Error,
-      {
-        ::std::result::Result::Ok($result)
+      fn $name<E: de::Error>($($args)*) -> Result<Self::Value, E> {
+        Ok($result)
       }
     )*
   };
@@ -114,7 +113,7 @@ where
     write!(fmt, "any supported value")
   }
 
-  impl_infallible_visitor_methods! {
+  local_impl_infallible_visitor_methods! {
     visit_unit(self) => self.0.serialize_unit();
 
     visit_bool(self, v: bool) => self.0.serialize_bool(v);
@@ -382,7 +381,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         write!(f, "any supported value")
       }
 
-      impl_infallible_visitor_methods! {
+      local_impl_infallible_visitor_methods! {
         visit_unit(self) => Value::None;
 
         visit_bool(self, v: bool) => Value::Bool(v);
