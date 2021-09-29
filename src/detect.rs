@@ -34,19 +34,20 @@ pub(crate) fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
   // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
   // unlikely to be a valid sequence of MessagePack values.
   use rmp::Marker::*;
-  match input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)) {
-    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32) => {
-      if let Ok(_) = transcode_input(input, Format::Msgpack, Discard) {
-        return Ok(Some(Format::Msgpack));
-      }
+  if matches!(
+    input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)),
+    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
+  ) {
+    if let Ok(_) = transcode_input(input, Format::Msgpack, Discard) {
+      return Ok(Some(Format::Msgpack));
     }
-    _ => {}
   }
 
   Ok(None)
 }
 
-/// Discards input in a wide variety of fun and exciting ways.
+/// Throws stuff away in a wide variety of fun and exciting ways. Truly the
+/// crown jewel of the auto-detection logic.
 struct Discard;
 
 impl Output for Discard {
@@ -110,34 +111,31 @@ impl Serializer for Discard {
 
   local_impl_infallible_serializer_methods! {
     (serialize_unit(self));
-
     (serialize_bool(self, _: bool));
-
     (serialize_i8(self, _: i8));
     (serialize_i16(self, _: i16));
     (serialize_i32(self, _: i32));
     (serialize_i64(self, _: i64));
     (serialize_i128(self, _: i128));
-
     (serialize_u8(self, _: u8));
     (serialize_u16(self, _: u16));
     (serialize_u32(self, _: u32));
     (serialize_u64(self, _: u64));
     (serialize_u128(self, _: u128));
-
     (serialize_f32(self, _: f32));
     (serialize_f64(self, _: f64));
-
     (serialize_char(self, _: char));
     (serialize_str(self, _: &str));
     (serialize_bytes(self, _: &[u8]));
-
     (serialize_none(self));
-    (serialize_some<T: ?Sized>(self, _: &T));
-
     (serialize_unit_struct(self, _: &'static str));
     (serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str));
 
+    // Strictly speaking, a proper implementation should try to serialize the
+    // provided values for each of these. This isn't a big deal for jyt's use
+    // case, since we would not expect any of our input formats to generate
+    // these kinds of Rust-specific types.
+    (serialize_some<T: ?Sized>(self, _: &T));
     (serialize_newtype_struct<T: ?Sized>(self, _: &'static str, _: &T));
     (serialize_newtype_variant<T: ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T));
 
@@ -220,14 +218,18 @@ local_impl_discard_serializer_traits! {
   };
 }
 
-/// An unconstructable error type for the [`Discard`] type's infallible
+/// An unconstructable error type for the [`Discard`] type's largely infallible
 /// implementation of [`serde::Serializer`].
+///
+/// Critically, we assume that users of the `Discard` serializer will never
+/// generate a custom error, and will panic if this assumption proves to be
+/// wrong.
 #[derive(Debug)]
 enum DiscardError {}
 
 impl fmt::Display for DiscardError {
   fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
-    unreachable!();
+    unreachable!(); // since we can't construct a value
   }
 }
 
@@ -235,6 +237,6 @@ impl Error for DiscardError {}
 
 impl ser::Error for DiscardError {
   fn custom<T: fmt::Display>(_: T) -> Self {
-    unreachable!();
+    unimplemented!();
   }
 }
