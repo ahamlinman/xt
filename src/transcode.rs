@@ -9,7 +9,7 @@ use serde::{
 };
 
 /// Implements methods of a [`serde::de::Visitor`] that do nothing more than
-/// shove the result of some expression into an Ok variant.
+/// shove the result of some expression into an `Ok` variant.
 macro_rules! impl_infallible_visitor_methods {
   ($($name:ident($($args:tt)*) => $result:expr;)*) => {
     $(
@@ -251,7 +251,7 @@ where
   type Value = Result<S::Ok, S::Error>;
 
   fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-    write!(fmt, "any value")
+    write!(fmt, "any supported value")
   }
 
   impl_infallible_visitor_methods! {

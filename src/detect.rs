@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-use serde::{ser, Deserialize, Serializer};
+use serde::{de, ser, Deserialize, Serializer};
 
 use crate::{transcode_input, Format, InputRef, Output};
 
@@ -46,15 +46,16 @@ pub(crate) fn detect_format(mut input: InputRef) -> io::Result<Option<Format>> {
   Ok(None)
 }
 
+/// Discards input in a wide variety of fun and exciting ways.
 struct Discard;
 
 impl Output for Discard {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static,
+    D: de::Deserializer<'de, Error = E>,
+    E: de::Error + 'static,
   {
-    match serde::de::IgnoredAny::deserialize(de) {
+    match de::IgnoredAny::deserialize(de) {
       Ok(_) => Ok(()),
       Err(err) => Err(err)?,
     }
@@ -62,23 +63,39 @@ impl Output for Discard {
 
   fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
   where
-    S: serde::ser::Serialize,
+    S: ser::Serialize,
   {
     value.serialize(Discard)?;
     Ok(())
   }
 }
 
-macro_rules! impl_discard_serializer_method {
-  ($name:ident) => {
-    fn $name(self) -> Result<Self::Ok, Self::Error> {
-      Ok(())
+/// Implements the methods of a [`serde::Serializer`] that do nothing more than
+/// shove the result of some expression into an `Ok` variant, using terms of the
+/// following form:
+///
+/// ```
+/// (<function signature>): <type> => <value>;
+/// ```
+///
+/// Optionally, a term can consist solely of the (parenthesized) function
+/// signature, and the resulting function will return `Ok(())`.
+///
+/// This macro is intentionally non-hygienic, and not intended for use outside
+/// of this module.
+macro_rules! local_impl_infallible_serializer_methods {
+  () => {};
+  (($($decl:tt)*): $ty:ty => $result:expr; $($rest:tt)*) => {
+    fn $($decl)* -> Result<$ty, Self::Error> {
+      Ok($result)
     }
+    local_impl_infallible_serializer_methods! { $($rest)* }
   };
-  ($ty:ty, $name:ident) => {
-    fn $name(self, _: $ty) -> Result<Self::Ok, Self::Error> {
+  (($($decl:tt)*); $($rest:tt)*) => {
+    fn $($decl)* -> Result<(), Self::Error> {
       Ok(())
     }
+    local_impl_infallible_serializer_methods! { $($rest)* }
   };
 }
 
@@ -94,106 +111,59 @@ impl Serializer for Discard {
   type SerializeStruct = Discard;
   type SerializeStructVariant = Discard;
 
-  impl_discard_serializer_method!(serialize_unit);
-  impl_discard_serializer_method!(serialize_none);
-  impl_discard_serializer_method!(bool, serialize_bool);
-  impl_discard_serializer_method!(i8, serialize_i8);
-  impl_discard_serializer_method!(i16, serialize_i16);
-  impl_discard_serializer_method!(i32, serialize_i32);
-  impl_discard_serializer_method!(i64, serialize_i64);
-  impl_discard_serializer_method!(i128, serialize_i128);
-  impl_discard_serializer_method!(u8, serialize_u8);
-  impl_discard_serializer_method!(u16, serialize_u16);
-  impl_discard_serializer_method!(u32, serialize_u32);
-  impl_discard_serializer_method!(u64, serialize_u64);
-  impl_discard_serializer_method!(u128, serialize_u128);
-  impl_discard_serializer_method!(f32, serialize_f32);
-  impl_discard_serializer_method!(f64, serialize_f64);
-  impl_discard_serializer_method!(char, serialize_char);
-  impl_discard_serializer_method!(&str, serialize_str);
-  impl_discard_serializer_method!(&[u8], serialize_bytes);
+  local_impl_infallible_serializer_methods! {
+    (serialize_unit(self));
 
-  fn serialize_some<T: ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
+    (serialize_bool(self, _: bool));
 
-  fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
+    (serialize_i8(self, _: i8));
+    (serialize_i16(self, _: i16));
+    (serialize_i32(self, _: i32));
+    (serialize_i64(self, _: i64));
+    (serialize_i128(self, _: i128));
 
-  fn serialize_unit_variant(
-    self,
-    _: &'static str,
-    _: u32,
-    _: &'static str,
-  ) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
+    (serialize_u8(self, _: u8));
+    (serialize_u16(self, _: u16));
+    (serialize_u32(self, _: u32));
+    (serialize_u64(self, _: u64));
+    (serialize_u128(self, _: u128));
 
-  fn serialize_newtype_struct<T: ?Sized>(
-    self,
-    _: &'static str,
-    _: &T,
-  ) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
+    (serialize_f32(self, _: f32));
+    (serialize_f64(self, _: f64));
 
-  fn serialize_newtype_variant<T: ?Sized>(
-    self,
-    _: &'static str,
-    _: u32,
-    _: &'static str,
-    _: &T,
-  ) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
+    (serialize_char(self, _: char));
+    (serialize_str(self, _: &str));
+    (serialize_bytes(self, _: &[u8]));
 
-  fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_none(self));
+    (serialize_some<T: ?Sized>(self, _: &T));
 
-  fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_unit_struct(self, _: &'static str));
+    (serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str));
 
-  fn serialize_tuple_struct(
-    self,
-    _: &'static str,
-    _: usize,
-  ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_newtype_struct<T: ?Sized>(self, _: &'static str, _: &T));
+    (serialize_newtype_variant<T: ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T));
 
-  fn serialize_tuple_variant(
-    self,
-    _: &'static str,
-    _: u32,
-    _: &'static str,
-    _: usize,
-  ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_seq(self, _: Option<usize>)):
+      Self::SerializeSeq => Discard;
 
-  fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_tuple(self, _: usize)):
+      Self::SerializeTuple => Discard;
 
-  fn serialize_struct(
-    self,
-    _: &'static str,
-    _: usize,
-  ) -> Result<Self::SerializeStruct, Self::Error> {
-    Ok(Discard)
-  }
+    (serialize_tuple_struct(self, _: &'static str, _: usize)):
+      Self::SerializeTupleStruct => Discard;
 
-  fn serialize_struct_variant(
-    self,
-    _: &'static str,
-    _: u32,
-    _: &'static str,
-    _: usize,
-  ) -> Result<Self::SerializeStructVariant, Self::Error> {
-    Ok(Discard)
+    (serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)):
+      Self::SerializeTupleVariant => Discard;
+
+    (serialize_map(self, _: Option<usize>)):
+      Self::SerializeMap => Discard;
+
+    (serialize_struct(self, _: &'static str, _: usize)):
+      Self::SerializeStruct => Discard;
+
+    (serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)):
+      Self::SerializeStructVariant => Discard;
   }
 }
 
@@ -201,12 +171,9 @@ impl ser::SerializeSeq for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_element<T: ?Sized>(&mut self, _: &T) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_element<T: ?Sized>(&mut self, _: &T));
+    (end(self));
   }
 }
 
@@ -214,12 +181,9 @@ impl ser::SerializeTuple for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_element<T: ?Sized>(&mut self, _: &T) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_element<T: ?Sized>(&mut self, _: &T));
+    (end(self));
   }
 }
 
@@ -227,12 +191,9 @@ impl ser::SerializeTupleStruct for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_field<T: ?Sized>(&mut self, _: &T) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_field<T: ?Sized>(&mut self, _: &T));
+    (end(self));
   }
 }
 
@@ -240,12 +201,9 @@ impl ser::SerializeTupleVariant for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_field<T: ?Sized>(&mut self, _: &T) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_field<T: ?Sized>(&mut self, _: &T));
+    (end(self));
   }
 }
 
@@ -253,16 +211,10 @@ impl ser::SerializeMap for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_key<T: ?Sized>(&mut self, _: &T) -> Result<(), Self::Error> {
-    Ok(())
-  }
-
-  fn serialize_value<T: ?Sized>(&mut self, _: &T) -> Result<(), Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_key<T: ?Sized>(&mut self, _: &T));
+    (serialize_value<T: ?Sized>(&mut self, _: &T));
+    (end(self));
   }
 }
 
@@ -270,16 +222,9 @@ impl ser::SerializeStruct for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_field<T: ?Sized>(
-    &mut self,
-    _: &'static str,
-    _: &T,
-  ) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
+    (end(self));
   }
 }
 
@@ -287,16 +232,9 @@ impl ser::SerializeStructVariant for Discard {
   type Ok = ();
   type Error = DiscardError;
 
-  fn serialize_field<T: ?Sized>(
-    &mut self,
-    _: &'static str,
-    _: &T,
-  ) -> Result<Self::Ok, Self::Error> {
-    Ok(())
-  }
-
-  fn end(self) -> Result<Self::Ok, Self::Error> {
-    Ok(())
+  local_impl_infallible_serializer_methods! {
+    (serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T));
+    (end(self));
   }
 }
 
