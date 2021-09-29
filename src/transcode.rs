@@ -8,6 +8,21 @@ use serde::{
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
+/// Implements methods of a [`serde::de::Visitor`] that do nothing more than
+/// shove the result of some expression into an Ok variant.
+macro_rules! impl_infallible_visitor_methods {
+  ($($name:ident($($args:tt)*) => $result:expr;)*) => {
+    $(
+      fn $name<E>($($args)*) -> ::std::result::Result<Self::Value, E>
+      where
+        E: ::serde::de::Error,
+      {
+        ::std::result::Result::Ok($result)
+      }
+    )*
+  };
+}
+
 /// Temporarily represents a deserialized value in memory.
 ///
 /// On occasion, a Serde data format will not allow direct access to a usable
@@ -86,14 +101,6 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
   where
     D: Deserializer<'de>,
   {
-    macro_rules! impl_value_visitor_method {
-      ($ty:ty, $visitor_method:ident, $variant:expr) => {
-        fn $visitor_method<E: de::Error>(self, v: $ty) -> Result<Value<'a>, E> {
-          Ok($variant(v))
-        }
-      };
-    }
-
     struct Visitor;
 
     impl<'a> de::Visitor<'a> for Visitor {
@@ -103,50 +110,38 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         write!(f, "any supported value")
       }
 
-      fn visit_unit<E: de::Error>(self) -> Result<Value<'a>, E> {
-        Ok(Value::None)
+      impl_infallible_visitor_methods! {
+        visit_unit(self) => Value::None;
+
+        visit_bool(self, v: bool) => Value::Bool(v);
+
+        visit_i8(self, v: i8) => Value::I8(v);
+        visit_i16(self, v: i16) => Value::I16(v);
+        visit_i32(self, v: i32) => Value::I32(v);
+        visit_i64(self, v: i64) => Value::I64(v);
+        visit_i128(self, v: i128) => Value::I128(v);
+
+        visit_u8(self, v: u8) => Value::U8(v);
+        visit_u16(self, v: u16) => Value::U16(v);
+        visit_u32(self, v: u32) => Value::U32(v);
+        visit_u64(self, v: u64) => Value::U64(v);
+        visit_u128(self, v: u128) => Value::U128(v);
+
+        visit_f32(self, v: f32) => Value::F32(v);
+        visit_f64(self, v: f64) => Value::F64(v);
+
+        visit_char(self, v: char) => Value::Char(v);
+
+        visit_str(self, v: &str) => Value::String(Cow::Owned(v.to_owned()));
+        visit_borrowed_str(self, v: &'a str) => Value::String(Cow::Borrowed(v));
+        visit_string(self, v: String) => Value::String(Cow::Owned(v));
+
+        visit_bytes(self, v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
+        visit_borrowed_bytes(self, v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
+        visit_byte_buf(self, v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
       }
 
-      impl_value_visitor_method!(bool, visit_bool, Value::Bool);
-      impl_value_visitor_method!(i8, visit_i8, Value::I8);
-      impl_value_visitor_method!(i16, visit_i16, Value::I16);
-      impl_value_visitor_method!(i32, visit_i32, Value::I32);
-      impl_value_visitor_method!(i64, visit_i64, Value::I64);
-      impl_value_visitor_method!(i128, visit_i128, Value::I128);
-      impl_value_visitor_method!(u8, visit_u8, Value::U8);
-      impl_value_visitor_method!(u16, visit_u16, Value::U16);
-      impl_value_visitor_method!(u32, visit_u32, Value::U32);
-      impl_value_visitor_method!(u64, visit_u64, Value::U64);
-      impl_value_visitor_method!(u128, visit_u128, Value::U128);
-      impl_value_visitor_method!(f32, visit_f32, Value::F32);
-      impl_value_visitor_method!(f64, visit_f64, Value::F64);
-      impl_value_visitor_method!(char, visit_char, Value::Char);
-
-      fn visit_str<E: de::Error>(self, v: &str) -> Result<Value<'a>, E> {
-        Ok(Value::String(Cow::Owned(v.to_owned())))
-      }
-
-      fn visit_borrowed_str<E: de::Error>(self, v: &'a str) -> Result<Value<'a>, E> {
-        Ok(Value::String(Cow::Borrowed(v)))
-      }
-
-      fn visit_string<E: de::Error>(self, v: String) -> Result<Value<'a>, E> {
-        Ok(Value::String(Cow::Owned(v)))
-      }
-
-      fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Value<'a>, E> {
-        Ok(Value::Bytes(Cow::Owned(v.to_owned())))
-      }
-
-      fn visit_borrowed_bytes<E: de::Error>(self, v: &'a [u8]) -> Result<Value<'a>, E> {
-        Ok(Value::Bytes(Cow::Borrowed(v)))
-      }
-
-      fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Value<'a>, E> {
-        Ok(Value::Bytes(Cow::Owned(v)))
-      }
-
-      fn visit_seq<V: de::SeqAccess<'a>>(self, mut v: V) -> Result<Value<'a>, V::Error> {
+      fn visit_seq<V: de::SeqAccess<'a>>(self, mut v: V) -> Result<Self::Value, V::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
@@ -157,7 +152,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         Ok(Value::Seq(vec))
       }
 
-      fn visit_map<V: de::MapAccess<'a>>(self, mut v: V) -> Result<Value<'a>, V::Error> {
+      fn visit_map<V: de::MapAccess<'a>>(self, mut v: V) -> Result<Self::Value, V::Error> {
         let mut vec = match v.size_hint() {
           None => Vec::new(),
           Some(s) => Vec::with_capacity(s),
@@ -249,14 +244,6 @@ where
 /// before returning a value.
 struct Visitor<S>(S);
 
-macro_rules! impl_transcode_visitor_method {
-  ($ty:ty, $visitor_method:ident, $serializer_method:ident) => {
-    fn $visitor_method<E: de::Error>(self, v: $ty) -> Result<Self::Value, E> {
-      Ok(self.0.$serializer_method(v))
-    }
-  };
-}
-
 impl<'de, S> de::Visitor<'de> for Visitor<S>
 where
   S: Serializer,
@@ -267,26 +254,30 @@ where
     write!(fmt, "any value")
   }
 
-  fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-    Ok(self.0.serialize_unit())
-  }
+  impl_infallible_visitor_methods! {
+    visit_unit(self) => self.0.serialize_unit();
 
-  impl_transcode_visitor_method!(bool, visit_bool, serialize_bool);
-  impl_transcode_visitor_method!(i8, visit_i8, serialize_i8);
-  impl_transcode_visitor_method!(i16, visit_i16, serialize_i16);
-  impl_transcode_visitor_method!(i32, visit_i32, serialize_i32);
-  impl_transcode_visitor_method!(i64, visit_i64, serialize_i64);
-  impl_transcode_visitor_method!(i128, visit_i128, serialize_i128);
-  impl_transcode_visitor_method!(u8, visit_u8, serialize_u8);
-  impl_transcode_visitor_method!(u16, visit_u16, serialize_u16);
-  impl_transcode_visitor_method!(u32, visit_u32, serialize_u32);
-  impl_transcode_visitor_method!(u64, visit_u64, serialize_u64);
-  impl_transcode_visitor_method!(u128, visit_u128, serialize_u128);
-  impl_transcode_visitor_method!(f32, visit_f32, serialize_f32);
-  impl_transcode_visitor_method!(f64, visit_f64, serialize_f64);
-  impl_transcode_visitor_method!(char, visit_char, serialize_char);
-  impl_transcode_visitor_method!(&str, visit_str, serialize_str);
-  impl_transcode_visitor_method!(&[u8], visit_bytes, serialize_bytes);
+    visit_bool(self, v: bool) => self.0.serialize_bool(v);
+
+    visit_i8(self, v: i8) => self.0.serialize_i8(v);
+    visit_i16(self, v: i16) => self.0.serialize_i16(v);
+    visit_i32(self, v: i32) => self.0.serialize_i32(v);
+    visit_i64(self, v: i64) => self.0.serialize_i64(v);
+    visit_i128(self, v: i128) => self.0.serialize_i128(v);
+
+    visit_u8(self, v: u8) => self.0.serialize_u8(v);
+    visit_u16(self, v: u16) => self.0.serialize_u16(v);
+    visit_u32(self, v: u32) => self.0.serialize_u32(v);
+    visit_u64(self, v: u64) => self.0.serialize_u64(v);
+    visit_u128(self, v: u128) => self.0.serialize_u128(v);
+
+    visit_f32(self, v: f32) => self.0.serialize_f32(v);
+    visit_f64(self, v: f64) => self.0.serialize_f64(v);
+
+    visit_char(self, v: char) => self.0.serialize_char(v);
+    visit_str(self, v: &str) => self.0.serialize_str(v);
+    visit_bytes(self, v: &[u8]) => self.0.serialize_bytes(v);
+  }
 
   fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
   where
@@ -328,7 +319,12 @@ where
   }
 }
 
-macro_rules! impl_transcode_seed_type {
+/// Implements deserializer seed types that use a `Transcoder` to handle
+/// sequence and map elements.
+///
+/// This macro is intentionally non-hygienic, and not intended for use outside
+/// of this module.
+macro_rules! local_impl_transcode_seed_type {
   ($name:ident, $serializer_trait:ident, $serializer_method:ident) => {
     struct $name<'a, S: 'a>(&'a mut S);
 
@@ -356,9 +352,9 @@ macro_rules! impl_transcode_seed_type {
   };
 }
 
-impl_transcode_seed_type!(SeqSeed, SerializeSeq, serialize_element);
-impl_transcode_seed_type!(KeySeed, SerializeMap, serialize_key);
-impl_transcode_seed_type!(ValueSeed, SerializeMap, serialize_value);
+local_impl_transcode_seed_type!(SeqSeed, SerializeSeq, serialize_element);
+local_impl_transcode_seed_type!(KeySeed, SerializeMap, serialize_key);
+local_impl_transcode_seed_type!(ValueSeed, SerializeMap, serialize_value);
 
 /// Implements `Serialize` for a `Deserializer`, allowing our transcoding
 /// visitor to forward complex values like sequences and maps.
