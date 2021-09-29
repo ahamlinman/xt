@@ -37,13 +37,13 @@ fn main() {
   };
 
   macro_rules! jyt_exit {
-    ($x:expr) => {
-      jyt_exit!("{}", $x)
-    };
     ($fmt:literal, $($x:expr),*) => {{
       eprint!(concat!("jyt error: ", $fmt, "\n"), $($x),*);
       process::exit(1);
     }};
+    ($x:expr) => {
+      jyt_exit!("{}", $x)
+    };
   }
 
   let mut output = BufWriter::new(io::stdout());

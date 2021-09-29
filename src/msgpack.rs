@@ -178,13 +178,14 @@ trait TryReadPrefix<T> {
   fn try_read_prefix(self) -> Option<T>;
 }
 
-macro_rules! impl_byte_slice_try_read_prefix {
-  ($t:ty) => {
-    impl TryReadPrefix<$t> for &[u8] {
-      fn try_read_prefix(self) -> Option<$t> {
-        const SIZE: usize = std::mem::size_of::<$t>();
+// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_byte_slice_try_read_prefix {
+  ($ty:ty) => {
+    impl TryReadPrefix<$ty> for &[u8] {
+      fn try_read_prefix(self) -> Option<$ty> {
+        const SIZE: usize = std::mem::size_of::<$ty>();
         match self.get(..SIZE)?.try_into() {
-          Ok(arr) => Some(<$t>::from_be_bytes(arr)),
+          Ok(arr) => Some(<$ty>::from_be_bytes(arr)),
           Err(_) => None,
         }
       }
@@ -192,9 +193,9 @@ macro_rules! impl_byte_slice_try_read_prefix {
   };
 }
 
-impl_byte_slice_try_read_prefix!(u8);
-impl_byte_slice_try_read_prefix!(u16);
-impl_byte_slice_try_read_prefix!(u32);
+local_impl_byte_slice_try_read_prefix!(u8);
+local_impl_byte_slice_try_read_prefix!(u16);
+local_impl_byte_slice_try_read_prefix!(u32);
 
 /// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
