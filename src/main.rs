@@ -103,7 +103,7 @@ where
     Some(format) => format,
     None => match detect::detect_format(input.try_clone()?)? {
       Some(format) => format,
-      None => Err("cannot parse input as any known format")?,
+      None => return Err("cannot parse input as any known format".into()),
     },
   };
 
@@ -150,7 +150,7 @@ trait Output {
 ///            files. Supports streaming input.
 ///
 ///      yaml  Multi-document with "---" syntax. Default format for .yaml and
-///            .yml files.
+///            .yml files. UTF-8 encoding only.
 ///
 ///      toml  Single documents only. Default format for .toml files.
 ///

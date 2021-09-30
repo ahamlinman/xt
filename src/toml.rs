@@ -10,6 +10,10 @@ pub(crate) fn transcode<O>(mut input: InputRef, mut output: O) -> Result<(), Box
 where
   O: crate::Output,
 {
+  // Since TOML (thankfully) requires UTF-8 encoding, and doesn't support
+  // multiple documents in a single stream, the toml crate only takes input as a
+  // &str. This is the only format where we have no choice but to slurp all
+  // input into memory, but honestly that's fine.
   let input_str = str::from_utf8(input.try_buffer()?)?;
   let mut de = ::toml::Deserializer::new(input_str);
   output.transcode_from(&mut de)
@@ -42,22 +46,30 @@ impl<W: Write> crate::Output for Output<W> {
     D: serde::de::Deserializer<'de, Error = E>,
     E: serde::de::Error + 'static,
   {
+    // TOML is pretty unique among jyt's supported output formats, and requires
+    // several special considerations.
+
+    // First, TOML has no concept of multiple documents in a single stream.
+    // Since we can't know the number of input documents in advance, we just
+    // have to fail if we see a second one.
     self.use_once()?;
 
-    // TOML requires that all non-table values appear before any tables at a
-    // given "level." Since we can't enforce this for all input types, we buffer
-    // the inputs into a toml::Value, which will serialize them back out in the
-    // necessary order.
+    // Second, it's not safe to transcode the input directly, as the ordering of
+    // keys and values in maps might not be TOML-compatible. TOML requires that
+    // non-table values appear before any tables at a given nesting level, which
+    // toml::Value knows how to take care of. We can activate the toml crate's
+    // "preserve_order" feature to keep as much of the original ordering as
+    // possible.
     let value = ::toml::Value::deserialize(de)?;
 
-    // From the spec: "TOML is designed to map unambiguously to a hash table."
-    // Without this check, the other input types could produce something like a
-    // boolean or array that we would attempt to dump the TOML representation of
-    // without a second thought. The toml crate can even produce invalid TOML
-    // for some of these representations, such as dumping each element of an
-    // array of tables with an empty name, i.e. with a "[[]]" header.
+    // Finally, "TOML is designed to map unambiguously to a hash table" (quoted
+    // from the spec). jyt's other input formats can produce something like a
+    // boolean or array at the top level, which we would dump into an invalid
+    // TOML document if we're not careful. For example, a top-level array could
+    // get dumped as an array of tables with an empty name, i.e. with "[[]]"
+    // headers.
     if !value.is_table() {
-      Err("root of TOML output must be a table")?;
+      return Err("root of TOML output must be a table".into());
     }
 
     // As of this writing, the toml crate can't output directly to a writer.

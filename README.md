@@ -1,34 +1,11 @@
 # jyt
 
-jyt translates between a number of common serialized data formats: JSON, YAML,
-TOML, and MessagePack.
+jyt translates between JSON, YAML, TOML, and MessagePack.
 
-Among its features, jyt…
-
-- …tries to be as efficient as possible for every input and output combination.
-- …tries to auto-detect input formats, but can be overridden with a simple flag.
-- …outputs JSON by default for convenient use with [jq][jq].
-
-## Installation
-
-jyt requires Rust 1.53.0 or later.
+For example, you can process a TOML file with [`jq`][jq]:
 
 ```sh
-cargo install --locked --git https://github.com/ahamlinman/jyt.git
-```
-
-## Usage
-
-Run `jyt -h` for full usage details.
-
-### Examples
-
-Process jyt's own `Cargo.lock` file with [`jq`][jq] to find all of the pre-1.0
-crates it uses. Since `.lock` is a non-standard extension, jyt will run
-auto-detection to determine that it is a TOML file.
-
-```sh
-$ jyt Cargo.lock | jq -r '.package[] | select(.version | test("^0\\.")).name'
+$ jyt Cargo.lock | jq -r '.package[] | select(.version | startswith("0.")).name'
 atty
 dtoa
 hashbrown
@@ -36,20 +13,59 @@ heck
 # etc.
 ```
 
-Translate an application config from JSON to YAML for easier editing. jyt will
-recognize the input as JSON from the file extension and skip auto-detection. We
-specify the output format using the shorthand for `-t yaml`.
+Or translate a configuration file from JSON to YAML for easier editing:
 
 ```sh
 $ jyt -ty config.json > config.yaml
 ```
 
-Read an unbounded stream of events from a Kubernetes cluster and translate it to
-MessagePack for storage. Since auto-detection requires buffering the full input,
-we specify `-f json` explicitly to enable continuous streaming.
+Or store a stream of JSON events as MessagePack to save space:
 
 ```sh
-$ curl http://localhost:8001/apis/events.k8s.io/v1/events?watch | jyt -fj -tm > events.msgpack
+$ curl localhost:8001/apis/events.k8s.io/v1/events?watch | jyt -fj -tm > events.msgpack
 ```
 
+## Installation
+
+At this time, you must build jyt manually using Rust 1.53.0 or later.
+
+```sh
+cargo install --locked --git https://github.com/ahamlinman/jyt.git
+```
+
+## Usage and Features
+
+Run `jyt -h` for full usage details.
+
+jyt is built to "do one thing well," and tries to maintain a simple CLI
+interface with limited options (for example, no control over details of the
+output formatting). The most common options are `-t` to specify an output format
+other than JSON, and an optional file to read from rather than standard input.
+
+Some of jyt's notable features include:
+
+### Efficiency
+
+jyt builds on the powerful and unique [Serde][serde] ecosystem of streaming
+serializers and deserializers for various data formats, and can often wire an
+input format's parser directly to an output format's writer.
+
+### Automatic Format Detection
+
+When the input format is not specified with the `-f` flag, jyt will detect it
+automatically via file extension, or in the worst case by slurping all input
+into memory and trying different parsers until one works.
+
+### Multi-Document Support and Streaming
+
+When an input format allows for multiple concatenated documents in a single
+input, jyt will recognize and translate every document in the input. For
+example, a set of YAML documents separated by `---` markers translates to a
+stream of newline-delimited JSON documents.
+
+jyt can translate unbounded JSON and MessagePack inputs without slurping all
+input into memory as long as auto-detection is disabled with an explicit `-f`
+flag.
+
 [jq]: https://stedolan.github.io/jq/
+[serde]: https://serde.rs/

@@ -58,7 +58,7 @@ impl Output for Discard {
   {
     match de::IgnoredAny::deserialize(de) {
       Ok(_) => Ok(()),
-      Err(err) => Err(err)?,
+      Err(err) => Err(err.into()),
     }
   }
 

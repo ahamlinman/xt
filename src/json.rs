@@ -21,9 +21,9 @@ where
     }
     Input::Reader(r) => {
       // In this case, direct transcoding performs better than deserializing
-      // into a value, probably because it can give the serializer &str slices
-      // of internal buffers rather than allocating new Strings to store in a
-      // transcode::Value.
+      // into a value. Perhaps it can give the serializer &str slices of
+      // internal buffers rather than allocating new Strings to store in a
+      // transcode::Value?
       let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
       while let Err(_) = de.end() {
         output.transcode_from(&mut de)?;
