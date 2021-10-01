@@ -10,23 +10,25 @@ const SINGLE_INPUTS: [TestInput; 4] = [
 ];
 
 #[test]
-fn test_single_document_buffer_known_format() {
+fn test_single_document_buffer() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    let input = InputHandle::from_buffer(input);
-    let mut output = Vec::new();
-    jyt(input, Some(from), to, &mut output).unwrap();
-    assert_eq!(&output, expected);
+    for from in [None, Some(from)] {
+      let mut output = Vec::new();
+      jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
+      assert_eq!(&output, expected);
+    }
   }
 }
 
 #[test]
-fn test_single_document_reader_known_format() {
+fn test_single_document_reader() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    let mut input = input;
-    let input = InputHandle::from_reader(&mut input);
-    let mut output = Vec::new();
-    jyt(input, Some(from), to, &mut output).unwrap();
-    assert_eq!(&output, expected);
+    for from in [None, Some(from)] {
+      let mut input = input;
+      let mut output = Vec::new();
+      jyt(InputHandle::from_reader(&mut input), from, to, &mut output).unwrap();
+      assert_eq!(&output, expected);
+    }
   }
 }
 
