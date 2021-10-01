@@ -25,7 +25,7 @@ where
   // does not preclude being a good citizen and contributing such improvements
   // upstream in the future. On the contrary, a proven real-world implementation
   // within jyt could be a great starting point.
-  for de in serde_yaml::Deserializer::from_slice(input.try_buffer()?) {
+  for de in serde_yaml::Deserializer::from_slice(input.try_as_buffer()?) {
     output.transcode_from(de)?;
   }
   Ok(())

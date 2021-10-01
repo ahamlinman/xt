@@ -33,9 +33,9 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // be a map or array. Arbitrary non-ASCII input that happens to match one of
   // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
   // unlikely to be a valid sequence of MessagePack values.
-  use rmp::Marker::*;
+  use rmp::Marker::{self, *};
   if matches!(
-    input.try_buffer()?.get(0).map(|b| rmp::Marker::from_u8(*b)),
+    input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
     Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
   ) {
     if let Ok(_) = transcode_input(input, Format::Msgpack, Discard) {

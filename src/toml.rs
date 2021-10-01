@@ -14,7 +14,7 @@ where
   // multiple documents in a single stream, the toml crate only takes input as a
   // &str. This is the only format where we have no choice but to slurp all
   // input into memory, but honestly that's fine.
-  let input_str = str::from_utf8(input.try_buffer()?)?;
+  let input_str = str::from_utf8(input.try_as_buffer()?)?;
   let mut de = ::toml::Deserializer::new(input_str);
   output.transcode_from(&mut de)
 }
