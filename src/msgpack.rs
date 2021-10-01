@@ -90,15 +90,6 @@ impl<W: Write> crate::Output for Output<W> {
 /// without panicking, even if the input is not well-formed. For example, a
 /// MessagePack str or bin value with a reported length larger than the
 /// remainder of the input slice will produce an error.
-///
-/// # Examples
-///
-/// ```
-/// # // NOTE: This test case is copied to `test_doc_example` below.
-/// # // See https://github.com/rust-lang/rust/issues/50784.
-/// let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
-/// assert_eq!(next_value_size(&input), Ok(4));
-/// ```
 fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
   use rmp::Marker::*;
 
@@ -307,12 +298,6 @@ mod tests {
     for input in VALID_INPUTS {
       assert_eq!(next_value_size(input), Ok(input.len()));
     }
-  }
-
-  #[test]
-  fn test_doc_example() {
-    let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
-    assert_eq!(next_value_size(&input), Ok(4));
   }
 
   #[test]
