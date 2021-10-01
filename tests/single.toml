@@ -1,0 +1,26 @@
+jyt = true
+good = 'absolutely ❤️'
+power_level = 9001
+multiplier = 42.1337
+adjustment = -13
+tags = ['serde']
+
+[[formats]]
+name = 'json'
+multi = true
+
+[[formats]]
+name = 'yaml'
+multi = true
+
+[[formats]]
+name = 'toml'
+multi = false
+
+[[formats]]
+name = 'msgpack'
+multi = true
+binary = true
+
+[meta]
+language = 'rust'
