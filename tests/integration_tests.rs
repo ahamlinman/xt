@@ -32,6 +32,35 @@ fn test_single_document_reader() {
   }
 }
 
+const MULTI_INPUTS: [TestInput; 3] = [
+  (Format::Json, include_bytes!("multi.json")),
+  (Format::Yaml, include_bytes!("multi.yaml")),
+  (Format::Msgpack, include_bytes!("multi.msgpack")),
+];
+
+#[test]
+fn test_multi_document_buffer() {
+  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
+    for from in [None, Some(from)] {
+      let mut output = Vec::new();
+      jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
+      assert_eq!(&output, expected);
+    }
+  }
+}
+
+#[test]
+fn test_multi_document_reader() {
+  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
+    for from in [None, Some(from)] {
+      let mut input = input;
+      let mut output = Vec::new();
+      jyt(InputHandle::from_reader(&mut input), from, to, &mut output).unwrap();
+      assert_eq!(&output, expected);
+    }
+  }
+}
+
 fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
   let mut result = Vec::new();
   for x in inputs {
