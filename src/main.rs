@@ -7,7 +7,7 @@ use std::process;
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
 use structopt::StructOpt;
 
-use jyt::{jyt, Format, InputRef};
+use jyt::{jyt, Format, InputHandle};
 
 fn main() {
   let opt = match Opt::from_args_safe() {
@@ -168,10 +168,10 @@ impl Opt {
     }
   }
 
-  fn input(&self) -> io::Result<InputRef> {
+  fn input(&self) -> io::Result<InputHandle> {
     match &self.input_filename {
-      None => Ok(InputRef::from_reader(io::stdin())),
-      Some(path) if path.to_str() == Some("-") => Ok(InputRef::from_reader(io::stdin())),
+      None => Ok(InputHandle::from_reader(io::stdin())),
+      Some(path) if path.to_str() == Some("-") => Ok(InputHandle::from_reader(io::stdin())),
       Some(path) => {
         let file = File::open(&path)?;
         // Safety: Modification of the mapped file outside the process triggers
@@ -179,10 +179,10 @@ impl Opt {
         // help output.
         match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
           // Per memmap2 docs, it's safe to drop file once mmap succeeds.
-          Ok(map) => Ok(InputRef::from_buffer(map)),
+          Ok(map) => Ok(InputHandle::from_buffer(map)),
           // Fall back to using a reader, in case the file is actually something
           // like a named pipe.
-          Err(_) => Ok(InputRef::from_reader(file)),
+          Err(_) => Ok(InputHandle::from_reader(file)),
         }
       }
     }

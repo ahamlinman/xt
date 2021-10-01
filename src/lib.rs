@@ -12,15 +12,14 @@ mod yaml;
 
 use input::Input;
 
-pub use input::InputRef;
+pub use input::InputHandle;
 
-/// Translates serialized input in some input format to serialized output in
-/// some output format.
+/// Translates serialized input to serialized output in a different format.
 ///
 /// When `from` is `None`, jyt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
-pub fn jyt<W>(
-  mut input: InputRef,
+pub fn jyt<'a, W>(
+  mut input: InputHandle<'a>,
   from: Option<Format>,
   to: Format,
   output: W,
@@ -44,7 +43,7 @@ where
   }
 }
 
-fn transcode_input<O>(input: InputRef, from: Format, output: O) -> Result<(), Box<dyn Error>>
+fn transcode_input<O>(input: InputHandle, from: Format, output: O) -> Result<(), Box<dyn Error>>
 where
   O: Output,
 {
@@ -57,12 +56,12 @@ where
 }
 
 trait Output {
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
     D: serde::de::Deserializer<'de, Error = E>,
     E: serde::de::Error + 'static;
 
-  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error + 'static>>
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
   where
     S: serde::ser::Serialize;
 }

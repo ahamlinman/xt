@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::io::Write;
 
-use crate::{transcode, InputRef};
+use crate::{transcode, InputHandle};
 
-pub(crate) fn transcode<O>(mut input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(mut input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {

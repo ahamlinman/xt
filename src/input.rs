@@ -3,49 +3,52 @@ use std::io::{self, Read};
 use std::ops::Deref;
 use std::rc::Rc;
 
-/// An opaque reference to serialized input data.
-pub struct InputRef(Input);
+/// An opaque handle to serialized input data from a buffer or reader source.
+///
+/// While either kind of input is fully supported and will produce the same
+/// output for the same input data, jyt may be able to modify or optimize its
+/// internal behavior in useful ways based on the kind of input provided.
+pub struct InputHandle<'a>(Input<'a>);
 
 /// A container for the program's original input data.
-pub(crate) enum Input {
-  /// The entire contents of the input as a byte slice.
-  Buffer(Rc<dyn Deref<Target = [u8]>>),
-  /// A reader that will provide the input as a stream. Users should assume that
-  /// the reader does not perform its own buffering, and consider wrapping with
-  /// [`std::io::BufReader`] or similar before use.
-  Reader(Box<dyn Read>),
+pub(crate) enum Input<'a> {
+  Buffer(Rc<dyn Deref<Target = [u8]> + 'a>),
+  Reader(Box<dyn Read + 'a>),
 }
 
-impl Into<Input> for InputRef {
-  /// Extracts the referenced input.
-  fn into(self) -> Input {
+impl<'a> Into<Input<'a>> for InputHandle<'a> {
+  fn into(self) -> Input<'a> {
     self.0
   }
 }
 
-impl InputRef {
-  /// Creates a reference to an input reader.
+impl<'a> InputHandle<'a> {
+  /// Creates a handle for an input buffer.
+  pub fn from_buffer<B>(buf: B) -> InputHandle<'a>
+  where
+    B: Deref<Target = [u8]> + 'a,
+  {
+    InputHandle(Input::Buffer(Rc::new(buf)))
+  }
+
+  /// Creates a handle for an input reader.
+  ///
+  /// Use of a reader handle does not guarantee that jyt will process input in
+  /// streaming fashion, as some input formats and jyt features require buffered
+  /// input.
   ///
   /// If possible, the reader should avoid performing its own buffering. For
   /// example, a [`std::fs::File`] is preferable to a [`std::io::BufReader`]
   /// wrapping a file.
-  pub fn from_reader<R>(r: R) -> InputRef
+  pub fn from_reader<R>(r: R) -> InputHandle<'a>
   where
-    R: Read + 'static,
+    R: Read + 'a,
   {
-    InputRef(Input::Reader(Box::new(r)))
+    InputHandle(Input::Reader(Box::new(r)))
   }
 
-  /// Creates a reference to an input buffer.
-  pub fn from_buffer<B>(buf: B) -> InputRef
-  where
-    B: Deref<Target = [u8]> + 'static,
-  {
-    InputRef(Input::Buffer(Rc::new(buf)))
-  }
-
-  /// Returns the input as a slice, transforming `self` into a buffer reference
-  /// if it is currently a reader reference.
+  /// Returns the input as a slice, transforming `self` into a buffer handle if
+  /// it is currently a reader handle.
   pub(crate) fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
     self.ensure_buffered()?;
     match &self.0 {
@@ -54,12 +57,12 @@ impl InputRef {
     }
   }
 
-  /// Returns a buffered reference to the input, transforming `self` into a
-  /// buffer reference if it is currently a reader reference.
-  pub(crate) fn try_clone(&mut self) -> io::Result<InputRef> {
+  /// Returns a handle to the input as a buffer, transforming `self` into a
+  /// buffer handle if it is currently a reader handle.
+  pub(crate) fn try_clone(&mut self) -> io::Result<InputHandle> {
     self.ensure_buffered()?;
     match &mut self.0 {
-      Input::Buffer(buf) => Ok(InputRef(Input::Buffer(Rc::clone(buf)))),
+      Input::Buffer(buf) => Ok(InputHandle(Input::Buffer(Rc::clone(buf)))),
       Input::Reader(_) => unreachable!(),
     }
   }

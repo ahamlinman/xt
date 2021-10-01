@@ -3,9 +3,9 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
-use crate::{transcode, Input, InputRef};
+use crate::{transcode, Input, InputHandle};
 
-pub(crate) fn transcode<O>(input: InputRef, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
