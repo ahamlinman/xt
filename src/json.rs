@@ -33,7 +33,7 @@ where
   Ok(())
 }
 
-pub struct Output<W: Write>(W);
+pub(crate) struct Output<W: Write>(W);
 
 impl<W: Write> Output<W> {
   pub fn new(w: W) -> Output<W> {

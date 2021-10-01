@@ -19,7 +19,7 @@ where
   output.transcode_from(&mut de)
 }
 
-pub struct Output<W: Write> {
+pub(crate) struct Output<W: Write> {
   w: W,
   used: bool,
 }

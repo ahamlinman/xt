@@ -1,23 +1,13 @@
 use std::error::Error;
-use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::process;
-use std::str::{self, FromStr};
 
 use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
 use structopt::StructOpt;
 
-mod detect;
-mod input;
-mod json;
-mod msgpack;
-mod toml;
-mod transcode;
-mod yaml;
-
-use input::{Input, InputRef};
+use jyt::{jyt, Format, InputRef};
 
 fn main() {
   let opt = match Opt::from_args_safe() {
@@ -47,7 +37,7 @@ fn main() {
   }
 
   let mut output = BufWriter::new(io::stdout());
-  if atty::is(atty::Stream::Stdout) && !opt.to.is_safe_for_terminal() {
+  if atty::is(atty::Stream::Stdout) && !format_is_safe_for_terminal(opt.to) {
     jyt_exit!("refusing to output {} to a terminal", opt.to);
   }
 
@@ -74,6 +64,13 @@ fn main() {
   }
 }
 
+fn format_is_safe_for_terminal(format: Format) -> bool {
+  match format {
+    Format::Msgpack => false,
+    _ => true,
+  }
+}
+
 fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   use io::ErrorKind::BrokenPipe;
 
@@ -88,54 +85,6 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   }
 
   false
-}
-
-fn jyt<W>(
-  mut input: InputRef,
-  from: Option<Format>,
-  to: Format,
-  output: W,
-) -> Result<(), Box<dyn Error>>
-where
-  W: Write,
-{
-  let from = match from {
-    Some(format) => format,
-    None => match detect::detect_format(input.try_clone()?)? {
-      Some(format) => format,
-      None => return Err("cannot parse input as any known format".into()),
-    },
-  };
-
-  match to {
-    Format::Json => transcode_input(input, from, json::Output::new(output)),
-    Format::Yaml => transcode_input(input, from, yaml::Output::new(output)),
-    Format::Toml => transcode_input(input, from, toml::Output::new(output)),
-    Format::Msgpack => transcode_input(input, from, msgpack::Output::new(output)),
-  }
-}
-
-fn transcode_input<O>(input: InputRef, from: Format, output: O) -> Result<(), Box<dyn Error>>
-where
-  O: Output,
-{
-  match from {
-    Format::Json => json::transcode(input, output),
-    Format::Yaml => yaml::transcode(input, output),
-    Format::Toml => toml::transcode(input, output),
-    Format::Msgpack => msgpack::transcode(input, output),
-  }
-}
-
-trait Output {
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error + 'static>>
-  where
-    D: serde::de::Deserializer<'de, Error = E>,
-    E: serde::de::Error + 'static;
-
-  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error + 'static>>
-  where
-    S: serde::ser::Serialize;
 }
 
 #[derive(StructOpt)]
@@ -169,10 +118,19 @@ trait Output {
 /// reversible. jyt's behavior is undefined if an input file is modified while
 /// running. jyt is not designed for use with untrusted input.
 struct Opt {
-  #[structopt(short = "t", help = "Format to convert to", default_value = "json")]
+  #[structopt(
+    short = "t",
+    help = "Format to convert to",
+    default_value = "json",
+    parse(try_from_str = try_parse_format),
+  )]
   to: Format,
 
-  #[structopt(short = "f", help = "Format to convert from")]
+  #[structopt(
+    short = "f",
+    help = "Format to convert from",
+    parse(try_from_str = try_parse_format),
+  )]
   from: Option<Format>,
 
   #[structopt(
@@ -181,6 +139,16 @@ struct Opt {
     parse(from_os_str)
   )]
   input_filename: Option<PathBuf>,
+}
+
+fn try_parse_format(s: &str) -> Result<Format, String> {
+  match s {
+    "j" | "json" => Ok(Format::Json),
+    "y" | "yaml" => Ok(Format::Yaml),
+    "t" | "toml" => Ok(Format::Toml),
+    "m" | "msgpack" => Ok(Format::Msgpack),
+    _ => Err(format!("'{}' is not a valid format", s)),
+  }
 }
 
 impl Opt {
@@ -218,46 +186,5 @@ impl Opt {
         }
       }
     }
-  }
-}
-
-#[derive(Copy, Clone)]
-enum Format {
-  Json,
-  Yaml,
-  Toml,
-  Msgpack,
-}
-
-impl Format {
-  fn is_safe_for_terminal(&self) -> bool {
-    match self {
-      Self::Msgpack => false,
-      _ => true,
-    }
-  }
-}
-
-impl FromStr for Format {
-  type Err = String;
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
-      "j" | "json" => Ok(Self::Json),
-      "y" | "yaml" => Ok(Self::Yaml),
-      "t" | "toml" => Ok(Self::Toml),
-      "m" | "msgpack" => Ok(Self::Msgpack),
-      _ => Err(format!("'{}' is not a valid format", s)),
-    }
-  }
-}
-
-impl fmt::Display for Format {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.write_str(match self {
-      Self::Json => "JSON",
-      Self::Yaml => "YAML",
-      Self::Toml => "TOML",
-      Self::Msgpack => "MessagePack",
-    })
   }
 }

@@ -3,11 +3,11 @@ use std::io::{self, Read};
 use std::ops::Deref;
 use std::rc::Rc;
 
-/// An opaque, possibly shared reference to the program's original input data.
+/// An opaque reference to serialized input data.
 pub struct InputRef(Input);
 
 /// A container for the program's original input data.
-pub enum Input {
+pub(crate) enum Input {
   /// The entire contents of the input as a byte slice.
   Buffer(Rc<dyn Deref<Target = [u8]>>),
   /// A reader that will provide the input as a stream. Users should assume that
@@ -26,8 +26,9 @@ impl Into<Input> for InputRef {
 impl InputRef {
   /// Creates a reference to an input reader.
   ///
-  /// If possible, the reader should avoid performing its own buffering (such as
-  /// via `std::io::BufReader`).
+  /// If possible, the reader should avoid performing its own buffering. For
+  /// example, a [`std::fs::File`] is preferable to a [`std::io::BufReader`]
+  /// wrapping a file.
   pub fn from_reader<R>(r: R) -> InputRef
   where
     R: Read + 'static,
@@ -45,7 +46,7 @@ impl InputRef {
 
   /// Returns the input as a slice, transforming `self` into a buffer reference
   /// if it is currently a reader reference.
-  pub fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
+  pub(crate) fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
     self.ensure_buffered()?;
     match &self.0 {
       Input::Buffer(buf) => Ok(buf.as_ref()),
@@ -55,7 +56,7 @@ impl InputRef {
 
   /// Returns a buffered reference to the input, transforming `self` into a
   /// buffer reference if it is currently a reader reference.
-  pub fn try_clone(&mut self) -> io::Result<InputRef> {
+  pub(crate) fn try_clone(&mut self) -> io::Result<InputRef> {
     self.ensure_buffered()?;
     match &mut self.0 {
       Input::Buffer(buf) => Ok(InputRef(Input::Buffer(Rc::clone(buf)))),

@@ -21,7 +21,7 @@ use serde::{
 /// the types that one of jyt's input formats could reasonably produce (e.g. no
 /// options or newtype structs), however the general implementation pattern
 /// could be extended to support such types.
-pub fn transcode<'de, D, S>(d: D, s: S) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
+pub(crate) fn transcode<'de, D, S>(d: D, s: S) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
 where
   D: Deserializer<'de>,
   S: Serializer,
@@ -38,7 +38,7 @@ where
 
 /// Holds an error produced during transcoding.
 #[derive(Debug)]
-pub enum TranscodeError<S, D> {
+pub(crate) enum TranscodeError<S, D> {
   Ser(S),
   De(D),
 }
@@ -318,7 +318,7 @@ where
 /// - Representing maps as a vector of 2-tuples, preserving the original order
 ///   of values but avoiding the features (and overhead) of an order-preserving
 ///   hash map.
-pub enum Value<'a> {
+pub(crate) enum Value<'a> {
   None,
   Bool(bool),
   I8(i8),
