@@ -48,10 +48,10 @@ impl<'a> InputHandle<'a> {
 
   /// Returns the input as a slice, transforming `self` into a buffer handle if
   /// it is currently a reader handle.
-  pub(crate) fn try_buffer(&mut self) -> io::Result<&(dyn Deref<Target = [u8]>)> {
+  pub(crate) fn try_buffer(&mut self) -> io::Result<&[u8]> {
     self.ensure_buffered()?;
     match &self.0 {
-      Input::Buffer(buf) => Ok(buf.as_ref()),
+      Input::Buffer(buf) => Ok(buf),
       Input::Reader(_) => unreachable!(),
     }
   }
