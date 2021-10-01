@@ -16,7 +16,7 @@ heck
 Or translate a configuration file from JSON to YAML for easier editing:
 
 ```sh
-$ jyt -ty config.json > config.yaml
+$ jyt -t yaml config.json > config.yaml
 ```
 
 Or store a stream of JSON events as MessagePack to save space:
