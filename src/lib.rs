@@ -1,3 +1,9 @@
+//! The main entrypoint for the jyt serialized data translation tool.
+//!
+//! **This interface is not stable!** To convert between serialized data formats
+//! in Rust code, consider [`serde_transcode`](https://docs.rs/serde-transcode)
+//! as a more flexible and widely used implementation.
+
 use std::error::Error;
 use std::fmt;
 use std::io::Write;
