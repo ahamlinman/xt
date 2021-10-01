@@ -1,4 +1,3 @@
-use std::convert::Into;
 use std::io::{self, Read};
 use std::ops::Deref;
 use std::rc::Rc;
@@ -16,9 +15,9 @@ pub(crate) enum Input<'a> {
   Reader(Box<dyn Read + 'a>),
 }
 
-impl<'a> Into<Input<'a>> for InputHandle<'a> {
-  fn into(self) -> Input<'a> {
-    self.0
+impl<'a> From<InputHandle<'a>> for Input<'a> {
+  fn from(handle: InputHandle<'a>) -> Input<'a> {
+    handle.0
   }
 }
 
