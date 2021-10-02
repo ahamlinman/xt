@@ -99,7 +99,7 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 ///            files. Supports streaming input.
 ///
 ///      yaml  Multi-document with "---" syntax. Default format for .yaml and
-///            .yml files. UTF-8 encoding only.
+///            .yml files.
 ///
 ///      toml  Single documents only. Default format for .toml files.
 ///

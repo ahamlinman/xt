@@ -11,15 +11,11 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // formats. For example, a "#" comment at the start of a doc could be TOML or
   // YAML, but definitely not JSON, so we can abort parsing fairly early.
   //
-  // TOML comes next for a surprising reason… the YAML parser will sometimes
-  // accept a TOML file, parsing its contents as a giant string! I'm not sure
-  // I'll ever want to understand YAML well enough to explain this. Cargo.lock
-  // generally exhibits the behavior, if you're curious.
-  //
-  // YAML rounds out the text-based formats to help match the behavior of older
-  // versions of jyt, which always used YAML as the fallback for unknown input
-  // types (I guess if you really do want the giant string behavior).
-  for from in [Format::Json, Format::Toml, Format::Yaml] {
+  // TOML comes next as it is less restrictive than JSON, but still more
+  // restrictive than YAML. In fact, TOML documents that don't start with a
+  // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
+  // string. Cargo.lock is a great example of this, if you're curious.
+  for from in [Format::Json, Format::Toml] {
     if let Ok(_) = transcode_input(input.try_clone()?, from, Discard) {
       return Ok(Some(from));
     }
@@ -38,9 +34,19 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
     input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
     Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
   ) {
-    if let Ok(_) = transcode_input(input, Format::Msgpack, Discard) {
+    if let Ok(_) = transcode_input(input.try_clone()?, Format::Msgpack, Discard) {
       return Ok(Some(Format::Msgpack));
     }
+  }
+
+  // Finally, YAML is our traditional fallback format. Yes, we still get the
+  // giant string behavior described above for arbitrary text documents, but it
+  // is how jyt has worked for a long time and it's not like the behavior is
+  // actively harmful. We do try to defer the YAML check for as long as we can,
+  // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
+  // might be expensive.
+  if let Ok(_) = transcode_input(input, Format::Yaml, Discard) {
+    return Ok(Some(Format::Yaml));
   }
 
   Ok(None)
