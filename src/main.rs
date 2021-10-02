@@ -48,10 +48,9 @@ fn main() {
 
   let jyt_err = jyt(input, opt.detect_from(), opt.to, &mut output);
 
-  // Some of our serializers, particularly the YAML serializer, don't expose
-  // underlying I/O errors in their error chain when they occur. This check
-  // gives us a more direct indication of errors related to writing output,
-  // particularly broken pipe errors which we'd prefer to hide.
+  // Some serializers, including the one for YAML, don't expose broken pipe
+  // errors in the error chain produced during transcoding. This check does a
+  // decent job of catching those cases.
   if let Err(err) = output.flush() {
     match is_broken_pipe(&err) {
       true => return,
@@ -59,8 +58,15 @@ fn main() {
     }
   }
 
+  // Some other serializers, including the one for TOML, don't trigger the above
+  // check but do expose broken pipe errors in their error chain (maybe they
+  // flush internally?). So we still have to check this case in addition to the
+  // above.
   if let Err(err) = jyt_err {
-    jyt_exit!(err);
+    match is_broken_pipe(err.as_ref()) {
+      true => return,
+      false => jyt_exit!(err),
+    }
   }
 }
 
