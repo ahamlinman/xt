@@ -64,10 +64,11 @@ impl<W: Write> crate::Output for Output<W> {
 /// Ensures that YAML input is UTF-8 by validating or converting it.
 ///
 /// This function detects UTF-16 and UTF-32 input based on section 5.2 of the
-/// YAML v1.2.2 specification. Conversions are optimized for simplicity and
-/// size, rather than performance or exhaustive correctness. Input whose size
-/// does not evenly divide by the detected code unit size will be truncated.
-/// Input that is invalid in the detected encoding will return an error.
+/// YAML v1.2.2 specification; detection behavior for non-YAML inputs is not
+/// well defined. Conversions are optimized for simplicity and size, rather than
+/// performance. Input whose size does not evenly divide by the detected code
+/// unit size will be truncated. Input that is invalid in the detected encoding
+/// will return an error.
 fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
   let prefix = {
     // We use -1 as a sentinel for truncated input so the match patterns are
@@ -94,7 +95,7 @@ fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
     [0xFF, 0xFE, ..] | [_, 0, ..] if buf.len() >= 2 => {
       Cow::Owned(convert_utf16(buf, u16::from_le_bytes)?)
     }
-    // The spec shows how to match UTF-8 a BOM, but since it's the same as the
+    // The spec shows how to match a UTF-8 BOM, but since it's the same as the
     // default case there's no real point to an explicit check.
     _ => Cow::Borrowed(std::str::from_utf8(buf)?),
   })
