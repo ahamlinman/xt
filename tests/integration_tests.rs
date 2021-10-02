@@ -90,11 +90,14 @@ fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
   result
 }
 
-const YAML_REENCODING_INPUTS: [&'static [u8]; 4] = [
+const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
   include_bytes!("utf16be.yaml"),
   include_bytes!("utf16le.yaml"),
   include_bytes!("utf32be.yaml"),
   include_bytes!("utf32le.yaml"),
+  include_bytes!("utf8bom.yaml"),
+  include_bytes!("utf16bebom.yaml"),
+  include_bytes!("utf32lebom.yaml"),
 ];
 
 #[test]
