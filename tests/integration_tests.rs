@@ -89,3 +89,26 @@ fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
   }
   result
 }
+
+const YAML_REENCODING_INPUTS: [&'static [u8]; 4] = [
+  include_bytes!("utf16be.yaml"),
+  include_bytes!("utf16le.yaml"),
+  include_bytes!("utf32be.yaml"),
+  include_bytes!("utf32le.yaml"),
+];
+
+#[test]
+fn test_yaml_reencoding() {
+  const EXPECTED: &'static str = concat!(r#"{"test":true}"#, "\n");
+  for input in YAML_REENCODING_INPUTS {
+    let mut output = Vec::new();
+    jyt(
+      InputHandle::from_buffer(input),
+      Some(Format::Yaml),
+      Format::Json,
+      &mut output,
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+  }
+}
