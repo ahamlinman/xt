@@ -44,7 +44,11 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // is how jyt has worked for a long time and it's not like the behavior is
   // actively harmful. We do try to defer the YAML check for as long as we can,
   // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
-  // might be expensive.
+  // might be expensive. In particular, we do it after the MessagePack check
+  // since some valid MessagePack values would be false matches under the YAML
+  // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
+  // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
+  // the byte patterns for UTF-16-LE YAML input.
   if let Ok(_) = transcode_input(input, Format::Yaml, Discard) {
     return Ok(Some(Format::Yaml));
   }

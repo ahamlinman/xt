@@ -72,8 +72,8 @@ fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
     // write, vs. if we did Option<u8> and had to match Some variants for every
     // byte.
     let mut result: [i16; 4] = Default::default();
-    let mut iter = buf.iter().take(4);
-    result.fill_with(|| iter.next().copied().map(|x| x as i16).unwrap_or(-1));
+    let mut iter = buf.iter();
+    result.fill_with(|| iter.next().map(|x| *x as i16).unwrap_or(-1));
     result
   };
 
@@ -94,13 +94,12 @@ where
   // We'll start the string out with the minimum possible capacity for a
   // successful UTF-8 re-encoding.
   let mut result = String::with_capacity(buf.len() / 4);
-  for (i, chunk) in buf.chunks_exact(4).enumerate() {
-    let v = get_u32(chunk.try_into().unwrap());
-    let c = match char::from_u32(v) {
+  for chunk in buf.chunks_exact(4) {
+    let unit = get_u32(chunk.try_into().unwrap());
+    result.push(match char::from_u32(unit) {
       Some(c) => c,
-      None => return Err(format!("invalid utf-32: 0x{:04x} at byte {}", v, i * 4)),
-    };
-    result.push(c);
+      None => return Err(format!("invalid utf-32: {:04x}", unit)),
+    });
   }
   Ok(result)
 }
@@ -111,7 +110,6 @@ where
 {
   let units: Vec<u16> = buf
     .chunks_exact(2)
-    .into_iter()
     .map(|chunk| get_u16(chunk.try_into().unwrap()))
     .collect();
   String::from_utf16(&units)
