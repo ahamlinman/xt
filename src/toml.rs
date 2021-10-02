@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 use std::io::Write;
 use std::str;
 
@@ -30,16 +31,6 @@ impl<W: Write> Output<W> {
   }
 }
 
-impl<W: Write> Output<W> {
-  fn use_once(&mut self) -> Result<(), &'static str> {
-    self.used = match self.used {
-      false => true,
-      true => return Err("TOML does not support multi-document output"),
-    };
-    Ok(())
-  }
-}
-
 impl<W: Write> crate::Output for Output<W> {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where
@@ -47,29 +38,44 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     // TOML is pretty unique among jyt's supported output formats, and requires
-    // several special considerations.
+    // some special considerations.
 
-    // First, TOML has no concept of multiple documents in a single stream.
-    // Since we can't know the number of input documents in advance, we just
-    // have to fail if we see a second one.
-    self.use_once()?;
+    // Since TOML has no concept of multiple documents in a single stream, and
+    // we can't know the number of input documents in advance, we just fail if
+    // someone tries to use us more than once. (We try to put this check first
+    // so we don't waste time on a value that will get thrown out.)
+    self.ensure_one_use()?;
 
-    // Second, it's not safe to transcode the input directly, as the ordering of
-    // keys and values in maps might not be TOML-compatible. TOML requires that
-    // non-table values appear before any tables at a given nesting level, which
-    // toml::Value knows how to take care of. We can activate the toml crate's
-    // "preserve_order" feature to keep as much of the original ordering as
-    // possible.
+    // TOML requires that non-table values appear before any tables at a given
+    // nesting level, which we cannot guarantee for arbitrary input. toml::Value
+    // knows how to deal with this. We enable the toml crate's "preserve_order"
+    // feature to keep as much of the original input ordering as we can.
     let value = ::toml::Value::deserialize(de)?;
 
-    // Finally, "TOML is designed to map unambiguously to a hash table" (quoted
-    // from the spec). jyt's other input formats can produce something like a
-    // boolean or array at the top level, which we would dump into an invalid
-    // TOML document if we're not careful. For example, a top-level array could
-    // get dumped as an array of tables with an empty name, i.e. with "[[]]"
-    // headers.
+    // There are a couple more small details, see output_value for details.
+    self.output_value(value)
+  }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    // Of course, all of the above comments apply here as well.
+    self.ensure_one_use()?;
+    let value = ::toml::Value::try_from(value)?;
+    self.output_value(value)
+  }
+}
+
+impl<W: Write> Output<W> {
+  fn output_value(&mut self, value: ::toml::Value) -> Result<(), Box<dyn Error>> {
+    // From the spec: "TOML is designed to map unambiguously to a hash table."
+    // jyt's other input formats can produce something like a boolean or array
+    // at the top level, which we would dump into an invalid TOML document if
+    // we're not careful. For example, a top-level array could get dumped as an
+    // array of tables with an empty name, i.e. with "[[]]" headers.
     if !value.is_table() {
-      return Err("root of TOML output must be a table".into());
+      return Err(NonTableRootError.into());
     }
 
     // As of this writing, the toml crate can't output directly to a writer.
@@ -78,13 +84,22 @@ impl<W: Write> crate::Output for Output<W> {
     Ok(())
   }
 
-  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
-  where
-    S: serde::ser::Serialize,
-  {
-    self.use_once()?;
-    let output_buf = ::toml::to_string_pretty(&value)?;
-    self.w.write_all(output_buf.as_bytes())?;
+  fn ensure_one_use(&mut self) -> Result<(), &'static str> {
+    self.used = match self.used {
+      false => true,
+      true => return Err("TOML does not support multi-document output"),
+    };
     Ok(())
   }
 }
+
+#[derive(Debug)]
+struct NonTableRootError;
+
+impl fmt::Display for NonTableRootError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "root of TOML output must be a table")
+  }
+}
+
+impl Error for NonTableRootError {}

@@ -115,3 +115,18 @@ fn test_yaml_reencoding() {
     assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
   }
 }
+
+#[test]
+fn test_toml_reordering() {
+  const INPUT: &'static [u8] = include_bytes!("single_reordered.json");
+  const EXPECTED: &'static str = include_str!("single.toml");
+  let mut output = Vec::new();
+  jyt(
+    InputHandle::from_buffer(INPUT),
+    Some(Format::Json),
+    Format::Toml,
+    &mut output,
+  )
+  .unwrap();
+  assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+}
