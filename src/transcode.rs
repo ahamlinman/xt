@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use serde::{
-  de::{self, Deserialize, Deserializer},
+  de::{self, Deserialize, Deserializer, IgnoredAny},
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
@@ -147,6 +147,17 @@ where
 
     while let Some(result) = seq.next_element_seed(SeqSeed(&mut ser))? {
       if let Err(err) = result {
+        // TODO: This transcoder implementation is fundamentally broken. There
+        // are deserializers that break if you just stop consuming them without
+        // returning an error. For example, try transcoding a YAML file with a
+        // null map key into JSON, and watch serde_yaml panic as its internal
+        // invariants get violated.
+        //
+        // For now, we just "drain" the remainder of a sequence or map on
+        // serialization errors, to ensure that we don't run into this kind of
+        // issue. Long-term, I think Visitor is going to have to work more like
+        // Transcoder, and stash the error internally.
+        while let Ok(Some(IgnoredAny)) = seq.next_element() {}
         return Ok(Err(err));
       }
     }
@@ -165,9 +176,15 @@ where
 
     while let Some(result) = map.next_key_seed(KeySeed(&mut ser))? {
       if let Err(err) = result {
+        // Drain the rest of the map; see above.
+        let _ = map.next_value::<IgnoredAny>();
+        while let Ok(Some((IgnoredAny, IgnoredAny))) = map.next_entry() {}
         return Ok(Err(err));
       }
+
       if let Err(err) = map.next_value_seed(ValueSeed(&mut ser))? {
+        // Drain the rest of the map; see above.
+        while let Ok(Some((IgnoredAny, IgnoredAny))) = map.next_entry() {}
         return Ok(Err(err));
       }
     }

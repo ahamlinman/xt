@@ -90,6 +90,21 @@ fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
   result
 }
 
+#[test]
+fn test_toml_reordering() {
+  const INPUT: &'static [u8] = include_bytes!("single_reordered.json");
+  const EXPECTED: &'static str = include_str!("single.toml");
+  let mut output = Vec::new();
+  jyt(
+    InputHandle::from_buffer(INPUT),
+    Some(Format::Json),
+    Format::Toml,
+    &mut output,
+  )
+  .unwrap();
+  assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+}
+
 const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
   include_bytes!("utf16be.yaml"),
   include_bytes!("utf16le.yaml"),
@@ -117,16 +132,17 @@ fn test_yaml_reencoding() {
 }
 
 #[test]
-fn test_toml_reordering() {
-  const INPUT: &'static [u8] = include_bytes!("single_reordered.json");
-  const EXPECTED: &'static str = include_str!("single.toml");
+fn test_yaml_halted_deserialization() {
+  // Regression test to ensure that halting transcoding in the middle of a value
+  // doesn't panic and crash. The particular example is a YAML input with a null
+  // map key trying to transcode to JSON, where keys must be strings. If we're
+  // not careful, we can break invariants of the YAML deserializer.
+  const INPUT: &'static [u8] = include_bytes!("nullkey.yaml");
   let mut output = Vec::new();
-  jyt(
+  let _ = jyt(
     InputHandle::from_buffer(INPUT),
-    Some(Format::Json),
-    Format::Toml,
+    Some(Format::Yaml),
+    Format::Json,
     &mut output,
-  )
-  .unwrap();
-  assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+  );
 }
