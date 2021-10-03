@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::error::Error;
 use std::fmt;
+use std::mem;
 
 use serde::{
   de::{self, Deserialize, Deserializer},
@@ -81,15 +82,11 @@ where
 /// When the serializer produces an error, the visitor stops taking input from
 /// the deserializer (even if it has more to give) and immediately produces the
 /// error as the deserialized value.
-struct Visitor<S>(VisitorState<S>)
-where
-  S: Serializer;
-
-enum VisitorState<S>
+enum Visitor<S>
 where
   S: Serializer,
 {
-  New(Option<S>),
+  New(S),
   Used(Option<S::Error>),
 }
 
@@ -98,20 +95,20 @@ where
   S: Serializer,
 {
   fn new(s: S) -> Visitor<S> {
-    Visitor(VisitorState::New(Some(s)))
+    Visitor::New(s)
   }
 
   fn take_serializer(&mut self) -> S {
-    use VisitorState::*;
-    match self.0 {
-      New(None) | Used(_) => panic!("visitor may only be used once"),
-      New(ref mut ser) => ser.take().unwrap(),
+    use Visitor::*;
+    match mem::replace(self, Used(None)) {
+      New(ser) => ser,
+      Used(_) => panic!("visitor may only be used once"),
     }
   }
 
   fn into_serializer_error(self) -> Option<S::Error> {
-    use VisitorState::*;
-    match self.0 {
+    use Visitor::*;
+    match self {
       New(_) => None,
       Used(err) => err,
     }
@@ -119,27 +116,36 @@ where
 }
 
 /// Implements methods of a [`serde::de::Visitor`] for our transcoding visitor.
+///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_visitor_methods {
   ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
     $(
-      fn $visit<E>(self, $($arg: $ty)?) -> Result<Self::Value, E>
-      where
-        E: de::Error
-      {
+      fn $visit<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
         match self.take_serializer().$serialize($($arg)?) {
-          Ok(v) => {
-            self.0 = VisitorState::Used(None);
-            Ok(v)
-          }
+          Ok(v) => Ok(v),
           Err(err) => {
-            self.0 = VisitorState::Used(Some(err));
+            *self = Visitor::Used(Some(err));
             Err(E::custom("serializer error, must unpack from visitor"))
           }
         }
       }
     )*
   }
+}
+
+/// Stores a serializer error into a visitor, then returns a generic
+/// deserializer error.
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_visitor_ser_error {
+  ($self:ident, $err:expr) => {{
+    *$self = Visitor::Used(Some($err));
+    use serde::de::Error;
+    Err(A::Error::custom(
+      "serializer error, must unpack from visitor",
+    ))
+  }};
 }
 
 impl<'de, S> de::Visitor<'de> for &mut Visitor<S>
@@ -176,41 +182,24 @@ where
     visit_bytes(v: &[u8]) => serialize_bytes;
   }
 
-  // Err(E::custom("serializer error, must unpack from visitor"))
-
   fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
   where
     A: de::SeqAccess<'de>,
   {
-    use serde::de::Error;
-
     let mut ser = match self.take_serializer().serialize_seq(seq.size_hint()) {
       Ok(ser) => ser,
-      Err(err) => {
-        self.0 = VisitorState::Used(Some(err));
-        return Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ));
-      }
+      Err(err) => return local_visitor_ser_error!(self, err),
     };
 
     while let Some(result) = seq.next_element_seed(SeqSeed(&mut ser))? {
-      if let Err(err) = result {
-        self.0 = VisitorState::Used(Some(err));
-        return Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ));
+      if let Some(err) = result {
+        return local_visitor_ser_error!(self, err);
       }
     }
 
     match ser.end() {
       Ok(v) => Ok(v),
-      Err(err) => {
-        self.0 = VisitorState::Used(Some(err));
-        Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ))
-      }
+      Err(err) => local_visitor_ser_error!(self, err),
     }
   }
 
@@ -218,42 +207,23 @@ where
   where
     A: de::MapAccess<'de>,
   {
-    use serde::de::Error;
-
     let mut ser = match self.take_serializer().serialize_map(map.size_hint()) {
       Ok(ser) => ser,
-      Err(err) => {
-        self.0 = VisitorState::Used(Some(err));
-        return Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ));
-      }
+      Err(err) => return local_visitor_ser_error!(self, err),
     };
 
     while let Some(result) = map.next_key_seed(KeySeed(&mut ser))? {
-      if let Err(err) = result {
-        self.0 = VisitorState::Used(Some(err));
-        return Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ));
+      if let Some(err) = result {
+        return local_visitor_ser_error!(self, err);
       }
-
-      if let Err(err) = map.next_value_seed(ValueSeed(&mut ser))? {
-        self.0 = VisitorState::Used(Some(err));
-        return Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ));
+      if let Some(err) = map.next_value_seed(ValueSeed(&mut ser))? {
+        return local_visitor_ser_error!(self, err);
       }
     }
 
     match ser.end() {
       Ok(v) => Ok(v),
-      Err(err) => {
-        self.0 = VisitorState::Used(Some(err));
-        Err(A::Error::custom(
-          "serializer error, must unpack from visitor",
-        ))
-      }
+      Err(err) => local_visitor_ser_error!(self, err),
     }
   }
 }
@@ -278,7 +248,7 @@ macro_rules! local_impl_transcode_seed_types {
       where
         S: $ser_trait,
       {
-        type Value = Result<(), S::Error>;
+        type Value = Option<S::Error>;
 
         fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
         where
@@ -286,11 +256,10 @@ macro_rules! local_impl_transcode_seed_types {
         {
           let t = Transcoder::new(d);
           match self.0.$ser_method(&t) {
-            Ok(()) => Ok(Ok(())),
-            // See Transcoder documentation for an explanation of this part.
+            Ok(()) => Ok(None),
             Err(serr) => match t.into_deserializer_error() {
               Some(derr) => Err(derr),
-              None => Ok(Err(serr)),
+              None => Ok(Some(serr)),
             },
           }
         }
@@ -338,14 +307,10 @@ impl<'de, D> Transcoder<'de, D>
 where
   D: Deserializer<'de>,
 {
-  /// Constructs a new `Transcoder`.
   fn new(d: D) -> Transcoder<'de, D> {
     Transcoder(Cell::new(TranscoderState::New(d)))
   }
 
-  /// Consumes a `Transcoder` and produces any error generated by the
-  /// deserializer. If this is `None`, then any error returned by `serialize`
-  /// was produced by the serializer itself.
   fn into_deserializer_error(self) -> Option<D::Error> {
     use TranscoderState::*;
     match self.0.into_inner() {
@@ -359,8 +324,6 @@ impl<'de, D> ser::Serialize for Transcoder<'de, D>
 where
   D: Deserializer<'de>,
 {
-  /// Transcodes the contained deserializer. See the struct documentation for
-  /// important usage considerations.
   fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
@@ -463,12 +426,13 @@ impl Serialize for Value<'_> {
 }
 
 /// Implements methods of a [`serde::de::Visitor`] that do nothing more than
-/// shove the result of some expression into an `Ok` variant. This macro is
-/// non-hygienic, and not intended for use outside of this module.
+/// construct a value and shove it into an `Ok` variant.
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_value_visitor_methods {
-  ($($name:ident($($args:tt)*) => $result:expr;)*) => {
+  ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
     $(
-      fn $name<E: de::Error>($($args)*) -> Result<Self::Value, E> {
+      fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
         Ok($result)
       }
     )*
@@ -490,34 +454,34 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       }
 
       local_impl_value_visitor_methods! {
-        visit_unit(self) => Value::None;
+        visit_unit() => Value::None;
 
-        visit_bool(self, v: bool) => Value::Bool(v);
+        visit_bool(v: bool) => Value::Bool(v);
 
-        visit_i8(self, v: i8) => Value::I8(v);
-        visit_i16(self, v: i16) => Value::I16(v);
-        visit_i32(self, v: i32) => Value::I32(v);
-        visit_i64(self, v: i64) => Value::I64(v);
-        visit_i128(self, v: i128) => Value::I128(v);
+        visit_i8(v: i8) => Value::I8(v);
+        visit_i16(v: i16) => Value::I16(v);
+        visit_i32(v: i32) => Value::I32(v);
+        visit_i64(v: i64) => Value::I64(v);
+        visit_i128(v: i128) => Value::I128(v);
 
-        visit_u8(self, v: u8) => Value::U8(v);
-        visit_u16(self, v: u16) => Value::U16(v);
-        visit_u32(self, v: u32) => Value::U32(v);
-        visit_u64(self, v: u64) => Value::U64(v);
-        visit_u128(self, v: u128) => Value::U128(v);
+        visit_u8(v: u8) => Value::U8(v);
+        visit_u16(v: u16) => Value::U16(v);
+        visit_u32(v: u32) => Value::U32(v);
+        visit_u64(v: u64) => Value::U64(v);
+        visit_u128(v: u128) => Value::U128(v);
 
-        visit_f32(self, v: f32) => Value::F32(v);
-        visit_f64(self, v: f64) => Value::F64(v);
+        visit_f32(v: f32) => Value::F32(v);
+        visit_f64(v: f64) => Value::F64(v);
 
-        visit_char(self, v: char) => Value::Char(v);
+        visit_char(v: char) => Value::Char(v);
 
-        visit_str(self, v: &str) => Value::String(Cow::Owned(v.to_owned()));
-        visit_borrowed_str(self, v: &'a str) => Value::String(Cow::Borrowed(v));
-        visit_string(self, v: String) => Value::String(Cow::Owned(v));
+        visit_str(v: &str) => Value::String(Cow::Owned(v.to_owned()));
+        visit_borrowed_str(v: &'a str) => Value::String(Cow::Borrowed(v));
+        visit_string(v: String) => Value::String(Cow::Owned(v));
 
-        visit_bytes(self, v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
-        visit_borrowed_bytes(self, v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
-        visit_byte_buf(self, v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
+        visit_bytes(v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
+        visit_borrowed_bytes(v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
+        visit_byte_buf(v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
       }
 
       fn visit_seq<A: de::SeqAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
