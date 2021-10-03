@@ -10,7 +10,7 @@ where
   O: crate::Output,
 {
   // serde_yaml imposes a couple of interesting limitations on us, which aren't
-  // clear from the documentation alone but which are reflected in jyt's usage.
+  // clear from the documentation alone but which are reflected in this usage.
   //
   // First, while serde_yaml supports creating a Deserializer from a reader,
   // this actually just slurps the entire input into a byte vector and parses
@@ -22,11 +22,17 @@ where
   // 1.2 requires this. While serde_yaml supports creating a Deserializer from a
   // &[u8], this actually converts the slice to a &str internally. YAML has very
   // clear rules for encoding detection, so we re-encode the input ourselves if
-  // necessary. We also strip any explicit byte order mark from the start of the
-  // input, since while YAML 1.2 allows it (even for UTF-8 input) yaml-rust
-  // doesn't seem to like it very much.
+  // necessary.
   let input = ensure_utf8(input.try_as_buffer()?)?;
-  let input = strip_bom_if_present(&input);
+
+  // YAML 1.2 allows for a BOM at the start of the stream, as well as at the
+  // beginning of every subsequent document in a stream (though all documents
+  // must use the same encoding). Unfortunately, yaml-rust seems to treat BOMs
+  // like syntax errors regardless of where they show up. We take care of the
+  // former case since it's pretty easy to handle, and hopefully covers most
+  // things.
+  let input = strip_initial_bom_if_present(&input);
+
   for de in serde_yaml::Deserializer::from_str(input) {
     output.transcode_from(de)?;
   }
@@ -128,7 +134,7 @@ where
   Ok(result)
 }
 
-fn strip_bom_if_present(input: &str) -> &str {
+fn strip_initial_bom_if_present(input: &str) -> &str {
   match input.strip_prefix("\u{FEFF}") {
     Some(stripped) => stripped,
     None => input,
