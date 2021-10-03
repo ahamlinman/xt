@@ -102,7 +102,7 @@ const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
 
 #[test]
 fn test_yaml_reencoding() {
-  const EXPECTED: &'static str = concat!(r#"{"jyt":"❤️"}"#, "\n");
+  const EXPECTED: &'static str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
   for input in YAML_REENCODING_INPUTS {
     let mut output = Vec::new();
     jyt(
