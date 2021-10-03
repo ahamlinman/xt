@@ -67,7 +67,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = rmp_serde::Serializer::new(&mut self.0);
-    transcode::transcode(de, &mut ser)?;
+    transcode::transcode(&mut ser, de)?;
     Ok(())
   }
 
@@ -75,7 +75,8 @@ impl<W: Write> crate::Output for Output<W> {
   where
     S: serde::ser::Serialize,
   {
-    value.serialize(&mut rmp_serde::Serializer::new(&mut self.0))?;
+    let mut ser = rmp_serde::Serializer::new(&mut self.0);
+    value.serialize(&mut ser)?;
     Ok(())
   }
 }

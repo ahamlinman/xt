@@ -48,7 +48,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = serde_yaml::Serializer::new(&mut self.0);
-    transcode::transcode(de, &mut ser)?;
+    transcode::transcode(&mut ser, de)?;
     Ok(())
   }
 

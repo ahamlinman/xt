@@ -21,10 +21,10 @@ use serde::{
 /// the types that one of jyt's input formats could reasonably produce (e.g. no
 /// options or newtype structs), however the general implementation pattern
 /// could be extended to support such types.
-pub(crate) fn transcode<'de, D, S>(d: D, s: S) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
+pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
 where
-  D: Deserializer<'de>,
   S: Serializer,
+  D: Deserializer<'de>,
 {
   use TranscodeError::*;
   match d.deserialize_any(Visitor(s)) {

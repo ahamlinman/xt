@@ -21,9 +21,8 @@ where
     }
     Input::Reader(r) => {
       // In this case, direct transcoding performs better than deserializing
-      // into a value. Perhaps it can give the serializer &str slices of
-      // internal buffers rather than allocating new Strings to store in a
-      // transcode::Value?
+      // into a value. It looks like transcode::Value is forced to copy every
+      // string from a &str reference, which probably explains the difference.
       let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
       while let Err(_) = de.end() {
         output.transcode_from(&mut de)?;
@@ -48,7 +47,7 @@ impl<W: Write> crate::Output for Output<W> {
     E: serde::de::Error + 'static,
   {
     let mut ser = serde_json::Serializer::new(&mut self.0);
-    transcode::transcode(de, &mut ser)?;
+    transcode::transcode(&mut ser, de)?;
     writeln!(&mut self.0, "")?;
     Ok(())
   }

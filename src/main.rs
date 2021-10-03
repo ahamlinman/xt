@@ -179,7 +179,7 @@ impl Opt {
       None => Ok(InputHandle::from_reader(io::stdin())),
       Some(path) if path.to_str() == Some("-") => Ok(InputHandle::from_reader(io::stdin())),
       Some(path) => {
-        let file = File::open(&path)?;
+        let file = File::open(path)?;
         // Safety: Modification of the mapped file outside the process triggers
         // undefined behavior. Our dirty "solution" is to document this in the
         // help output.
