@@ -22,16 +22,19 @@ use serde::{
 /// the types that one of jyt's input formats could reasonably produce (e.g. no
 /// options or newtype structs), however the general implementation pattern
 /// could be extended to support such types.
-pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
+pub(crate) fn transcode<'de, D, S>(
+  ser: S,
+  de: D,
+) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
 where
   S: Serializer,
   D: Deserializer<'de>,
 {
   use TranscodeError::*;
-  let mut v = Visitor::new(s);
-  match d.deserialize_any(&mut v) {
-    Ok(v) => Ok(v),
-    Err(derr) => match v.into_serializer_error() {
+  let mut visitor = Visitor::new(ser);
+  match de.deserialize_any(&mut visitor) {
+    Ok(value) => Ok(value),
+    Err(derr) => match visitor.into_serializer_error() {
       Some(serr) => Err(Ser(serr)),
       None => Err(De(derr)),
     },
@@ -94,8 +97,8 @@ impl<S> Visitor<S>
 where
   S: Serializer,
 {
-  fn new(s: S) -> Visitor<S> {
-    Visitor::New(s)
+  fn new(ser: S) -> Visitor<S> {
+    Visitor::New(ser)
   }
 
   fn take_serializer(&mut self) -> S {
@@ -123,7 +126,7 @@ macro_rules! local_impl_transcode_visitor_methods {
     $(
       fn $visit<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
         match self.take_serializer().$serialize($($arg)?) {
-          Ok(v) => Ok(v),
+          Ok(value) => Ok(value),
           Err(err) => {
             *self = Visitor::Used(Some(err));
             Err(E::custom("serializer error, must unpack from visitor"))
@@ -250,14 +253,14 @@ macro_rules! local_impl_transcode_seed_types {
       {
         type Value = Option<S::Error>;
 
-        fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
+        fn deserialize<D>(self, de: D) -> Result<Self::Value, D::Error>
         where
           D: Deserializer<'de>,
         {
-          let t = Transcoder::new(d);
-          match self.0.$ser_method(&t) {
+          let transcoder = Transcoder::new(de);
+          match self.0.$ser_method(&transcoder) {
             Ok(()) => Ok(None),
-            Err(serr) => match t.into_deserializer_error() {
+            Err(serr) => match transcoder.into_deserializer_error() {
               Some(derr) => Err(derr),
               None => Ok(Some(serr)),
             },
@@ -331,15 +334,15 @@ where
     use ser::Error;
     use TranscoderState::*;
 
-    let mut v = Visitor::new(s);
-    let de_result = match self.0.replace(Used(None)) {
-      New(d) => d.deserialize_any(&mut v),
+    let de = match self.0.replace(Used(None)) {
+      New(de) => de,
       Used(_) => panic!("transcoder may only be serialized once"),
     };
 
-    match de_result {
-      Ok(ser_result) => Ok(ser_result),
-      Err(derr) => match v.into_serializer_error() {
+    let mut visitor = Visitor::new(s);
+    match de.deserialize_any(&mut visitor) {
+      Ok(value) => Ok(value),
+      Err(derr) => match visitor.into_serializer_error() {
         Some(serr) => Err(serr),
         None => {
           self.0.set(Used(Some(derr)));
