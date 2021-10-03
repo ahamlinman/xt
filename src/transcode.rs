@@ -144,7 +144,7 @@ macro_rules! local_impl_transcode_visitor_methods {
           Ok(value) => Ok(value),
           Err(err) => {
             *self = Visitor::Used(Some(err));
-            Err(E::custom("serializer error, must unpack from visitor"))
+            Err(E::custom("translation failed"))
           }
         }
       }
@@ -160,9 +160,7 @@ macro_rules! local_visitor_ser_error {
   ($self:ident, $err:expr) => {{
     *$self = Visitor::Used(Some($err));
     use serde::de::Error;
-    Err(A::Error::custom(
-      "serializer error, must unpack from visitor",
-    ))
+    Err(A::Error::custom("translation failed"))
   }};
 }
 
@@ -363,9 +361,7 @@ where
         Some(serr) => Err(serr),
         None => {
           self.0.set(Used(Some(derr)));
-          Err(S::Error::custom(
-            "deserializer error, must unpack from transcoder",
-          ))
+          Err(S::Error::custom("translation failed"))
         }
       },
     }
