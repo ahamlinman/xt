@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use serde::{
-  de::{self, Deserialize, Deserializer, IgnoredAny},
+  de::{self, Deserialize, Deserializer},
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
@@ -27,12 +27,13 @@ where
   D: Deserializer<'de>,
 {
   use TranscodeError::*;
-  match d.deserialize_any(Visitor(s)) {
-    Ok(ser_result) => match ser_result {
-      Ok(value) => Ok(value),
-      Err(err) => Err(Ser(err)),
+  let mut v = Visitor::new(s);
+  match d.deserialize_any(&mut v) {
+    Ok(v) => Ok(v),
+    Err(derr) => match v.into_serializer_error() {
+      Some(serr) => Err(Ser(serr)),
+      None => Err(De(derr)),
     },
-    Err(err) => Err(De(err)),
   }
 }
 
@@ -71,25 +72,6 @@ where
   }
 }
 
-/// Implements methods of a [`serde::de::Visitor`] that do nothing more than
-/// shove the result of some expression into an `Ok` variant, using terms of the
-/// following form:
-///
-/// ```
-/// visit_<type>(<args>) => <return value>;
-/// ```
-///
-/// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_infallible_visitor_methods {
-  ($($name:ident($($args:tt)*) => $result:expr;)*) => {
-    $(
-      fn $name<E: de::Error>($($args)*) -> Result<Self::Value, E> {
-        Ok($result)
-      }
-    )*
-  };
-}
-
 /// Enables a Serde `Deserializer` to drive the contained Serde `Serializer`.
 ///
 /// Where a normal visitor would deserialize valid input to some in-memory
@@ -99,97 +81,180 @@ macro_rules! local_impl_infallible_visitor_methods {
 /// When the serializer produces an error, the visitor stops taking input from
 /// the deserializer (even if it has more to give) and immediately produces the
 /// error as the deserialized value.
-struct Visitor<S>(S);
+struct Visitor<S>(VisitorState<S>)
+where
+  S: Serializer;
 
-impl<'de, S> de::Visitor<'de> for Visitor<S>
+enum VisitorState<S>
 where
   S: Serializer,
 {
-  type Value = Result<S::Ok, S::Error>;
+  New(Option<S>),
+  Used(Option<S::Error>),
+}
+
+impl<S> Visitor<S>
+where
+  S: Serializer,
+{
+  fn new(s: S) -> Visitor<S> {
+    Visitor(VisitorState::New(Some(s)))
+  }
+
+  fn take_serializer(&mut self) -> S {
+    use VisitorState::*;
+    match self.0 {
+      New(None) | Used(_) => panic!("visitor may only be used once"),
+      New(ref mut ser) => ser.take().unwrap(),
+    }
+  }
+
+  fn into_serializer_error(self) -> Option<S::Error> {
+    use VisitorState::*;
+    match self.0 {
+      New(_) => None,
+      Used(err) => err,
+    }
+  }
+}
+
+/// Implements methods of a [`serde::de::Visitor`] for our transcoding visitor.
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_transcode_visitor_methods {
+  ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
+    $(
+      fn $visit<E>(self, $($arg: $ty)?) -> Result<Self::Value, E>
+      where
+        E: de::Error
+      {
+        match self.take_serializer().$serialize($($arg)?) {
+          Ok(v) => {
+            self.0 = VisitorState::Used(None);
+            Ok(v)
+          }
+          Err(err) => {
+            self.0 = VisitorState::Used(Some(err));
+            Err(E::custom("serializer error, must unpack from visitor"))
+          }
+        }
+      }
+    )*
+  }
+}
+
+impl<'de, S> de::Visitor<'de> for &mut Visitor<S>
+where
+  S: Serializer,
+{
+  type Value = S::Ok;
 
   fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     write!(fmt, "any supported value")
   }
 
-  local_impl_infallible_visitor_methods! {
-    visit_unit(self) => self.0.serialize_unit();
+  local_impl_transcode_visitor_methods! {
+    visit_unit() => serialize_unit;
+    visit_bool(v: bool) => serialize_bool;
 
-    visit_bool(self, v: bool) => self.0.serialize_bool(v);
+    visit_i8(v: i8) => serialize_i8;
+    visit_i16(v: i16) => serialize_i16;
+    visit_i32(v: i32) => serialize_i32;
+    visit_i64(v: i64) => serialize_i64;
+    visit_i128(v: i128) => serialize_i128;
 
-    visit_i8(self, v: i8) => self.0.serialize_i8(v);
-    visit_i16(self, v: i16) => self.0.serialize_i16(v);
-    visit_i32(self, v: i32) => self.0.serialize_i32(v);
-    visit_i64(self, v: i64) => self.0.serialize_i64(v);
-    visit_i128(self, v: i128) => self.0.serialize_i128(v);
+    visit_u8(v: u8) => serialize_u8;
+    visit_u16(v: u16) => serialize_u16;
+    visit_u32(v: u32) => serialize_u32;
+    visit_u64(v: u64) => serialize_u64;
+    visit_u128(v: u128) => serialize_u128;
 
-    visit_u8(self, v: u8) => self.0.serialize_u8(v);
-    visit_u16(self, v: u16) => self.0.serialize_u16(v);
-    visit_u32(self, v: u32) => self.0.serialize_u32(v);
-    visit_u64(self, v: u64) => self.0.serialize_u64(v);
-    visit_u128(self, v: u128) => self.0.serialize_u128(v);
+    visit_f32(v: f32) => serialize_f32;
+    visit_f64(v: f64) => serialize_f64;
 
-    visit_f32(self, v: f32) => self.0.serialize_f32(v);
-    visit_f64(self, v: f64) => self.0.serialize_f64(v);
-
-    visit_char(self, v: char) => self.0.serialize_char(v);
-    visit_str(self, v: &str) => self.0.serialize_str(v);
-    visit_bytes(self, v: &[u8]) => self.0.serialize_bytes(v);
+    visit_char(v: char) => serialize_char;
+    visit_str(v: &str) => serialize_str;
+    visit_bytes(v: &[u8]) => serialize_bytes;
   }
+
+  // Err(E::custom("serializer error, must unpack from visitor"))
 
   fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
   where
     A: de::SeqAccess<'de>,
   {
-    let mut ser = match self.0.serialize_seq(seq.size_hint()) {
+    use serde::de::Error;
+
+    let mut ser = match self.take_serializer().serialize_seq(seq.size_hint()) {
       Ok(ser) => ser,
-      Err(err) => return Ok(Err(err)),
+      Err(err) => {
+        self.0 = VisitorState::Used(Some(err));
+        return Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ));
+      }
     };
 
     while let Some(result) = seq.next_element_seed(SeqSeed(&mut ser))? {
       if let Err(err) = result {
-        // TODO: This transcoder implementation is fundamentally broken. There
-        // are deserializers that break if you just stop consuming them without
-        // returning an error. For example, try transcoding a YAML file with a
-        // null map key into JSON, and watch serde_yaml panic as its internal
-        // invariants get violated.
-        //
-        // For now, we just "drain" the remainder of a sequence or map on
-        // serialization errors, to ensure that we don't run into this kind of
-        // issue. Long-term, I think Visitor is going to have to work more like
-        // Transcoder, and stash the error internally.
-        while let Ok(Some(IgnoredAny)) = seq.next_element() {}
-        return Ok(Err(err));
+        self.0 = VisitorState::Used(Some(err));
+        return Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ));
       }
     }
 
-    Ok(ser.end())
+    match ser.end() {
+      Ok(v) => Ok(v),
+      Err(err) => {
+        self.0 = VisitorState::Used(Some(err));
+        Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ))
+      }
+    }
   }
 
   fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
   where
     A: de::MapAccess<'de>,
   {
-    let mut ser = match self.0.serialize_map(map.size_hint()) {
+    use serde::de::Error;
+
+    let mut ser = match self.take_serializer().serialize_map(map.size_hint()) {
       Ok(ser) => ser,
-      Err(err) => return Ok(Err(err)),
+      Err(err) => {
+        self.0 = VisitorState::Used(Some(err));
+        return Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ));
+      }
     };
 
     while let Some(result) = map.next_key_seed(KeySeed(&mut ser))? {
       if let Err(err) = result {
-        // Drain the rest of the map; see above.
-        let _ = map.next_value::<IgnoredAny>();
-        while let Ok(Some((IgnoredAny, IgnoredAny))) = map.next_entry() {}
-        return Ok(Err(err));
+        self.0 = VisitorState::Used(Some(err));
+        return Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ));
       }
 
       if let Err(err) = map.next_value_seed(ValueSeed(&mut ser))? {
-        // Drain the rest of the map; see above.
-        while let Ok(Some((IgnoredAny, IgnoredAny))) = map.next_entry() {}
-        return Ok(Err(err));
+        self.0 = VisitorState::Used(Some(err));
+        return Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ));
       }
     }
 
-    Ok(ser.end())
+    match ser.end() {
+      Ok(v) => Ok(v),
+      Err(err) => {
+        self.0 = VisitorState::Used(Some(err));
+        Err(A::Error::custom(
+          "serializer error, must unpack from visitor",
+        ))
+      }
+    }
   }
 }
 
@@ -303,19 +368,23 @@ where
     use ser::Error;
     use TranscoderState::*;
 
+    let mut v = Visitor::new(s);
     let de_result = match self.0.replace(Used(None)) {
-      New(d) => d.deserialize_any(Visitor(s)),
+      New(d) => d.deserialize_any(&mut v),
       Used(_) => panic!("transcoder may only be serialized once"),
     };
 
     match de_result {
-      Ok(ser_result) => ser_result,
-      Err(err) => {
-        self.0.set(Used(Some(err)));
-        Err(S::Error::custom(
-          "deserializer error, must unpack from transcoder",
-        ))
-      }
+      Ok(ser_result) => Ok(ser_result),
+      Err(derr) => match v.into_serializer_error() {
+        Some(serr) => Err(serr),
+        None => {
+          self.0.set(Used(Some(derr)));
+          Err(S::Error::custom(
+            "deserializer error, must unpack from transcoder",
+          ))
+        }
+      },
     }
   }
 }
@@ -393,6 +462,19 @@ impl Serialize for Value<'_> {
   }
 }
 
+/// Implements methods of a [`serde::de::Visitor`] that do nothing more than
+/// shove the result of some expression into an `Ok` variant. This macro is
+/// non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_value_visitor_methods {
+  ($($name:ident($($args:tt)*) => $result:expr;)*) => {
+    $(
+      fn $name<E: de::Error>($($args)*) -> Result<Self::Value, E> {
+        Ok($result)
+      }
+    )*
+  };
+}
+
 impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
   fn deserialize<D>(d: D) -> Result<Self, D::Error>
   where
@@ -407,7 +489,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         write!(f, "any supported value")
       }
 
-      local_impl_infallible_visitor_methods! {
+      local_impl_value_visitor_methods! {
         visit_unit(self) => Value::None;
 
         visit_bool(self, v: bool) => Value::Bool(v);
