@@ -60,21 +60,34 @@
 //! ownership of any captured error by consuming the used visitor or transcoder,
 //! and are expected to handle such captured errors in place of the original.
 //!
+//! Since the deserializer drives the transcoding process, its error messages
+//! can provide useful context for errors produced by the serializer. For
+//! example, when a serializer cannot handle a value provided by the
+//! deserializer, the deserializer's error may report the location of that value
+//! in the input. The transcoder captures this information by plumbing a
+//! reference to a `MessageCell` through the call stack of visitors and
+//! transcoders. At the deepest point in the call stack where the serializer
+//! error captured by a `Visitor` overrides a deserializer error as described
+//! above, the transcoder will write the deserializer's error message into the
+//! cell, and will return it alongside the original serializer error. Only the
+//! message is stored, as the full deserializer error is not guaranteed to
+//! outlive the transcode operation.
+//!
 //! ## Differences from `serde_transcode`
 //!
 //! The above error handling mechanism is unique to jyt. `serde_transcode`
-//! stringifies errors as necessary throughout the call stack of the transcode
-//! operation, eventually yielding an error of the serializer's type. While this
-//! may erase useful context from the original error, such as the details of a
-//! failed I/O operation in the serializer, it can provide more useful output
-//! for end users. For example, the deserializer's errors may indicate the line
-//! and column of a value in the source file that the serializer was unable to
-//! handle. jyt would need an additional out of band mechanism to capture this
-//! detail at the right point in the call stack.
+//! stringifies errors as necessary throughout each level of the transcoding
+//! call stack, eventually yielding an error of the serializer's type. This may
+//! erase useful context from the original error, such as the details of a
+//! failed I/O operation in the serializer. It may also duplicate the context
+//! provided by the deserializer's error messages across levels of the call
+//! stack, such that the final error message references multiple locations in
+//! the original input.
 //!
 //! `serde_transcode` directly exposes the `Transcoder` type that implements
 //! `Serialize` for a `Deserializer`. jyt keeps this type private to avoid
-//! creating an API contract around the complex error handling semantics.
+//! creating a contract around its significantly more complex API, which
+//! includes the special error handling mechanisms described above.
 //!
 //! jyt does not support transcoding `Option<T>` and newtype struct values, as
 //! no jyt input format is expected to produce such values on its own. The
@@ -105,13 +118,17 @@ where
   D: Deserializer<'de>,
 {
   use TranscodeError::*;
+
   let mut derr_cell: MessageCell = Default::default();
-  let mut visitor = Visitor::new(&mut derr_cell, ser);
+  let mut visitor = Visitor::new(ser, &mut derr_cell);
   match de.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.into_serializer_error() {
-      Some(serr) => Err(Ser(serr, derr_cell.0.unwrap_or_else(|| derr.to_string()))),
-      None => Err(De(derr)),
+      Some(serr) => Err(Ser {
+        serr,
+        derr_message: derr_cell.0.unwrap_or_else(|| derr.to_string()),
+      }),
+      None => Err(De { derr }),
     },
   }
 }
@@ -119,8 +136,8 @@ where
 /// Holds an error produced during transcoding.
 #[derive(Debug)]
 pub(crate) enum TranscodeError<S, D> {
-  Ser(S, String),
-  De(D),
+  Ser { serr: S, derr_message: String },
+  De { derr: D },
 }
 
 impl<S, D> fmt::Display for TranscodeError<S, D>
@@ -131,8 +148,8 @@ where
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     use TranscodeError::*;
     match self {
-      Ser(err, derr) => write!(f, "{}: {}", derr, err),
-      De(err) => fmt::Display::fmt(err, f),
+      Ser { serr, derr_message } => write!(f, "{}: {}", derr_message, serr),
+      De { derr } => fmt::Display::fmt(derr, f),
     }
   }
 }
@@ -145,8 +162,8 @@ where
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     use TranscodeError::*;
     match self {
-      Ser(err, _) => Some(err),
-      De(err) => Some(err),
+      Ser { serr, .. } => Some(serr),
+      De { derr } => Some(derr),
     }
   }
 }
@@ -156,7 +173,7 @@ struct MessageCell(Option<String>);
 
 impl MessageCell {
   /// Stores the error in the cell if it is currently empty.
-  fn capture_if_empty<D>(&mut self, msg: D)
+  fn store_if_empty<D>(&mut self, msg: D)
   where
     D: fmt::Display,
   {
@@ -179,31 +196,36 @@ enum Visitor<'m, S>
 where
   S: Serializer,
 {
-  New(&'m mut MessageCell, S),
-  Used(Option<S::Error>),
+  New {
+    ser: S,
+    derr_cell: &'m mut MessageCell,
+  },
+  Used {
+    serr: Option<S::Error>,
+  },
 }
 
 impl<'m, S> Visitor<'m, S>
 where
   S: Serializer,
 {
-  fn new(derr_cell: &'m mut MessageCell, ser: S) -> Visitor<S> {
-    Visitor::New(derr_cell, ser)
+  fn new(ser: S, derr_cell: &'m mut MessageCell) -> Visitor<S> {
+    Visitor::New { ser, derr_cell }
   }
 
-  fn take(&mut self) -> (&'m mut MessageCell, S) {
+  fn take(&mut self) -> (S, &'m mut MessageCell) {
     use Visitor::*;
-    match mem::replace(self, Used(None)) {
-      New(derr_cell, ser) => (derr_cell, ser),
-      Used(_) => panic!("visitor may only be used once"),
+    match mem::replace(self, Used { serr: None }) {
+      New { ser, derr_cell } => (ser, derr_cell),
+      Used { .. } => panic!("visitor may only be used once"),
     }
   }
 
   fn into_serializer_error(self) -> Option<S::Error> {
     use Visitor::*;
     match self {
-      New(..) => None,
-      Used(err) => err,
+      New { .. } => None,
+      Used { serr } => serr,
     }
   }
 }
@@ -215,11 +237,11 @@ macro_rules! local_impl_transcode_visitor_methods {
   ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
     $(
       fn $visit<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
-        let (_, ser) = self.take();
+        let (ser, _) = self.take();
         match ser.$serialize($($arg)?) {
           Ok(value) => Ok(value),
-          Err(err) => {
-            *self = Visitor::Used(Some(err));
+          Err(serr) => {
+            *self = Visitor::Used{serr: Some(serr)};
             Err(E::custom("translation failed"))
           }
         }
@@ -233,8 +255,8 @@ macro_rules! local_impl_transcode_visitor_methods {
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_visitor_ser_error {
-  ($self:ident, $err:expr) => {{
-    *$self = Visitor::Used(Some($err));
+  ($self:ident, $serr:expr) => {{
+    *$self = Visitor::Used { serr: Some($serr) };
     use serde::de::Error;
     Err(A::Error::custom("translation failed"))
   }};
@@ -278,13 +300,16 @@ where
   where
     A: de::SeqAccess<'de>,
   {
-    let (derr_cell, ser) = self.take();
+    let (ser, derr_cell) = self.take();
     let mut ser = match ser.serialize_seq(seq.size_hint()) {
       Ok(ser) => ser,
       Err(err) => return local_visitor_ser_error!(self, err),
     };
 
-    while let Some(result) = seq.next_element_seed(SeqSeed(derr_cell, &mut ser))? {
+    while let Some(result) = seq.next_element_seed(SeqSeed {
+      ser: &mut ser,
+      derr_cell,
+    })? {
       if let Some(err) = result {
         return local_visitor_ser_error!(self, err);
       }
@@ -300,17 +325,24 @@ where
   where
     A: de::MapAccess<'de>,
   {
-    let (derr_cell, ser) = self.take();
+    let (ser, derr_cell) = self.take();
     let mut ser = match ser.serialize_map(map.size_hint()) {
       Ok(ser) => ser,
       Err(err) => return local_visitor_ser_error!(self, err),
     };
 
-    while let Some(result) = map.next_key_seed(KeySeed(derr_cell, &mut ser))? {
+    while let Some(result) = map.next_key_seed(KeySeed {
+      ser: &mut ser,
+      derr_cell,
+    })? {
       if let Some(err) = result {
         return local_visitor_ser_error!(self, err);
       }
-      if let Some(err) = map.next_value_seed(ValueSeed(derr_cell, &mut ser))? {
+
+      if let Some(err) = map.next_value_seed(ValueSeed {
+        ser: &mut ser,
+        derr_cell,
+      })? {
         return local_visitor_ser_error!(self, err);
       }
     }
@@ -331,7 +363,10 @@ where
 macro_rules! local_impl_transcode_seed_types {
   ($($seed_name:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
     $(
-      struct $seed_name<'a, 'm, S>(&'m mut MessageCell, &'a mut S);
+      struct $seed_name<'a, 'm, S> {
+        ser: &'a mut S,
+        derr_cell: &'m mut MessageCell,
+      }
 
       impl<'a, 'de, 'm, S> DeserializeSeed<'de> for $seed_name<'a, 'm, S>
       where
@@ -343,8 +378,8 @@ macro_rules! local_impl_transcode_seed_types {
         where
           D: Deserializer<'de>,
         {
-          let transcoder = Transcoder::new(self.0, de);
-          match self.1.$ser_method(&transcoder) {
+          let transcoder = Transcoder::new(de, self.derr_cell);
+          match self.ser.$ser_method(&transcoder) {
             Ok(()) => Ok(None),
             Err(serr) => match transcoder.into_deserializer_error() {
               Some(derr) => Err(derr),
@@ -379,23 +414,28 @@ enum TranscoderState<'de, 'm, D>
 where
   D: Deserializer<'de>,
 {
-  New(&'m mut MessageCell, D),
-  Used(Option<D::Error>),
+  New {
+    de: D,
+    derr_cell: &'m mut MessageCell,
+  },
+  Used {
+    derr: Option<D::Error>,
+  },
 }
 
 impl<'de, 'm, D> Transcoder<'de, 'm, D>
 where
   D: Deserializer<'de>,
 {
-  fn new(derr_cell: &'m mut MessageCell, de: D) -> Transcoder<'de, 'm, D> {
-    Transcoder(Cell::new(TranscoderState::New(derr_cell, de)))
+  fn new(de: D, derr_cell: &'m mut MessageCell) -> Transcoder<'de, 'm, D> {
+    Transcoder(Cell::new(TranscoderState::New { de, derr_cell }))
   }
 
   fn into_deserializer_error(self) -> Option<D::Error> {
     use TranscoderState::*;
     match self.0.into_inner() {
-      New(..) => None,
-      Used(result) => result,
+      New { .. } => None,
+      Used { derr } => derr,
     }
   }
 }
@@ -411,21 +451,21 @@ where
     use ser::Error;
     use TranscoderState::*;
 
-    let (derr_cell, de) = match self.0.replace(Used(None)) {
-      New(derr_cell, de) => (derr_cell, de),
-      Used(_) => panic!("transcoder may only be serialized once"),
+    let (de, derr_cell) = match self.0.replace(Used { derr: None }) {
+      New { de, derr_cell } => (de, derr_cell),
+      Used { .. } => panic!("transcoder may only be serialized once"),
     };
 
-    let mut visitor = Visitor::new(derr_cell, ser);
+    let mut visitor = Visitor::new(ser, derr_cell);
     match de.deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
       Err(derr) => match visitor.into_serializer_error() {
         Some(serr) => {
-          derr_cell.capture_if_empty(derr);
+          derr_cell.store_if_empty(derr);
           Err(serr)
         }
         None => {
-          self.0.set(Used(Some(derr)));
+          self.0.set(Used { derr: Some(derr) });
           Err(S::Error::custom("translation failed"))
         }
       },
