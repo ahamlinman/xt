@@ -105,11 +105,12 @@ where
   D: Deserializer<'de>,
 {
   use TranscodeError::*;
-  let mut visitor = Visitor::new(ser);
+  let mut derr_cell: MessageCell = Default::default();
+  let mut visitor = Visitor::new(&mut derr_cell, ser);
   match de.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.into_serializer_error() {
-      Some(serr) => Err(Ser(serr)),
+      Some(serr) => Err(Ser(serr, derr_cell.0.unwrap_or_else(|| derr.to_string()))),
       None => Err(De(derr)),
     },
   }
@@ -118,7 +119,7 @@ where
 /// Holds an error produced during transcoding.
 #[derive(Debug)]
 pub(crate) enum TranscodeError<S, D> {
-  Ser(S),
+  Ser(S, String),
   De(D),
 }
 
@@ -130,7 +131,7 @@ where
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     use TranscodeError::*;
     match self {
-      Ser(err) => fmt::Display::fmt(err, f),
+      Ser(err, derr) => write!(f, "{}: {}", derr, err),
       De(err) => fmt::Display::fmt(err, f),
     }
   }
@@ -144,8 +145,23 @@ where
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     use TranscodeError::*;
     match self {
-      Ser(err) => Some(err),
+      Ser(err, _) => Some(err),
       De(err) => Some(err),
+    }
+  }
+}
+
+#[derive(Default)]
+struct MessageCell(Option<String>);
+
+impl MessageCell {
+  /// Stores the error in the cell if it is currently empty.
+  fn capture_if_empty<D>(&mut self, msg: D)
+  where
+    D: fmt::Display,
+  {
+    if let None = self.0 {
+      self.0 = Some(msg.to_string())
     }
   }
 }
@@ -159,26 +175,26 @@ where
 ///
 /// Panics if used more than once. Any call to an implemented visitor method
 /// counts as a single use.
-enum Visitor<S>
+enum Visitor<'m, S>
 where
   S: Serializer,
 {
-  New(S),
+  New(&'m mut MessageCell, S),
   Used(Option<S::Error>),
 }
 
-impl<S> Visitor<S>
+impl<'m, S> Visitor<'m, S>
 where
   S: Serializer,
 {
-  fn new(ser: S) -> Visitor<S> {
-    Visitor::New(ser)
+  fn new(derr_cell: &'m mut MessageCell, ser: S) -> Visitor<S> {
+    Visitor::New(derr_cell, ser)
   }
 
-  fn take_serializer(&mut self) -> S {
+  fn take(&mut self) -> (&'m mut MessageCell, S) {
     use Visitor::*;
     match mem::replace(self, Used(None)) {
-      New(ser) => ser,
+      New(derr_cell, ser) => (derr_cell, ser),
       Used(_) => panic!("visitor may only be used once"),
     }
   }
@@ -186,7 +202,7 @@ where
   fn into_serializer_error(self) -> Option<S::Error> {
     use Visitor::*;
     match self {
-      New(_) => None,
+      New(..) => None,
       Used(err) => err,
     }
   }
@@ -199,7 +215,8 @@ macro_rules! local_impl_transcode_visitor_methods {
   ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
     $(
       fn $visit<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
-        match self.take_serializer().$serialize($($arg)?) {
+        let (_, ser) = self.take();
+        match ser.$serialize($($arg)?) {
           Ok(value) => Ok(value),
           Err(err) => {
             *self = Visitor::Used(Some(err));
@@ -223,7 +240,7 @@ macro_rules! local_visitor_ser_error {
   }};
 }
 
-impl<'de, S> de::Visitor<'de> for &mut Visitor<S>
+impl<'de, 'm, S> de::Visitor<'de> for &mut Visitor<'m, S>
 where
   S: Serializer,
 {
@@ -261,12 +278,13 @@ where
   where
     A: de::SeqAccess<'de>,
   {
-    let mut ser = match self.take_serializer().serialize_seq(seq.size_hint()) {
+    let (derr_cell, ser) = self.take();
+    let mut ser = match ser.serialize_seq(seq.size_hint()) {
       Ok(ser) => ser,
       Err(err) => return local_visitor_ser_error!(self, err),
     };
 
-    while let Some(result) = seq.next_element_seed(SeqSeed(&mut ser))? {
+    while let Some(result) = seq.next_element_seed(SeqSeed(derr_cell, &mut ser))? {
       if let Some(err) = result {
         return local_visitor_ser_error!(self, err);
       }
@@ -282,16 +300,17 @@ where
   where
     A: de::MapAccess<'de>,
   {
-    let mut ser = match self.take_serializer().serialize_map(map.size_hint()) {
+    let (derr_cell, ser) = self.take();
+    let mut ser = match ser.serialize_map(map.size_hint()) {
       Ok(ser) => ser,
       Err(err) => return local_visitor_ser_error!(self, err),
     };
 
-    while let Some(result) = map.next_key_seed(KeySeed(&mut ser))? {
+    while let Some(result) = map.next_key_seed(KeySeed(derr_cell, &mut ser))? {
       if let Some(err) = result {
         return local_visitor_ser_error!(self, err);
       }
-      if let Some(err) = map.next_value_seed(ValueSeed(&mut ser))? {
+      if let Some(err) = map.next_value_seed(ValueSeed(derr_cell, &mut ser))? {
         return local_visitor_ser_error!(self, err);
       }
     }
@@ -312,9 +331,9 @@ where
 macro_rules! local_impl_transcode_seed_types {
   ($($seed_name:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
     $(
-      struct $seed_name<'a, S: 'a>(&'a mut S);
+      struct $seed_name<'a, 'm, S>(&'m mut MessageCell, &'a mut S);
 
-      impl<'a, 'de, S> DeserializeSeed<'de> for $seed_name<'a, S>
+      impl<'a, 'de, 'm, S> DeserializeSeed<'de> for $seed_name<'a, 'm, S>
       where
         S: $ser_trait,
       {
@@ -324,8 +343,8 @@ macro_rules! local_impl_transcode_seed_types {
         where
           D: Deserializer<'de>,
         {
-          let transcoder = Transcoder::new(de);
-          match self.0.$ser_method(&transcoder) {
+          let transcoder = Transcoder::new(self.0, de);
+          match self.1.$ser_method(&transcoder) {
             Ok(()) => Ok(None),
             Err(serr) => match transcoder.into_deserializer_error() {
               Some(derr) => Err(derr),
@@ -352,51 +371,59 @@ local_impl_transcode_seed_types! {
 /// # Panics
 ///
 /// Panics if `serialize` is invoked more than once.
-struct Transcoder<'de, D: Deserializer<'de>>(Cell<TranscoderState<'de, D>>);
+struct Transcoder<'de, 'm, D>(Cell<TranscoderState<'de, 'm, D>>)
+where
+  D: Deserializer<'de>;
 
-enum TranscoderState<'de, D: Deserializer<'de>> {
-  New(D),
-  Used(Option<D::Error>),
-}
-
-impl<'de, D> Transcoder<'de, D>
+enum TranscoderState<'de, 'm, D>
 where
   D: Deserializer<'de>,
 {
-  fn new(d: D) -> Transcoder<'de, D> {
-    Transcoder(Cell::new(TranscoderState::New(d)))
+  New(&'m mut MessageCell, D),
+  Used(Option<D::Error>),
+}
+
+impl<'de, 'm, D> Transcoder<'de, 'm, D>
+where
+  D: Deserializer<'de>,
+{
+  fn new(derr_cell: &'m mut MessageCell, de: D) -> Transcoder<'de, 'm, D> {
+    Transcoder(Cell::new(TranscoderState::New(derr_cell, de)))
   }
 
   fn into_deserializer_error(self) -> Option<D::Error> {
     use TranscoderState::*;
     match self.0.into_inner() {
-      New(_) => None,
+      New(..) => None,
       Used(result) => result,
     }
   }
 }
 
-impl<'de, D> ser::Serialize for Transcoder<'de, D>
+impl<'de, 'm, D> ser::Serialize for Transcoder<'de, 'm, D>
 where
   D: Deserializer<'de>,
 {
-  fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+  fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
     use ser::Error;
     use TranscoderState::*;
 
-    let de = match self.0.replace(Used(None)) {
-      New(de) => de,
+    let (derr_cell, de) = match self.0.replace(Used(None)) {
+      New(derr_cell, de) => (derr_cell, de),
       Used(_) => panic!("transcoder may only be serialized once"),
     };
 
-    let mut visitor = Visitor::new(s);
+    let mut visitor = Visitor::new(derr_cell, ser);
     match de.deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
       Err(derr) => match visitor.into_serializer_error() {
-        Some(serr) => Err(serr),
+        Some(serr) => {
+          derr_cell.capture_if_empty(derr);
+          Err(serr)
+        }
         None => {
           self.0.set(Used(Some(derr)));
           Err(S::Error::custom("translation failed"))
