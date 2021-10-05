@@ -1,41 +1,60 @@
 //! Functions and types to support translation between Serde data formats.
 //!
-//! # Implementation Notes
-//!
-//! These details are not important for usage, but are useful to understand the
-//! implementation of direct transcoding. jyt's transcoder is heavily based on
-//! the [`serde_transcode`] crate advertised in the Serde documentation, with
-//! some notable differences discussed later in this section.
+//! # Differences from `serde_transcode`
 //!
 //! [`serde_transcode`]: https://github.com/sfackler/serde-transcode
 //!
+//! jyt's transcoder is heavily based on the [`serde_transcode`] crate
+//! advertised in the Serde documentation, with a few notable differences. **You
+//! should prefer `serde_transcode` over `jyt::transcode`** if possible, as the
+//! former is more widely used and its implementation is much simpler.
+//!
+//! `serde_transcode` stringifies serializer and deserializer errors as
+//! necessary throughout the transcoding call stack to meet Serde API
+//! requirements. At the cost of greater implementation complexity, jyt's
+//! transcoder implements out of band mechanisms to preserve the original value
+//! of the error that caused a transcode to fail, enabling more robust
+//! inspection of error causes. A later section of this documentation describes
+//! the details of the error handling mechanism.
+//!
+//! `serde_transcode` directly exposes a `Transcoder` type that implements
+//! `Serialize` for a `Deserializer`. jyt keeps this type private to avoid
+//! creating a contract around the significantly more complex API associated
+//! with the unique error handling implementation.
+//!
+//! jyt does not support transcoding `Option<T>` and newtype struct values, as
+//! no jyt input format is expected to produce such values on its own. The
+//! implementation could be extended to support this.
+//!
+//! # Implementation Notes
+//!
+//! These details are not important for usage, but are useful to understand the
+//! concept of direct transcoding in Serde.
+//!
 //! ## Principles of Transcoding
 //!
-//! A Serde [`Deserializer`] drives the transcoding process as it parses some
-//! input and discovers what it contains. The [`Visitor`](serde::de::Visitor)
-//! trait defines the interface that a deserializer invokes to provide a single
-//! "next" input value to its client. Where a more typical `Visitor` would build
-//! some data structure from the value it receives, we instead implement a
-//! `Visitor` that forwards that value to a [`Serializer`], yielding a value of
-//! the serializer's `Ok` type on success. For scalar values like integers and
-//! strings, this is the only type involved in the transcoding process.
+//! The general premise of transcoding is that wherever a typical Serde client
+//! would deserialize a value into a data structure, a transcoder "deserializes"
+//! a value into the result (including side effects) produced by serializing
+//! that value. Inversely, wherever a typical Serde client would serialize an
+//! existing data structure into a value, a transcoder serializes whatever value
+//! the deserializer sees in its input.
 //!
-//! Serde's API and data model treats more complex structures, like sequences
-//! and maps, as collections of deserializable values. To access each element of
-//! a collection, we provide an implementation of the [`DeserializeSeed`] trait
-//! to the deserializer. Unlike the standard [`Deserialize`] trait, a seed
-//! accepts `self` in its `deserialize` method and can produce a value of a type
-//! other than `Self`. Our seeds will forward the deserialized values of a
-//! collection to some collection-specific serializer type, such as a
-//! [`SerializeSeq`], and yield any error that the serializer produces.
+//! The transcoding process relies on three special implementations of key Serde
+//! traits:
 //!
-//! Because the sequence and map serializer APIs accept values implementing the
-//! `Serialize` trait, the transcoding puzzle is completed by implementing
-//! `Serialize` for the `Deserializer` provided to each seed's `deserialize`
-//! method. Where a typical serializable value would drive a serializer based on
-//! a data structure, this `Transcoder` type drives it from the values produced
-//! by the deserializer, using a new instance of our `Visitor` type that will
-//! recursively continue the transcoding process.
+//! - A [`Visitor`](serde::de::Visitor) receives a single value from a
+//! `Deserializer`, and either forwards a scalar value directly to the
+//! serializer or recursively transcodes the elements of a sequence or map.
+//!
+//! - Various [`DeserializeSeed`] implementations receive `Deserializer`s for
+//! each element of a sequence or map, and transcode each value using the
+//! appropriate method of a sequence or map serializer.
+//!
+//! - A `Transcoder` implements [`Serialize`] for the [`Deserializer`] provided
+//! to each seed, to meet the requirements of Serde's sequence and map
+//! serializer APIs. It recursively constructs a `Visitor` to transcode the
+//! collection element produced by the `Deserializer`.
 //!
 //! Unlike with many Serde-compatible data structures, **a single `Visitor` or
 //! `Transcoder` must only be used once over its lifetime**, as the transcoding
@@ -55,10 +74,11 @@
 //! wish to preserve for the caller.
 //!
 //! Visitor and transcoder methods that cannot return a given error directly
-//! will capture it internally and return a generic error of the appropriate
-//! type in its place. Callers that handle visitor or transcoder errors can take
-//! ownership of any captured error by consuming the used visitor or transcoder,
-//! and are expected to handle such captured errors in place of the original.
+//! will capture it internally and return a generic "translation failed" error
+//! of the appropriate type in its place. Callers that handle visitor or
+//! transcoder errors can take ownership of any captured error by consuming the
+//! used visitor or transcoder, and are expected to handle such captured errors
+//! in place of the original.
 //!
 //! Since the deserializer drives the transcoding process, its error messages
 //! can provide useful context for errors produced by the serializer. For
@@ -67,31 +87,12 @@
 //! in the input. The transcoder captures this information by plumbing a
 //! reference to a `MessageCell` through the call stack of visitors and
 //! transcoders. At the deepest point in the call stack where the serializer
-//! error captured by a `Visitor` overrides a deserializer error as described
-//! above, the transcoder will write the deserializer's error message into the
-//! cell, and will return it alongside the original serializer error. Only the
-//! message is stored, as the full deserializer error is not guaranteed to
-//! outlive the transcode operation.
-//!
-//! ## Differences from `serde_transcode`
-//!
-//! The above error handling mechanism is unique to jyt. `serde_transcode`
-//! stringifies errors as necessary throughout each level of the transcoding
-//! call stack, eventually yielding an error of the serializer's type. This may
-//! erase useful context from the original error, such as the details of a
-//! failed I/O operation in the serializer. It may also duplicate the context
-//! provided by the deserializer's error messages across levels of the call
-//! stack, such that the final error message references multiple locations in
-//! the original input.
-//!
-//! `serde_transcode` directly exposes the `Transcoder` type that implements
-//! `Serialize` for a `Deserializer`. jyt keeps this type private to avoid
-//! creating a contract around its significantly more complex API, which
-//! includes the special error handling mechanisms described above.
-//!
-//! jyt does not support transcoding `Option<T>` and newtype struct values, as
-//! no jyt input format is expected to produce such values on its own. The
-//! implementation could be extended to support this.
+//! error captured by a `Visitor` overrides a generic "translation failed"
+//! deserializer error as described above, the transcoder will write the
+//! deserializer's error message into the cell, and will eventually return it
+//! alongside the original serializer error. Only the message is stored, as
+//! Serde does not guarantee that the deserializer error will outlive the
+//! transcode operation.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -133,7 +134,13 @@ where
 /// Holds an error produced during transcoding.
 #[derive(Debug)]
 pub(crate) enum TranscodeError<S, D> {
+  /// The serializer triggered the transcode failure, for example due to an
+  /// input value it could not handle. The error message from the deserializer
+  /// is included as it may provide additional useful context, such as the line
+  /// at which it failed.
   Ser { serr: S, derr_message: String },
+  /// The deserializer triggered the transcode failure, for example due to
+  /// invalid input.
   De { derr: D },
 }
 
@@ -165,11 +172,17 @@ where
   }
 }
 
+/// Captures a message from deep within the call stack of a transcoding
+/// operation.
+///
+/// The transcoder uses this to capture a relevant deserializer error message
+/// for any serializer error it returns.
 #[derive(Default)]
 struct MessageCell(Option<String>);
 
 impl MessageCell {
-  /// Stores the error in the cell if it is currently empty.
+  /// Stores a message in the cell if it is currently empty, or leaves a full
+  /// cell as is.
   fn store_if_empty<D>(&mut self, msg: D)
   where
     D: fmt::Display,
@@ -182,8 +195,15 @@ impl MessageCell {
 
 /// Enables a Serde `Deserializer` to drive the contained Serde `Serializer`.
 ///
-/// See the module level documentation for details of this type and its expected
-/// usage.
+/// Where a more typical `Visitor` would build some data structure from the
+/// value the deserializer provides, this `Visitor` forwards that value to a
+/// [`Serializer`], yielding a value of the serializer's `Ok` type on success.
+/// For scalar values like integers and strings, this is the only type involved
+/// in the transcode operation. For sequences and maps, the `Visitor` will
+/// recursively construct additional visitors.
+///
+/// See the module level documentation for special considerations associated
+/// with usage of this type.
 ///
 /// # Panics
 ///
@@ -227,7 +247,8 @@ where
   }
 }
 
-/// Implements methods of a [`serde::de::Visitor`] for our transcoding visitor.
+/// Implements the methods of a [`serde::de::Visitor`] that receive scalar
+/// values from a deserializer and directly forward them to a serializer.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_visitor_methods {
@@ -351,10 +372,16 @@ where
   }
 }
 
-/// Implements `DeserializeSeed` types for methods of sequence and map
-/// serializers.
+/// Implements `DeserializeSeed` types that participate in the transcoding of
+/// sequence and map values.
 ///
-/// See the module level documentation for details of how these types are used.
+/// The Serde data model treats sequences and maps as collections of
+/// (de)serializable values. Each `DeserializeSeed` receives the `Deserializer`
+/// that provides access to a single element of the collection, transcodes this
+/// value, and yields any error that the serializer produces.
+///
+/// See the module level documentation for special considerations associated
+/// with usage of this type.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_seed_types {
@@ -397,8 +424,14 @@ local_impl_transcode_seed_types! {
 
 /// Implements `Serialize` for a `Deserializer`.
 ///
-/// See the module level documentation for details of this type and its expected
-/// usage.
+/// Serde's sequence and map serializer APIs require values implementing the
+/// `Serialize` trait. Where a typical serializable value would drive a
+/// serializer based on a data structure, this implementation drives it from the
+/// value produced by the `Deserializer` provided to a sequence or map
+/// deserialize seed, using a new `Visitor` instance.
+///
+/// See the module level documentation for special considerations associated
+/// with usage of this type.
 ///
 /// # Panics
 ///
