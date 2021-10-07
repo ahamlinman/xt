@@ -70,8 +70,8 @@
 //! encounters a deserializer error, it must return an error of a type defined
 //! by the _serializer_. From within the visitor and transcoder implementations,
 //! the methods that construct these error values are incapable of passing on
-//! the original error of the inverse type, which may contain context that we
-//! wish to preserve for the caller.
+//! the full original error value of the inverse type, which may contain context
+//! that we wish to preserve for the caller.
 //!
 //! Visitor and transcoder methods that cannot return a given error directly
 //! will capture it internally and return a generic "translation failed" error
@@ -84,15 +84,17 @@
 //! can provide useful context for errors produced by the serializer. For
 //! example, when a serializer cannot handle a value provided by the
 //! deserializer, the deserializer's error may report the location of that value
-//! in the input. The transcoder captures this information by plumbing a
-//! reference to a `MessageCell` through the call stack of visitors and
+//! in the input. The transcoding process captures this information by plumbing
+//! a reference to a `MessageCell` through the call stack of visitors and
 //! transcoders. At the deepest point in the call stack where the serializer
 //! error captured by a `Visitor` overrides a generic "translation failed"
 //! deserializer error as described above, the transcoder will write the
 //! deserializer's error message into the cell, and will eventually return it
 //! alongside the original serializer error. Only the message is stored, as
 //! Serde does not guarantee that the deserializer error will outlive the
-//! transcode operation.
+//! transcode operation. This is an awkward solution, and will likely improve in
+//! a future version of the transcoder through a better generalization of the
+//! error capturing strategy.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -107,9 +109,9 @@ use serde::{
 
 /// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
 ///
-/// Values produced by the `Deserializer` will be forwarded directly to the
-/// `Serializer` without collecting the input into an intermediate form in
-/// memory. An error on either side will halt further transcoding.
+/// The transcoder forwards the output produced by the deserializer directly to
+/// the serializer without collecting it into an intermediate data structure. An
+/// error on either side will halt further transcoding.
 pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
 where
   S: Serializer,
@@ -135,9 +137,9 @@ where
 #[derive(Debug)]
 pub(crate) enum TranscodeError<S, D> {
   /// The serializer triggered the transcode failure, for example due to an
-  /// input value it could not handle. The error message from the deserializer
-  /// is included as it may provide additional useful context, such as the line
-  /// at which it failed.
+  /// input value it could not handle. The included error message from the
+  /// deserializer may provide useful context, such as the location of the value
+  /// that the serializer was unable to handle.
   Ser { serr: S, derr_message: String },
   /// The deserializer triggered the transcode failure, for example due to
   /// invalid input.
@@ -176,7 +178,10 @@ where
 /// operation.
 ///
 /// The transcoder uses this to capture a relevant deserializer error message
-/// for any serializer error it returns.
+/// for any serializer error it returns. It is a hack, and difficult to
+/// understand, and should not exist. This feature should be based on capturing
+/// errors to shuffle them up the call stack, exactly as we do for the
+/// "original" error that triggered a transcoding failure.
 #[derive(Default)]
 struct MessageCell(Option<String>);
 
@@ -194,13 +199,6 @@ impl MessageCell {
 }
 
 /// Enables a Serde `Deserializer` to drive the contained Serde `Serializer`.
-///
-/// Where a more typical `Visitor` would build some data structure from the
-/// value the deserializer provides, this `Visitor` forwards that value to a
-/// [`Serializer`], yielding a value of the serializer's `Ok` type on success.
-/// For scalar values like integers and strings, this is the only type involved
-/// in the transcode operation. For sequences and maps, the `Visitor` will
-/// recursively construct additional visitors.
 ///
 /// See the module level documentation for special considerations associated
 /// with usage of this type.
@@ -247,6 +245,17 @@ where
   }
 }
 
+/// Captures a serializer error into a visitor, then returns a generic
+/// deserializer error.
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_serr_to_derr {
+  ($self:ident, $serr:expr, $derr_constructor:path) => {{
+    *$self = Visitor::Used { serr: Some($serr) };
+    Err($derr_constructor("translation failed"))
+  }};
+}
+
 /// Implements the methods of a [`serde::de::Visitor`] that receive scalar
 /// values from a deserializer and directly forward them to a serializer.
 ///
@@ -258,26 +267,11 @@ macro_rules! local_impl_transcode_visitor_methods {
         let (s, _) = self.take();
         match s.$serialize($($arg)?) {
           Ok(value) => Ok(value),
-          Err(serr) => {
-            *self = Visitor::Used{serr: Some(serr)};
-            Err(E::custom("translation failed"))
-          }
+          Err(serr) => local_serr_to_derr!(self, serr, E::custom),
         }
       }
     )*
-  }
-}
-
-/// Stores a serializer error generated while visiting a sequence or map into a
-/// visitor, then returns a generic deserializer error.
-///
-/// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_visitor_ser_error {
-  ($self:ident, $serr:expr) => {{
-    *$self = Visitor::Used { serr: Some($serr) };
-    use serde::de::Error;
-    Err(A::Error::custom("translation failed"))
-  }};
+  };
 }
 
 impl<'de, 'm, S> de::Visitor<'de> for &mut Visitor<'m, S>
@@ -318,10 +312,12 @@ where
   where
     A: de::SeqAccess<'de>,
   {
+    use serde::de::Error;
+
     let (s, derr_cell) = self.take();
     let mut s = match s.serialize_seq(seq.size_hint()) {
       Ok(s) => s,
-      Err(err) => return local_visitor_ser_error!(self, err),
+      Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
     };
 
     while let Some(result) = seq.next_element_seed(SeqSeed {
@@ -329,13 +325,13 @@ where
       derr_cell,
     })? {
       if let Some(err) = result {
-        return local_visitor_ser_error!(self, err);
+        return local_serr_to_derr!(self, err, A::Error::custom);
       }
     }
 
     match s.end() {
       Ok(v) => Ok(v),
-      Err(err) => local_visitor_ser_error!(self, err),
+      Err(err) => local_serr_to_derr!(self, err, A::Error::custom),
     }
   }
 
@@ -343,10 +339,12 @@ where
   where
     A: de::MapAccess<'de>,
   {
+    use serde::de::Error;
+
     let (s, derr_cell) = self.take();
     let mut s = match s.serialize_map(map.size_hint()) {
       Ok(s) => s,
-      Err(err) => return local_visitor_ser_error!(self, err),
+      Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
     };
 
     while let Some(result) = map.next_key_seed(KeySeed {
@@ -354,34 +352,26 @@ where
       derr_cell,
     })? {
       if let Some(err) = result {
-        return local_visitor_ser_error!(self, err);
+        return local_serr_to_derr!(self, err, A::Error::custom);
       }
 
       if let Some(err) = map.next_value_seed(ValueSeed {
         s: &mut s,
         derr_cell,
       })? {
-        return local_visitor_ser_error!(self, err);
+        return local_serr_to_derr!(self, err, A::Error::custom);
       }
     }
 
     match s.end() {
       Ok(v) => Ok(v),
-      Err(err) => local_visitor_ser_error!(self, err),
+      Err(err) => local_serr_to_derr!(self, err, A::Error::custom),
     }
   }
 }
 
 /// Implements `DeserializeSeed` types that participate in the transcoding of
 /// sequence and map values.
-///
-/// The Serde data model treats sequences and maps as collections of
-/// (de)serializable values. Each `DeserializeSeed` receives the `Deserializer`
-/// that provides access to a single element of the collection, transcodes this
-/// value, and yields any error that the serializer produces.
-///
-/// See the module level documentation for special considerations associated
-/// with usage of this type.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_seed_types {
@@ -423,12 +413,6 @@ local_impl_transcode_seed_types! {
 }
 
 /// Implements `Serialize` for a `Deserializer`.
-///
-/// Serde's sequence and map serializer APIs require values implementing the
-/// `Serialize` trait. Where a typical serializable value would drive a
-/// serializer based on a data structure, this implementation drives it from the
-/// value produced by the `Deserializer` provided to a sequence or map
-/// deserialize seed, using a new `Visitor` instance.
 ///
 /// See the module level documentation for special considerations associated
 /// with usage of this type.
@@ -491,6 +475,18 @@ where
       Ok(value) => Ok(value),
       Err(derr) => match visitor.into_serializer_error() {
         Some(serr) => {
+          // It's not enough (at least, not with some deserializers) to simply
+          // capture the first "translation failed" deserializer error as soon
+          // as it's created. Rather, we need to go another level up the call
+          // stack and capture the first error the deserializer generates *from*
+          // that error to get useful information out of it.
+          //
+          // Likewise, it's not enough to simply take the deserializer error
+          // from the top level of the transcode operation (unless that is the
+          // first and only one available), since the it might effectively
+          // report the root of the document as the error due to us constructing
+          // a brand new deserializer error at each level instead of passing up
+          // the original.
           derr_cell.store_if_empty(derr);
           Err(serr)
         }
