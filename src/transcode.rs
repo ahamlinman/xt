@@ -86,7 +86,6 @@
 
 use std::borrow::Cow;
 use std::cell::Cell;
-use std::error::Error;
 use std::fmt;
 use std::mem;
 
@@ -103,7 +102,7 @@ const TRANSLATION_FAILED: &'static str = "translation failed";
 /// The transcoder forwards the output produced by the deserializer directly to
 /// the serializer without collecting it into an intermediate data structure. An
 /// error on either side will halt further transcoding.
-pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, TranscodeError<S::Error, D::Error>>
+pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, Error<S::Error, D::Error>>
 where
   S: Serializer,
   D: Deserializer<'de>,
@@ -112,15 +111,15 @@ where
   match d.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.into_serializer_error() {
-      Some(serr) => Err(TranscodeError::Ser(serr, derr)),
-      None => Err(TranscodeError::De(derr)),
+      Some(serr) => Err(Error::Ser(serr, derr)),
+      None => Err(Error::De(derr)),
     },
   }
 }
 
 /// Holds an error produced during transcoding.
 #[derive(Debug)]
-pub(crate) enum TranscodeError<S, D> {
+pub(crate) enum Error<S, D> {
   /// The serializer triggered the transcode failure, for example due to an
   /// input value it could not handle. The included deserializer error may
   /// provide useful context, such as the location of the value that the
@@ -131,13 +130,13 @@ pub(crate) enum TranscodeError<S, D> {
   De(D),
 }
 
-impl<S, D> fmt::Display for TranscodeError<S, D>
+impl<S, D> fmt::Display for Error<S, D>
 where
   S: ser::Error,
   D: de::Error,
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    use TranscodeError::*;
+    use Error::*;
     match self {
       Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
       De(derr) => fmt::Display::fmt(derr, f),
@@ -145,13 +144,13 @@ where
   }
 }
 
-impl<S, D> Error for TranscodeError<S, D>
+impl<S, D> std::error::Error for Error<S, D>
 where
   S: ser::Error + 'static,
   D: de::Error + 'static,
 {
-  fn source(&self) -> Option<&(dyn Error + 'static)> {
-    use TranscodeError::*;
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    use Error::*;
     match self {
       Ser(serr, _) => Some(serr),
       De(derr) => Some(derr),
