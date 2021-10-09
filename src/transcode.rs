@@ -195,6 +195,14 @@ where
     }
   }
 
+  fn capture(&mut self, serr: Option<S::Error>) {
+    use Visitor::*;
+    let old = mem::replace(self, Used(serr));
+    if let Used(Some(_)) = old {
+      panic!("visitor overwrote previous captured error");
+    }
+  }
+
   fn into_serializer_error(self) -> Option<S::Error> {
     use Visitor::*;
     match self {
@@ -218,7 +226,7 @@ macro_rules! local_impl_transcode_visitor_methods {
         match self.take_serializer().$serialize($($arg)?) {
           Ok(value) => Ok(value),
           Err(serr) => {
-            *self = Visitor::Used(Some(serr));
+            self.capture(Some(serr));
             Err(E::custom(TRANSLATION_FAILED))
           }
         }
@@ -266,12 +274,11 @@ where
     A: de::SeqAccess<'de>,
   {
     use de::Error;
-    use Visitor::*;
 
     let mut s = match self.take_serializer().serialize_seq(seq.size_hint()) {
       Ok(s) => s,
       Err(serr) => {
-        *self = Used(Some(serr));
+        self.capture(Some(serr));
         return Err(A::Error::custom(TRANSLATION_FAILED));
       }
     };
@@ -282,9 +289,7 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          if let Some(serr) = seq_seed.into_serializer_error() {
-            *self = Used(Some(serr));
-          }
+          self.capture(seq_seed.into_serializer_error());
           return Err(derr);
         }
       }
@@ -293,7 +298,7 @@ where
     match s.end() {
       Ok(value) => Ok(value),
       Err(serr) => {
-        *self = Used(Some(serr));
+        self.capture(Some(serr));
         Err(A::Error::custom(TRANSLATION_FAILED))
       }
     }
@@ -304,12 +309,11 @@ where
     A: de::MapAccess<'de>,
   {
     use de::Error;
-    use Visitor::*;
 
     let mut s = match self.take_serializer().serialize_map(map.size_hint()) {
       Ok(s) => s,
       Err(serr) => {
-        *self = Used(Some(serr));
+        self.capture(Some(serr));
         return Err(A::Error::custom(TRANSLATION_FAILED));
       }
     };
@@ -320,9 +324,7 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          if let Some(serr) = key_seed.into_serializer_error() {
-            *self = Used(Some(serr));
-          }
+          self.capture(key_seed.into_serializer_error());
           return Err(derr);
         }
       }
@@ -331,9 +333,7 @@ where
       match map.next_value_seed(&mut value_seed) {
         Ok(()) => {}
         Err(derr) => {
-          if let Some(serr) = value_seed.into_serializer_error() {
-            *self = Used(Some(serr));
-          }
+          self.capture(value_seed.into_serializer_error());
           return Err(derr);
         }
       }
@@ -342,7 +342,7 @@ where
     match s.end() {
       Ok(value) => Ok(value),
       Err(serr) => {
-        *self = Used(Some(serr));
+        self.capture(Some(serr));
         Err(A::Error::custom(TRANSLATION_FAILED))
       }
     }
@@ -380,6 +380,14 @@ macro_rules! local_impl_transcode_seed_types {
           }
         }
 
+        fn capture(&mut self, serr: Option<S::Error>) {
+          use $seed_name::*;
+          let old = mem::replace(self, Used(serr));
+          if let Used(Some(_)) = old {
+            panic!("seed overwrote previous captured error");
+          }
+        }
+
         fn into_serializer_error(self) -> Option<S::Error> {
           use $seed_name::*;
           match self {
@@ -400,13 +408,12 @@ macro_rules! local_impl_transcode_seed_types {
           D: Deserializer<'de>,
         {
           use de::Error;
-          use $seed_name::*;
 
           let transcoder = Transcoder::new(d);
           match self.take_serializer().$ser_method(&transcoder) {
             Ok(()) => Ok(()),
             Err(serr) => {
-              *self = Used(Some(serr));
+              self.capture(Some(serr));
               match transcoder.into_deserializer_error() {
                 Some(derr) => Err(derr),
                 None => Err(D::Error::custom(TRANSLATION_FAILED)),
@@ -461,6 +468,14 @@ where
     }
   }
 
+  fn capture(&self, derr: Option<D::Error>) {
+    use TranscoderState::*;
+    let old = self.0.replace(Used(derr));
+    if let Used(Some(_)) = old {
+      panic!("transcoder overwrote previous captured error");
+    }
+  }
+
   fn into_deserializer_error(self) -> Option<D::Error> {
     use TranscoderState::*;
     match self.0.into_inner() {
@@ -479,13 +494,12 @@ where
     S: Serializer,
   {
     use ser::Error;
-    use TranscoderState::*;
 
     let mut visitor = Visitor::new(s);
     match self.take_deserializer().deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
-        self.0.set(Used(Some(derr)));
+        self.capture(Some(derr));
         match visitor.into_serializer_error() {
           Some(serr) => Err(serr),
           None => Err(S::Error::custom(TRANSLATION_FAILED)),
