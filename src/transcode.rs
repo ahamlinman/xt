@@ -98,6 +98,9 @@ use serde::{
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
+/// The message used to generate generic serializer and deserializer errors.
+const TRANSLATION_FAILED: &'static str = "translation failed";
+
 /// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
 ///
 /// The transcoder forwards the output produced by the deserializer directly to
@@ -108,14 +111,12 @@ where
   S: Serializer,
   D: Deserializer<'de>,
 {
-  use TranscodeError::*;
-
   let mut visitor = Visitor::new(s);
   match d.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.into_serializer_error() {
-      Some(serr) => Err(Ser(serr, derr)),
-      None => Err(De(derr)),
+      Some(serr) => Err(TranscodeError::Ser(serr, derr)),
+      None => Err(TranscodeError::De(derr)),
     },
   }
 }
@@ -186,7 +187,7 @@ where
     Visitor::New(s)
   }
 
-  fn take(&mut self) -> S {
+  fn take_serializer(&mut self) -> S {
     use Visitor::*;
     match mem::replace(self, Used(None)) {
       New(s) => s,
@@ -198,34 +199,28 @@ where
     use Visitor::*;
     match self {
       New(_) => None,
-      Used(err) => err,
+      Used(serr) => serr,
     }
   }
 }
 
-/// Captures a serializer error into a visitor, then returns a generic
-/// deserializer error.
-///
-/// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_serr_to_derr {
-  ($self:ident, $serr:expr, $derr_constructor:path) => {{
-    *$self = Visitor::Used(Some($serr));
-    Err($derr_constructor("translation failed"))
-  }};
-}
-
 /// Implements the methods of a [`serde::de::Visitor`] that receive scalar
-/// values from a deserializer and directly forward them to a serializer.
+/// values from a deserializer and forward them directly to a serializer.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_visitor_methods {
   ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
     $(
-      fn $visit<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
-        let s = self.take();
-        match s.$serialize($($arg)?) {
+      fn $visit<E>(self, $($arg: $ty)?) -> Result<Self::Value, E>
+      where
+        E: de::Error,
+      {
+        match self.take_serializer().$serialize($($arg)?) {
           Ok(value) => Ok(value),
-          Err(serr) => local_serr_to_derr!(self, serr, E::custom),
+          Err(serr) => {
+            *self = Visitor::Used(Some(serr));
+            Err(E::custom(TRANSLATION_FAILED))
+          }
         }
       }
     )*
@@ -270,22 +265,25 @@ where
   where
     A: de::SeqAccess<'de>,
   {
-    use serde::de::Error;
+    use de::Error;
+    use Visitor::*;
 
-    let s = self.take();
-    let mut s = match s.serialize_seq(seq.size_hint()) {
+    let mut s = match self.take_serializer().serialize_seq(seq.size_hint()) {
       Ok(s) => s,
-      Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
+      Err(serr) => {
+        *self = Used(Some(serr));
+        return Err(A::Error::custom(TRANSLATION_FAILED));
+      }
     };
 
     loop {
-      let mut seed = SeqSeed::New(&mut s);
-      match seq.next_element_seed(&mut seed) {
+      let mut seq_seed = SeqSeed::new(&mut s);
+      match seq.next_element_seed(&mut seq_seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          if let Some(serr) = seed.into_serializer_error() {
-            *self = Visitor::Used(Some(serr));
+          if let Some(serr) = seq_seed.into_serializer_error() {
+            *self = Used(Some(serr));
           }
           return Err(derr);
         }
@@ -293,8 +291,11 @@ where
     }
 
     match s.end() {
-      Ok(v) => Ok(v),
-      Err(err) => local_serr_to_derr!(self, err, A::Error::custom),
+      Ok(value) => Ok(value),
+      Err(serr) => {
+        *self = Used(Some(serr));
+        Err(A::Error::custom(TRANSLATION_FAILED))
+      }
     }
   }
 
@@ -302,33 +303,36 @@ where
   where
     A: de::MapAccess<'de>,
   {
-    use serde::de::Error;
+    use de::Error;
+    use Visitor::*;
 
-    let s = self.take();
-    let mut s = match s.serialize_map(map.size_hint()) {
+    let mut s = match self.take_serializer().serialize_map(map.size_hint()) {
       Ok(s) => s,
-      Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
+      Err(serr) => {
+        *self = Used(Some(serr));
+        return Err(A::Error::custom(TRANSLATION_FAILED));
+      }
     };
 
     loop {
-      let mut key_seed = KeySeed::New(&mut s);
+      let mut key_seed = KeySeed::new(&mut s);
       match map.next_key_seed(&mut key_seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
           if let Some(serr) = key_seed.into_serializer_error() {
-            *self = Visitor::Used(Some(serr));
+            *self = Used(Some(serr));
           }
           return Err(derr);
         }
       }
 
-      let mut value_seed = ValueSeed::New(&mut s);
+      let mut value_seed = ValueSeed::new(&mut s);
       match map.next_value_seed(&mut value_seed) {
         Ok(()) => {}
         Err(derr) => {
           if let Some(serr) = value_seed.into_serializer_error() {
-            *self = Visitor::Used(Some(serr));
+            *self = Used(Some(serr));
           }
           return Err(derr);
         }
@@ -336,8 +340,11 @@ where
     }
 
     match s.end() {
-      Ok(v) => Ok(v),
-      Err(err) => local_serr_to_derr!(self, err, A::Error::custom),
+      Ok(value) => Ok(value),
+      Err(serr) => {
+        *self = Used(Some(serr));
+        Err(A::Error::custom(TRANSLATION_FAILED))
+      }
     }
   }
 }
@@ -361,7 +368,11 @@ macro_rules! local_impl_transcode_seed_types {
       where
         S: $ser_trait,
       {
-        fn take(&mut self) -> &'a mut S {
+        fn new(s: &'a mut S) -> $seed_name<'a, S> {
+          $seed_name::New(s)
+        }
+
+        fn take_serializer(&mut self) -> &'a mut S {
           use $seed_name::*;
           match mem::replace(self, Used(None)) {
             New(s) => s,
@@ -389,15 +400,16 @@ macro_rules! local_impl_transcode_seed_types {
           D: Deserializer<'de>,
         {
           use de::Error;
+          use $seed_name::*;
 
           let transcoder = Transcoder::new(d);
-          match self.take().$ser_method(&transcoder) {
+          match self.take_serializer().$ser_method(&transcoder) {
             Ok(()) => Ok(()),
             Err(serr) => {
-              *self = $seed_name::Used(Some(serr));
+              *self = Used(Some(serr));
               match transcoder.into_deserializer_error() {
                 Some(derr) => Err(derr),
-                None => Err(D::Error::custom("translation failed")),
+                None => Err(D::Error::custom(TRANSLATION_FAILED)),
               }
             }
           }
@@ -441,6 +453,14 @@ where
     Transcoder(Cell::new(TranscoderState::New(d)))
   }
 
+  fn take_deserializer(&self) -> D {
+    use TranscoderState::*;
+    match self.0.replace(Used(None)) {
+      New(d) => d,
+      Used(_) => panic!("transcoder may only be used once"),
+    }
+  }
+
   fn into_deserializer_error(self) -> Option<D::Error> {
     use TranscoderState::*;
     match self.0.into_inner() {
@@ -461,19 +481,14 @@ where
     use ser::Error;
     use TranscoderState::*;
 
-    let d = match self.0.replace(Used(None)) {
-      New(d) => d,
-      Used(_) => panic!("transcoder may only be serialized once"),
-    };
-
     let mut visitor = Visitor::new(s);
-    match d.deserialize_any(&mut visitor) {
+    match self.take_deserializer().deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
         self.0.set(Used(Some(derr)));
         match visitor.into_serializer_error() {
           Some(serr) => Err(serr),
-          None => Err(S::Error::custom("translation failed")),
+          None => Err(S::Error::custom(TRANSLATION_FAILED)),
         }
       }
     }
