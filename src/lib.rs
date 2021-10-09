@@ -24,8 +24,8 @@ pub use input::InputHandle;
 ///
 /// When `from` is `None`, jyt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
-pub fn jyt<'a, W>(
-  mut input: InputHandle<'a>,
+pub fn jyt<W>(
+  mut input: InputHandle<'_>,
   from: Option<Format>,
   to: Format,
   output: W,

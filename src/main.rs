@@ -180,14 +180,18 @@ impl Opt {
       Some(path) if path.to_str() == Some("-") => Ok(InputHandle::from_reader(io::stdin())),
       Some(path) => {
         let file = File::open(path)?;
-        // Safety: Modification of the mapped file outside the process triggers
-        // undefined behavior. Our dirty "solution" is to document this in the
-        // help output.
+        // "SAFETY": It is undefined behavior to modify a mapped file outside of
+        // the process... so we tell users not to do that in the help output.
+        // No, this is not a real solution and does not provide any actual
+        // safety guarantee. It's a risk intentionally taken in the name of
+        // performance, based on a pragmatic understanding of the failure modes
+        // most likely to appear when the requirement is violated.
         match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
           // Per memmap2 docs, it's safe to drop file once mmap succeeds.
           Ok(map) => Ok(InputHandle::from_buffer(map)),
-          // Fall back to using a reader, in case the file is actually something
-          // like a named pipe.
+          // If mmap fails, we can always fall back to reading the file
+          // normally. Examples of where this can matter include (but are not
+          // limited to) process substitution and named pipes.
           Err(_) => Ok(InputHandle::from_reader(file)),
         }
       }

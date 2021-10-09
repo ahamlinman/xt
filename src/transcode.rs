@@ -54,7 +54,7 @@
 //! - A `Transcoder` implements [`Serialize`] for the [`Deserializer`] provided
 //! to each seed, to meet the requirements of Serde's sequence and map
 //! serializer APIs. It recursively constructs a `Visitor` to transcode the
-//! collection element produced by the `Deserializer`.
+//! value produced by the `Deserializer`.
 //!
 //! Each implementation is a single use state machine that owns some serializer
 //! or deserializer instance in its "new" state, and that owns any error value
@@ -102,7 +102,7 @@ const TRANSLATION_FAILED: &'static str = "translation failed";
 /// The transcoder forwards the output produced by the deserializer directly to
 /// the serializer without collecting it into an intermediate data structure. An
 /// error on either side will halt further transcoding.
-pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, Error<S::Error, D::Error>>
+pub(crate) fn transcode<'de, S, D>(s: S, d: D) -> Result<S::Ok, Error<S::Error, D::Error>>
 where
   S: Serializer,
   D: Deserializer<'de>,
@@ -193,6 +193,7 @@ where
 
   fn capture(&mut self, serr: Option<S::Error>) {
     use Visitor::*;
+    // Mimicking what we do with Cell<T> in a Transcoder.
     let old = mem::replace(self, Used(serr));
     if let Used(Some(_)) = old {
       panic!("visitor overwrote previous captured error");
@@ -378,6 +379,7 @@ macro_rules! local_impl_transcode_seed_types {
 
         fn capture(&mut self, serr: Option<S::Error>) {
           use $seed::*;
+          // Mimicking what we do with Cell<T> in a Transcoder.
           let old = mem::replace(self, Used(serr));
           if let Used(Some(_)) = old {
             panic!("seed overwrote previous captured error");
@@ -621,12 +623,12 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
 
         visit_char(v: char) => Value::Char(v);
 
-        visit_str(v: &str) => Value::String(Cow::Owned(v.to_owned()));
         visit_borrowed_str(v: &'a str) => Value::String(Cow::Borrowed(v));
+        visit_str(v: &str) => Value::String(Cow::Owned(v.to_owned()));
         visit_string(v: String) => Value::String(Cow::Owned(v));
 
-        visit_bytes(v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
         visit_borrowed_bytes(v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
+        visit_bytes(v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
         visit_byte_buf(v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
       }
 

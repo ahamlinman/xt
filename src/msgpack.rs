@@ -13,6 +13,16 @@ where
     Input::Buffer(buf) => {
       let mut buf = buf.deref();
       while buf.len() > 0 {
+        // Note that next_value_size does not protect against stack overflows
+        // triggered by recursive sequences and maps in the input. This is
+        // partly why the help output says that jyt is not designed for use with
+        // untrusted input, since an input of around 3500 bytes (specifically,
+        // around 3500 nested MessagePack fixarrays of length 1) can crash a
+        // debug build of the program on my machine.
+        //
+        // rmp_serde limits its nesting depth to 1024 by default, which we may
+        // as well adopt as our own limit since that seems to give more than
+        // enough headroom.
         let size = next_value_size(buf)?;
         let (next, rest) = buf.split_at(size);
         let mut de = rmp_serde::Deserializer::from_read_ref(next);
@@ -158,6 +168,7 @@ fn total_sequence_size(input: &[u8], count: u64) -> Result<usize, ReadSizeError>
     if seq.len() == 0 {
       return Err(ReadSizeError::Truncated);
     }
+    // TODO: Stack overflow protection.
     let size = next_value_size(seq)?;
     total += size;
     seq = &seq[size..];
