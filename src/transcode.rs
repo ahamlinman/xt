@@ -114,7 +114,7 @@ where
   match d.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.into_serializer_error() {
-      Some(serr) => Err(Ser(serr)),
+      Some(serr) => Err(Ser(serr, derr)),
       None => Err(De(derr)),
     },
   }
@@ -124,8 +124,10 @@ where
 #[derive(Debug)]
 pub(crate) enum TranscodeError<S, D> {
   /// The serializer triggered the transcode failure, for example due to an
-  /// input value it could not handle.
-  Ser(S),
+  /// input value it could not handle. The included deserializer error may
+  /// provide useful context, such as the location of the value that the
+  /// serializer could not handle.
+  Ser(S, D),
   /// The deserializer triggered the transcode failure, for example due to
   /// invalid input.
   De(D),
@@ -139,8 +141,8 @@ where
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     use TranscodeError::*;
     match self {
-      Ser(err) => fmt::Display::fmt(err, f),
-      De(err) => fmt::Display::fmt(err, f),
+      Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
+      De(derr) => fmt::Display::fmt(derr, f),
     }
   }
 }
@@ -153,8 +155,8 @@ where
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     use TranscodeError::*;
     match self {
-      Ser(err) => Some(err),
-      De(err) => Some(err),
+      Ser(serr, _) => Some(serr),
+      De(derr) => Some(derr),
     }
   }
 }
@@ -276,9 +278,17 @@ where
       Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
     };
 
-    while let Some(result) = seq.next_element_seed(SeqSeed(&mut s))? {
-      if let Some(err) = result {
-        return local_serr_to_derr!(self, err, A::Error::custom);
+    loop {
+      let mut seed = SeqSeed::New(&mut s);
+      match seq.next_element_seed(&mut seed) {
+        Ok(None) => break,
+        Ok(Some(())) => {}
+        Err(derr) => {
+          if let Some(serr) = seed.into_serializer_error() {
+            *self = Visitor::Used(Some(serr));
+          }
+          return Err(derr);
+        }
       }
     }
 
@@ -300,13 +310,28 @@ where
       Err(err) => return local_serr_to_derr!(self, err, A::Error::custom),
     };
 
-    while let Some(result) = map.next_key_seed(KeySeed(&mut s))? {
-      if let Some(err) = result {
-        return local_serr_to_derr!(self, err, A::Error::custom);
+    loop {
+      let mut key_seed = KeySeed::New(&mut s);
+      match map.next_key_seed(&mut key_seed) {
+        Ok(None) => break,
+        Ok(Some(())) => {}
+        Err(derr) => {
+          if let Some(serr) = key_seed.into_serializer_error() {
+            *self = Visitor::Used(Some(serr));
+          }
+          return Err(derr);
+        }
       }
 
-      if let Some(err) = map.next_value_seed(ValueSeed(&mut s))? {
-        return local_serr_to_derr!(self, err, A::Error::custom);
+      let mut value_seed = ValueSeed::New(&mut s);
+      match map.next_value_seed(&mut value_seed) {
+        Ok(()) => {}
+        Err(derr) => {
+          if let Some(serr) = value_seed.into_serializer_error() {
+            *self = Visitor::Used(Some(serr));
+          }
+          return Err(derr);
+        }
       }
     }
 
@@ -324,25 +349,57 @@ where
 macro_rules! local_impl_transcode_seed_types {
   ($($seed_name:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
     $(
-      struct $seed_name<'a, S>(&'a mut S);
-
-      impl<'a, 'de, S> DeserializeSeed<'de> for $seed_name<'a, S>
+      enum $seed_name<'a, S>
       where
         S: $ser_trait,
       {
-        type Value = Option<S::Error>;
+        New(&'a mut S),
+        Used(Option<S::Error>),
+      }
+
+      impl<'a, S> $seed_name<'a, S>
+      where
+        S: $ser_trait,
+      {
+        fn take(&mut self) -> &'a mut S {
+          use $seed_name::*;
+          match mem::replace(self, Used(None)) {
+            New(s) => s,
+            Used(_) => panic!("seed may only be used once"),
+          }
+        }
+
+        fn into_serializer_error(self) -> Option<S::Error> {
+          use $seed_name::*;
+          match self {
+            New(_) => None,
+            Used(serr) => serr,
+          }
+        }
+      }
+
+      impl<'a, 'de, S> DeserializeSeed<'de> for &mut $seed_name<'a, S>
+      where
+        S: $ser_trait,
+      {
+        type Value = ();
 
         fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
         where
           D: Deserializer<'de>,
         {
+          use de::Error;
+
           let transcoder = Transcoder::new(d);
-          match self.0.$ser_method(&transcoder) {
-            Ok(()) => Ok(None),
-            Err(serr) => match transcoder.into_deserializer_error() {
-              Some(derr) => Err(derr),
-              None => Ok(Some(serr)),
-            },
+          match self.take().$ser_method(&transcoder) {
+            Ok(()) => Ok(()),
+            Err(serr) => {
+              *self = $seed_name::Used(Some(serr));
+              match transcoder.into_deserializer_error() {
+                Some(derr) => Err(derr),
+                None => Err(D::Error::custom("translation failed")),
+              }
+            }
           }
         }
       }
@@ -388,7 +445,7 @@ where
     use TranscoderState::*;
     match self.0.into_inner() {
       New(_) => None,
-      Used(err) => err,
+      Used(derr) => derr,
     }
   }
 }
@@ -412,13 +469,13 @@ where
     let mut visitor = Visitor::new(s);
     match d.deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
-      Err(derr) => match visitor.into_serializer_error() {
-        Some(serr) => Err(serr),
-        None => {
-          self.0.set(Used(Some(derr)));
-          Err(S::Error::custom("translation failed"))
+      Err(derr) => {
+        self.0.set(Used(Some(derr)));
+        match visitor.into_serializer_error() {
+          Some(serr) => Err(serr),
+          None => Err(S::Error::custom("translation failed")),
         }
-      },
+      }
     }
   }
 }
