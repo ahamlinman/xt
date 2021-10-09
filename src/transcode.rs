@@ -14,8 +14,8 @@
 //! requirements. At the cost of greater implementation complexity, jyt's
 //! transcoder implements out of band mechanisms to preserve the original value
 //! of the error that caused a transcode to fail, enabling more robust
-//! inspection of error causes. A later section of this documentation describes
-//! the details of the error handling mechanism.
+//! inspection of error causes. The "Implementation Notes" section describes the
+//! details of the error handling mechanism.
 //!
 //! `serde_transcode` directly exposes a `Transcoder` type that implements
 //! `Serialize` for a `Deserializer`. jyt keeps this type private to avoid
@@ -30,8 +30,6 @@
 //!
 //! These details are not important for usage, but are useful to understand the
 //! concept of direct transcoding in Serde.
-//!
-//! ## Principles of Transcoding
 //!
 //! The general premise of transcoding is that wherever a typical Serde client
 //! would deserialize a value into a data structure, a transcoder "deserializes"
@@ -48,44 +46,43 @@
 //! serializer or recursively transcodes the elements of a sequence or map.
 //!
 //! - Various [`DeserializeSeed`] implementations receive `Deserializer`s for
-//! each element of a sequence or map, and transcode each value using the
-//! appropriate method of a sequence or map serializer.
+//! each element of a sequence or map, and forward each value to the appropriate
+//! method of a sequence or map serializer. For example, a `KeySeed` forwards
+//! deserialized map keys to the `serialize_key` method of a [`SerializeMap`]
+//! implementation.
 //!
 //! - A `Transcoder` implements [`Serialize`] for the [`Deserializer`] provided
 //! to each seed, to meet the requirements of Serde's sequence and map
 //! serializer APIs. It recursively constructs a `Visitor` to transcode the
 //! collection element produced by the `Deserializer`.
 //!
-//! Unlike with many Serde-compatible data structures, **a single `Visitor` or
-//! `Transcoder` must only be used once over its lifetime**, as the transcoding
-//! process consumes from the deserializer without persisting any values it
-//! yields. The transcoding process carefully handles these internal types to
-//! uphold this requirement.
+//! Each implementation is a single use state machine that owns some serializer
+//! or deserializer instance in its "new" state, and that owns any error value
+//! produced by that instance in its "used" state. For example, the new state of
+//! a `Visitor` instance owns the `Serializer` to which the visited value will
+//! be forwarded. When the deserializer invokes a `Visitor` method, it moves the
+//! serializer out of the `Visitor` instance, consumes it in order to serialize
+//! the visited value, and stores any error produced by the serializer into the
+//! used state of the `Visitor` instance.
 //!
-//! ## Error Handling
+//! The used states of each instance capture error values in order to preserve
+//! them across Serde API boundaries. When a `Visitor` or `DeserializeSeed`
+//! method encounters a _serializer_ error, Serde requires that it return an
+//! error of a type defined by the _deserializer_ to safely halt transcoding.
+//! Inversely, when the `serialize` method of a `Transcoder` encounters a
+//! _deserializer_ error, it must return an error of a type defined by the
+//! _serializer_. Within our method implementations, the `custom` functions that
+//! construct these errors can only accept stringified values, and thus cannot
+//! carry the full context of the original error. So, after capturing the
+//! original error into its used state, each transcoder instance will simply
+//! return a generic "translation failed" error of the required return type, and
+//! expect the caller to take ownership of the original error by consuming the
+//! instance.
 //!
-//! When a `Visitor` method encounters a serializer error, Serde requires that
-//! it return an error of a type defined by the _deserializer_ to safely halt
-//! transcoding. Inversely, when the `serialize` method of a `Transcoder`
-//! encounters a deserializer error, it must return an error of a type defined
-//! by the _serializer_. From within the visitor and transcoder implementations,
-//! the methods that construct these error values are incapable of passing on
-//! the full original error value of the inverse type, which may contain context
-//! that we wish to preserve for the caller.
-//!
-//! Visitor and transcoder methods that cannot return a given error directly
-//! will capture it internally and return a generic "translation failed" error
-//! of the appropriate type in its place. Callers that handle visitor or
-//! transcoder errors can take ownership of any captured error by consuming the
-//! used visitor or transcoder, and are expected to handle such captured errors
-//! in place of the original.
-//!
-//! Since the deserializer drives the transcoding process, its error messages
-//! can provide useful context for errors produced by the serializer. For
-//! example, when a serializer cannot handle a value provided by the
-//! deserializer, the deserializer's error may report the location of that value
-//! in the input. A future version of the transcoder will better capture this
-//! information.
+//! Unlike many Serde implementations, each instance of these implementations
+//! **must only be used once over its lifetime**, and will panic if used more
+//! than once. The transcoder carefully handles these internal types to uphold
+//! the necessary expectations for usage and error handling.
 
 use std::borrow::Cow;
 use std::cell::Cell;
