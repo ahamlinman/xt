@@ -351,9 +351,9 @@ where
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! local_impl_transcode_seed_types {
-  ($($seed_name:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
+  ($($seed:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
     $(
-      enum $seed_name<'a, S>
+      enum $seed<'a, S>
       where
         S: $ser_trait,
       {
@@ -361,16 +361,16 @@ macro_rules! local_impl_transcode_seed_types {
         Used(Option<S::Error>),
       }
 
-      impl<'a, S> $seed_name<'a, S>
+      impl<'a, S> $seed<'a, S>
       where
         S: $ser_trait,
       {
-        fn new(s: &'a mut S) -> $seed_name<'a, S> {
-          $seed_name::New(s)
+        fn new(s: &'a mut S) -> $seed<'a, S> {
+          $seed::New(s)
         }
 
         fn take_serializer(&mut self) -> &'a mut S {
-          use $seed_name::*;
+          use $seed::*;
           match mem::replace(self, Used(None)) {
             New(s) => s,
             Used(_) => panic!("seed may only be used once"),
@@ -378,7 +378,7 @@ macro_rules! local_impl_transcode_seed_types {
         }
 
         fn capture(&mut self, serr: Option<S::Error>) {
-          use $seed_name::*;
+          use $seed::*;
           let old = mem::replace(self, Used(serr));
           if let Used(Some(_)) = old {
             panic!("seed overwrote previous captured error");
@@ -386,7 +386,7 @@ macro_rules! local_impl_transcode_seed_types {
         }
 
         fn into_serializer_error(self) -> Option<S::Error> {
-          use $seed_name::*;
+          use $seed::*;
           match self {
             New(_) => None,
             Used(serr) => serr,
@@ -394,7 +394,7 @@ macro_rules! local_impl_transcode_seed_types {
         }
       }
 
-      impl<'a, 'de, S> DeserializeSeed<'de> for &mut $seed_name<'a, S>
+      impl<'a, 'de, S> DeserializeSeed<'de> for &mut $seed<'a, S>
       where
         S: $ser_trait,
       {
