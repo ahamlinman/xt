@@ -72,9 +72,8 @@ impl<W: Write> crate::Output for Output<W> {
 /// This function detects UTF-16 and UTF-32 input based on section 5.2 of the
 /// YAML v1.2.2 specification; detection behavior for non-YAML inputs is not
 /// well defined. Conversions are optimized for simplicity and size, rather than
-/// performance. Input whose size does not evenly divide by the detected code
-/// unit size will be truncated. Input that is invalid in the detected encoding
-/// will return an error.
+/// performance. Input that is invalid in the detected encoding, or whose size
+/// does not evenly divide the detected code unit size, will return an error.
 fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
   let prefix = {
     // We use -1 as a sentinel for truncated input so the match patterns are
@@ -87,7 +86,7 @@ fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
 
   // See https://yaml.org/spec/1.2.2/#52-character-encodings. Notably, valid
   // YAML streams that do not begin with a BOM must begin with an ASCII
-  // character, so that the pattern of null characters reveals the encoding.
+  // character, so that the pattern of null bytes reveals the encoding.
   Ok(match prefix {
     [0, 0, 0xFE, 0xFF] | [0, 0, 0, _] if buf.len() >= 4 => {
       Cow::Owned(convert_utf32(buf, u32::from_be_bytes)?)
@@ -111,10 +110,13 @@ fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, String>
 where
   F: Fn([u8; 4]) -> u32,
 {
-  // UTF-8 requires at least one byte per code point, which gives us a pretty
-  // obvious starting allocation for the happy path of a successful re-encoding.
+  if buf.len() % 4 != 0 {
+    return Err("truncated utf-32".into());
+  }
+
+  // Start with just enough capacity for a pure ASCII result.
   let mut result = String::with_capacity(buf.len() / 4);
-  for unit in buf.chunks_exact(4).map(|v| get_u32(v.try_into().unwrap())) {
+  for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
     let ch = char::from_u32(unit).ok_or_else(|| format!("invalid utf-32: {:x}", unit))?;
     result.push(ch);
   }
@@ -125,8 +127,13 @@ fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, String>
 where
   F: Fn([u8; 2]) -> u16,
 {
+  if buf.len() % 2 != 0 {
+    return Err("truncated utf-16".into());
+  }
+
+  // Start with just enough capacity for a pure ASCII result.
   let mut result = String::with_capacity(buf.len() / 2);
-  let units = buf.chunks_exact(2).map(|v| get_u16(v.try_into().unwrap()));
+  let units = buf.chunks_exact(2).map(|x| get_u16(x.try_into().unwrap()));
   for d in char::decode_utf16(units) {
     let ch = d.map_err(|err| format!("invalid utf-16: {}", err))?;
     result.push(ch);
