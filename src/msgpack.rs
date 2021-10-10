@@ -1,6 +1,95 @@
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display};
+use std::io::{self, BufRead, BufReader, Read, Write};
+
+use crate::{transcode, Input, InputHandle};
+
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+where
+  O: crate::Output,
+{
+  match input.into() {
+    Input::Buffer(buf) => {
+      let mut buf = buf.deref();
+      while buf.len() > 0 {
+        // Note that next_value_size does not protect against stack overflows
+        // triggered by recursive sequences and maps in the input. This is
+        // partly why the help output says that jyt is not designed for use with
+        // untrusted input, since an input of around 3500 bytes (specifically,
+        // around 3500 nested MessagePack fixarrays of length 1) can crash a
+        // debug build of the program on my machine.
+        //
+        // rmp_serde limits its nesting depth to 1024 by default, which we may
+        // as well adopt as our own limit since that seems to give more than
+        // enough headroom.
+        let size = next_value_size(buf)?;
+        let (next, rest) = buf.split_at(size);
+        let mut de = rmp_serde::Deserializer::from_read_ref(next);
+        output.transcode_from(&mut de)?;
+        buf = rest;
+      }
+    }
+    Input::Reader(r) => {
+      // Note that in reader mode, the MessagePack deserializer will eagerly
+      // allocate zero-filled buffers for binary and string data based on the
+      // length specified in the input. This is partly why the help output says
+      // that jyt is not designed for use with untrusted input, since a 5-byte
+      // input could force jyt to allocate as much as 4 GiB of memory before
+      // dying with an error.
+      //
+      // That said, the zero-filling optimizes pretty well in release builds, so
+      // unless you run out of memory first it only burns about a second or two
+      // of CPU time. I've also found across a number of basic tests that
+      // modifying rmp_serde to grow the buffer on demand imposes a small but
+      // consistently measurable performance penalty of around 5%, even for
+      // inputs that can fully reuse the existing buffer allocation, and even
+      // when I explicitly outline the new logic only for large values.
+      let mut r = BufReader::new(r);
+      while has_data_left(&mut r)? {
+        let mut de = rmp_serde::Deserializer::new(&mut r);
+        output.transcode_from(&mut de)?;
+      }
+    }
+  }
+  Ok(())
+}
+
+fn has_data_left<R>(r: &mut BufReader<R>) -> io::Result<bool>
+where
+  R: Read,
+{
+  r.fill_buf().map(|b| !b.is_empty())
+}
+
+pub(crate) struct Output<W: Write>(W);
+
+impl<W: Write> Output<W> {
+  pub fn new(w: W) -> Output<W> {
+    Output(w)
+  }
+}
+
+impl<W: Write> crate::Output for Output<W> {
+  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+  where
+    D: serde::de::Deserializer<'de, Error = E>,
+    E: serde::de::Error + 'static,
+  {
+    let mut ser = rmp_serde::Serializer::new(&mut self.0);
+    transcode::transcode(&mut ser, de)?;
+    Ok(())
+  }
+
+  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+  where
+    S: serde::ser::Serialize,
+  {
+    let mut ser = rmp_serde::Serializer::new(&mut self.0);
+    value.serialize(&mut ser)?;
+    Ok(())
+  }
+}
 
 /// Returns the size in bytes of the MessagePack value at the start of the input
 /// slice.
@@ -12,16 +101,7 @@ use std::fmt::{self, Display};
 /// without panicking, even if the input is not well-formed. For example, a
 /// MessagePack str or bin value with a reported length larger than the
 /// remainder of the input slice will produce an error.
-///
-/// # Examples
-///
-/// ```
-/// # // NOTE: This test case is copied to `test_doc_example` below.
-/// # // See https://github.com/rust-lang/rust/issues/50784.
-/// let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
-/// assert_eq!(next_value_size(&input), Ok(4));
-/// ```
-pub fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
+fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
   use rmp::Marker::*;
 
   if input.len() < 1 {
@@ -88,6 +168,7 @@ fn total_sequence_size(input: &[u8], count: u64) -> Result<usize, ReadSizeError>
     if seq.len() == 0 {
       return Err(ReadSizeError::Truncated);
     }
+    // TODO: Stack overflow protection.
     let size = next_value_size(seq)?;
     total += size;
     seq = &seq[size..];
@@ -110,22 +191,24 @@ trait TryReadPrefix<T> {
   fn try_read_prefix(self) -> Option<T>;
 }
 
-macro_rules! __impl_try_read_u8_slice_prefix {
-  ($t:ty) => {
-    impl TryReadPrefix<$t> for &[u8] {
-      fn try_read_prefix(self) -> Option<$t> {
-        const SIZE: usize = std::mem::size_of::<$t>();
+// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! local_impl_byte_slice_try_read_prefix {
+  ($ty:ty) => {
+    impl TryReadPrefix<$ty> for &[u8] {
+      fn try_read_prefix(self) -> Option<$ty> {
+        const SIZE: usize = std::mem::size_of::<$ty>();
         match self.get(..SIZE)?.try_into() {
-          Ok(arr) => Some(<$t>::from_be_bytes(arr)),
+          Ok(arr) => Some(<$ty>::from_be_bytes(arr)),
           Err(_) => None,
         }
       }
     }
   };
 }
-__impl_try_read_u8_slice_prefix!(u8);
-__impl_try_read_u8_slice_prefix!(u16);
-__impl_try_read_u8_slice_prefix!(u32);
+
+local_impl_byte_slice_try_read_prefix!(u8);
+local_impl_byte_slice_try_read_prefix!(u16);
+local_impl_byte_slice_try_read_prefix!(u32);
 
 /// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -227,12 +310,6 @@ mod tests {
     for input in VALID_INPUTS {
       assert_eq!(next_value_size(input), Ok(input.len()));
     }
-  }
-
-  #[test]
-  fn test_doc_example() {
-    let input = [0xa3, b'j', b'y', b't']; // the string "jyt"
-    assert_eq!(next_value_size(&input), Ok(4));
   }
 
   #[test]
