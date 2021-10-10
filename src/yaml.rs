@@ -117,8 +117,10 @@ where
   // Start with just enough capacity for a pure ASCII result.
   let mut result = String::with_capacity(buf.len() / 4);
   for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
-    let ch = char::from_u32(unit).ok_or_else(|| format!("invalid utf-32: {:x}", unit))?;
-    result.push(ch);
+    result.push(match char::from_u32(unit) {
+      Some(chr) => chr,
+      None => return Err(format!("invalid utf-32: {:x}", unit)),
+    })
   }
   Ok(result)
 }
@@ -134,9 +136,11 @@ where
   // Start with just enough capacity for a pure ASCII result.
   let mut result = String::with_capacity(buf.len() / 2);
   let units = buf.chunks_exact(2).map(|x| get_u16(x.try_into().unwrap()));
-  for d in char::decode_utf16(units) {
-    let ch = d.map_err(|err| format!("invalid utf-16: {}", err))?;
-    result.push(ch);
+  for chr in char::decode_utf16(units) {
+    result.push(match chr {
+      Ok(chr) => chr,
+      Err(err) => return Err(format!("invalid utf-16: {}", err)),
+    })
   }
   Ok(result)
 }
