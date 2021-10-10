@@ -9,10 +9,10 @@
   implementation of format auto detection is incompatible with streaming, and
   must be bypassed with an explicit `-f` option.
 - **Format detection for `.msgpack` files.** While the MessagePack specification
-  does not formally define a file extension for files containing MessagePack
-  content, some MessagePack users have adopted this non-standard extension for
-  files containing pure MessagePack content. jyt now avoids parser-based auto
-  detection for such files, and assumes that they contain MessagePack input.
+  does not define a file extension for files containing pure MessagePack
+  content, some users have informally adopted the `.msgpack` extension. jyt now
+  assumes that such files contain MessagePack input and skips the parser-based
+  auto detection algorithm.
 
 ### Changed
 
