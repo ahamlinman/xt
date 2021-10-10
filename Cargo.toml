@@ -1,7 +1,7 @@
 [package]
 name = "jyt"
 description = "Translate between serialized data formats"
-version = "0.7.0-rc.2"
+version = "0.7.0"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2018"
