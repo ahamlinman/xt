@@ -27,7 +27,7 @@ $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | jyt -fj -tm > events.
 
 ## Installation
 
-At this time, you must build jyt manually using Rust 1.53.0 or later.
+At this time, you must build jyt manually using Rust 1.56.0 or later.
 
 ```sh
 cargo install --locked --git https://github.com/ahamlinman/jyt.git

@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::convert::TryInto;
 use std::error::Error;
 use std::io::Write;
 
