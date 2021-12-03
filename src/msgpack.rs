@@ -37,13 +37,14 @@ where
       // input could force jyt to allocate as much as 4 GiB of memory before
       // dying with an error.
       //
-      // That said, the zero-filling optimizes pretty well in release builds, so
-      // unless you run out of memory first it only burns about a second or two
-      // of CPU time. I've also found across a number of basic tests that
-      // modifying rmp_serde to grow the buffer on demand imposes a small but
-      // consistently measurable performance penalty of around 5%, even for
-      // inputs that can fully reuse the existing buffer allocation, and even
-      // when I explicitly outline the new logic only for large values.
+      // That said, the zero-filling optimizes pretty well in release builds
+      // (auto-vectorization?), so unless you run out of memory first it only
+      // burns about a second or two of CPU time. I've also found across a
+      // number of basic tests that modifying rmp_serde to grow the buffer on
+      // demand imposes a small but consistently measurable performance penalty
+      // of around 5%, even for inputs that can fully reuse the existing buffer
+      // allocation, and even when I explicitly outline the new logic only for
+      // large values.
       let mut r = BufReader::new(r);
       while has_data_left(&mut r)? {
         let mut de = rmp_serde::Deserializer::new(&mut r);

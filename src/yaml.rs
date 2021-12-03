@@ -14,8 +14,9 @@ where
   // First, while serde_yaml supports creating a Deserializer from a reader,
   // this actually just slurps the entire input into a byte vector and parses
   // the resulting slice. We would have to detect the splits between YAML
-  // documents ourselves to do streaming input (unless, of course, we took on
-  // the responsibility of implementing this upstream somehow).
+  // documents ourselves to do streaming input, either with some kind of text
+  // stream processing (the evil way) or by implementing this as a real feature
+  // upstream (the righteous way).
   //
   // Second, yaml-rust does not support UTF-16 or UTF-32 input, even though YAML
   // 1.2 requires this. While serde_yaml supports creating a Deserializer from a
