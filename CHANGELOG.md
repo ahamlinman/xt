@@ -1,3 +1,10 @@
+## v0.7.1 (2021-10-25)
+
+### Changed
+
+- jyt has adopted the 2021 edition of Rust, and now requires Rust 1.56.0 or
+  later to build.
+
 ## v0.7.0 (2021-10-10)
 
 ### Added
