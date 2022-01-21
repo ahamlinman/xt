@@ -4,23 +4,25 @@ use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::process;
 
-use clap::ErrorKind::{HelpDisplayed, VersionDisplayed};
-use structopt::StructOpt;
+use clap::{
+  ErrorKind::{DisplayHelp, DisplayVersion},
+  Parser,
+};
 
 use jyt::{jyt, Format, InputHandle};
 
 fn main() {
-  let opt = match Opt::from_args_safe() {
-    Ok(opt) => opt,
+  let args = match Cli::try_parse() {
+    Ok(args) => args,
     Err(err) => match err.kind {
-      HelpDisplayed | VersionDisplayed => err.exit(),
+      DisplayHelp | DisplayVersion => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
         // include an "error:" prefix, so this gives us consistent formatting
         // for both argument and translation errors. It is a bit fragile, since
         // it's unlikely that clap's error message format is guaranteed to be
         // stable.
-        eprint!("jyt {}\n", err.message);
+        eprint!("jyt {}", err);
         process::exit(1);
       }
     },
@@ -37,16 +39,16 @@ fn main() {
   }
 
   let mut output = BufWriter::new(io::stdout());
-  if atty::is(atty::Stream::Stdout) && !format_is_safe_for_terminal(opt.to) {
-    jyt_exit!("refusing to output {} to a terminal", opt.to);
+  if atty::is(atty::Stream::Stdout) && !format_is_safe_for_terminal(args.to) {
+    jyt_exit!("refusing to output {} to a terminal", args.to);
   }
 
-  let input = match opt.input() {
+  let input = match args.input() {
     Ok(input) => input,
     Err(err) => jyt_exit!(err),
   };
 
-  let jyt_err = jyt(input, opt.detect_from(), opt.to, &mut output);
+  let jyt_err = jyt(input, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a
@@ -93,8 +95,12 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   false
 }
 
-#[derive(StructOpt)]
-#[structopt(verbatim_doc_comment)]
+const SHORT_HELP: &'static str = "Translate between serialized data formats
+
+Use --help for full usage information and available formats.";
+
+#[derive(Parser)]
+#[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
 /// This version of jyt supports the following formats, each of which may be
@@ -123,28 +129,46 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 /// jyt does not guarantee that every translation is possible, or lossless, or
 /// reversible. jyt's behavior is undefined if an input file is modified while
 /// running. jyt is not designed for use with untrusted input.
-struct Opt {
-  #[structopt(
-    short = "t",
-    help = "Format to convert to",
-    default_value = "json",
-    parse(try_from_str = try_parse_format),
-  )]
-  to: Format,
-
-  #[structopt(
-    short = "f",
-    help = "Format to convert from",
-    parse(try_from_str = try_parse_format),
-  )]
-  from: Option<Format>,
-
-  #[structopt(
+struct Cli {
+  #[clap(
     name = "file",
     help = "File to read input from [default: stdin]",
     parse(from_os_str)
   )]
   input_filename: Option<PathBuf>,
+
+  #[clap(
+    short = 't',
+    help = "Format to convert to",
+    help_heading = "OPTIONS",
+    default_value = "json",
+    parse(try_from_str = try_parse_format),
+  )]
+  to: Format,
+
+  #[clap(
+    short = 'f',
+    help = "Format to convert from",
+    help_heading = "OPTIONS",
+    parse(try_from_str = try_parse_format),
+  )]
+  from: Option<Format>,
+
+  #[clap(
+    short = 'h',
+    long,
+    help = "Prints help information",
+    help_heading = "FLAGS"
+  )]
+  help: bool,
+
+  #[clap(
+    short = 'V',
+    long,
+    help = "Prints version information",
+    help_heading = "FLAGS"
+  )]
+  version: bool,
 }
 
 fn try_parse_format(s: &str) -> Result<Format, String> {
@@ -157,7 +181,7 @@ fn try_parse_format(s: &str) -> Result<Format, String> {
   }
 }
 
-impl Opt {
+impl Cli {
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
       return self.from;
