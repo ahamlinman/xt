@@ -34,7 +34,7 @@ cargo install --locked --git https://github.com/ahamlinman/jyt.git
 
 ## Usage and Features
 
-Run `jyt -h` for full usage details.
+Run `jyt --help` for full usage details.
 
 jyt is built to "do one thing well," and tries to maintain a simple CLI
 interface with limited options (for example, no control over details of the
