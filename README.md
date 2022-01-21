@@ -7,7 +7,6 @@ For example, you can process a TOML file with [`jq`][jq]:
 ```sh
 $ jyt Cargo.lock | jq -r '.package[] | select(.version | startswith("0.")).name'
 atty
-dtoa
 hashbrown
 heck
 # etc.
