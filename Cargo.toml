@@ -27,6 +27,7 @@ features = ["preserve_order"]
 
 [dev-dependencies]
 hex-literal = "0.3"
+stacker = "0.1"
 
 [profile.dev]
 panic = "abort"

@@ -149,35 +149,27 @@ fn test_yaml_halted_deserialization() {
 
 #[test]
 fn test_msgpack_depth_limit() {
-  use std::sync::Arc;
-
   // Ensure that msgpack depth limits behave consistently for both buffer and
   // reader inputs. Buffer inputs implement their own depth check on top of
   // rmp_serde's when determining the size of the value, which should not bound
   // the limit any lower than rmp_serde itself.
 
-  // Magic private value from msgpack.rs.
+  // Magic private constant from msgpack.rs.
   const DEPTH_LIMIT: usize = 1024;
 
   // Nested arrays enclosing a null.
-  let allowed_buf = {
-    let mut buf = vec![0x91 as u8; DEPTH_LIMIT];
-    *buf.last_mut().unwrap() = 0xc0;
-    Arc::new(buf)
-  };
+  let mut input = [0x91 as u8; DEPTH_LIMIT];
+  *input.last_mut().unwrap() = 0xc0;
 
   // See https://stackoverflow.com/a/42960702. Cargo runs tests on secondary
   // threads, which by default have 2 MiB stacks (per current std::thread docs).
   // This is apparently too small to properly test our normal depth limit, so we
   // run these cases with stacks that better approximate a typical main thread.
+  const STACK_SIZE: usize = 8 * 1024 * 1024;
 
-  let thread_buf = Arc::clone(&allowed_buf);
-  run_with_big_stack(move || {
+  stacker::grow(STACK_SIZE, || {
     jyt(
-      InputHandle::from_reader({
-        let buf = &thread_buf[..];
-        buf
-      }),
+      InputHandle::from_reader(&input[..]),
       Some(Format::Msgpack),
       Format::Msgpack,
       std::io::sink(),
@@ -185,30 +177,13 @@ fn test_msgpack_depth_limit() {
     .expect("allowed reader should have been translated")
   });
 
-  let thread_buf = Arc::clone(&allowed_buf);
-  run_with_big_stack(move || {
+  stacker::grow(STACK_SIZE, || {
     jyt(
-      InputHandle::from_buffer(&thread_buf[..]),
+      InputHandle::from_buffer(&input[..]),
       Some(Format::Msgpack),
       Format::Msgpack,
       std::io::sink(),
     )
     .expect("allowed buffer should have been translated")
   });
-}
-
-fn run_with_big_stack<F, T>(f: F) -> T
-where
-  F: FnOnce() -> T,
-  F: Send + 'static,
-  T: Send + 'static,
-{
-  // Typical default stack size for main threads, according to online research.
-  const STACK_SIZE: usize = 8 * 1024 * 1024;
-  std::thread::Builder::new()
-    .stack_size(STACK_SIZE)
-    .spawn(f)
-    .unwrap()
-    .join()
-    .unwrap()
 }
