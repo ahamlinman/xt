@@ -27,7 +27,7 @@ const SINGLE_INPUTS: [TestInput; 4] = [
 fn test_single_document_buffer() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
     for from in [None, Some(from)] {
-      let mut output = Vec::new();
+      let mut output = Vec::with_capacity(expected.len());
       jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
@@ -38,9 +38,8 @@ fn test_single_document_buffer() {
 fn test_single_document_reader() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
     for from in [None, Some(from)] {
-      let mut input = input;
-      let mut output = Vec::new();
-      jyt(InputHandle::from_reader(&mut input), from, to, &mut output).unwrap();
+      let mut output = Vec::with_capacity(expected.len());
+      jyt(InputHandle::from_reader(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
@@ -61,7 +60,7 @@ const MULTI_INPUTS: [TestInput; 3] = [
 fn test_multi_document_buffer() {
   for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
     for from in [None, Some(from)] {
-      let mut output = Vec::new();
+      let mut output = Vec::with_capacity(expected.len());
       jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
@@ -72,16 +71,15 @@ fn test_multi_document_buffer() {
 fn test_multi_document_reader() {
   for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
     for from in [None, Some(from)] {
-      let mut input = input;
-      let mut output = Vec::new();
-      jyt(InputHandle::from_reader(&mut input), from, to, &mut output).unwrap();
+      let mut output = Vec::with_capacity(expected.len());
+      jyt(InputHandle::from_reader(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
 }
 
 fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
-  let mut result = Vec::new();
+  let mut result = Vec::with_capacity(inputs.len() * inputs.len());
   for x in inputs {
     for y in inputs {
       result.push((*x, *y))
@@ -94,7 +92,7 @@ fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
 fn test_toml_reordering() {
   const INPUT: &'static [u8] = include_bytes!("single_reordered.json");
   const EXPECTED: &'static str = include_str!("single.toml");
-  let mut output = Vec::new();
+  let mut output = Vec::with_capacity(EXPECTED.len());
   jyt(
     InputHandle::from_buffer(INPUT),
     Some(Format::Json),
@@ -119,7 +117,7 @@ const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
 fn test_yaml_reencoding() {
   const EXPECTED: &'static str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
   for input in YAML_REENCODING_INPUTS {
-    let mut output = Vec::new();
+    let mut output = Vec::with_capacity(EXPECTED.len());
     jyt(
       InputHandle::from_buffer(input),
       Some(Format::Yaml),
@@ -132,18 +130,17 @@ fn test_yaml_reencoding() {
 }
 
 #[test]
-fn test_yaml_halted_deserialization() {
+fn test_halting_yaml_deserializer_without_panic() {
   // Regression test to ensure that halting transcoding in the middle of a value
   // doesn't panic and crash. The particular example is a YAML input with a null
   // map key trying to transcode to JSON, where keys must be strings. If we're
   // not careful, we can break invariants of the YAML deserializer.
   const INPUT: &'static [u8] = include_bytes!("nullkey.yaml");
-  let mut output = Vec::new();
   let _ = jyt(
     InputHandle::from_buffer(INPUT),
     Some(Format::Yaml),
     Format::Json,
-    &mut output,
+    std::io::sink(),
   );
 }
 
@@ -174,7 +171,7 @@ fn test_msgpack_depth_limit() {
       Format::Msgpack,
       std::io::sink(),
     )
-    .expect("allowed reader should have been translated")
+    .expect("reader should have been translated")
   });
 
   stacker::grow(STACK_SIZE, || {
@@ -184,6 +181,6 @@ fn test_msgpack_depth_limit() {
       Format::Msgpack,
       std::io::sink(),
     )
-    .expect("allowed buffer should have been translated")
+    .expect("buffer should have been translated")
   });
 }
