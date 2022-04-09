@@ -1,3 +1,12 @@
+## v0.7.3 (2022-04-09)
+
+### Fixed
+
+- **Inconsistent nesting depth enforcement for MessagePack input.** jyt now
+  more reliably avoids hard crashes (due to stack overflow) when presented with
+  highly nested MessagePack inputs. Previously, the level of protection against
+  these inputs depended on whether the streaming input feature was used.
+
 ## v0.7.2 (2022-01-20)
 
 ### Changed
