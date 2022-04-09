@@ -14,7 +14,7 @@ use jyt::{jyt, Format, InputHandle};
 fn main() {
   let args = match Cli::try_parse() {
     Ok(args) => args,
-    Err(err) => match err.kind {
+    Err(err) => match err.kind() {
       DisplayHelp | DisplayVersion => err.exit(),
       _ => {
         // As of this writing, clap's error messages (other than those above)
