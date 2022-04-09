@@ -51,10 +51,10 @@
 //! deserialized map keys to the `serialize_key` method of a [`SerializeMap`]
 //! implementation.
 //!
-//! - A `Transcoder` implements [`Serialize`] for the [`Deserializer`] provided
+//! - A `Forwarder` implements [`Serialize`] for the [`Deserializer`] provided
 //! to each seed, to meet the requirements of Serde's sequence and map
-//! serializer APIs. It recursively constructs a `Visitor` to transcode the
-//! value produced by the `Deserializer`.
+//! serializer APIs. It recursively constructs a `Visitor` and forwards it the
+//! next value produced by the `Deserializer`.
 //!
 //! Each implementation is a single use state machine that owns some serializer
 //! or deserializer instance in its "new" state, and that owns any error value
@@ -69,7 +69,7 @@
 //! them across Serde API boundaries. When a `Visitor` or `DeserializeSeed`
 //! method encounters a _serializer_ error, Serde requires that it return an
 //! error of a type defined by the _deserializer_ to safely halt transcoding.
-//! Inversely, when the `serialize` method of a `Transcoder` encounters a
+//! Inversely, when the `serialize` method of a `Forwarder` encounters a
 //! _deserializer_ error, it must return an error of a type defined by the
 //! _serializer_. Within our method implementations, the `custom` functions that
 //! construct these errors can only accept stringified values, and thus cannot
@@ -193,7 +193,7 @@ where
 
   fn capture(&mut self, serr: Option<S::Error>) {
     use Visitor::*;
-    // Mimicking what we do with Cell<T> in a Transcoder.
+    // Mimicking what we do with Cell<T> in a Forwarder.
     let old = mem::replace(self, Used(serr));
     if let Used(Some(_)) = old {
       panic!("visitor overwrote previous captured error");
@@ -379,7 +379,7 @@ macro_rules! local_impl_transcode_seed_types {
 
         fn capture(&mut self, serr: Option<S::Error>) {
           use $seed::*;
-          // Mimicking what we do with Cell<T> in a Transcoder.
+          // Mimicking what we do with Cell<T> in a Forwarder.
           let old = mem::replace(self, Used(serr));
           if let Used(Some(_)) = old {
             panic!("seed overwrote previous captured error");
@@ -407,12 +407,12 @@ macro_rules! local_impl_transcode_seed_types {
         {
           use de::Error;
 
-          let transcoder = Transcoder::new(d);
-          match self.take_serializer().$ser_method(&transcoder) {
+          let forwarder = Forwarder::new(d);
+          match self.take_serializer().$ser_method(&forwarder) {
             Ok(()) => Ok(()),
             Err(serr) => {
               self.capture(Some(serr));
-              match transcoder.into_deserializer_error() {
+              match forwarder.into_deserializer_error() {
                 Some(derr) => Err(derr),
                 None => Err(D::Error::custom(TRANSLATION_FAILED)),
               }
@@ -438,11 +438,11 @@ local_impl_transcode_seed_types! {
 /// # Panics
 ///
 /// Panics if `serialize` is invoked more than once.
-struct Transcoder<'de, D>(Cell<TranscoderState<'de, D>>)
+struct Forwarder<'de, D>(Cell<ForwarderState<'de, D>>)
 where
   D: Deserializer<'de>;
 
-enum TranscoderState<'de, D>
+enum ForwarderState<'de, D>
 where
   D: Deserializer<'de>,
 {
@@ -450,16 +450,16 @@ where
   Used(Option<D::Error>),
 }
 
-impl<'de, D> Transcoder<'de, D>
+impl<'de, D> Forwarder<'de, D>
 where
   D: Deserializer<'de>,
 {
-  fn new(d: D) -> Transcoder<'de, D> {
-    Transcoder(Cell::new(TranscoderState::New(d)))
+  fn new(d: D) -> Forwarder<'de, D> {
+    Forwarder(Cell::new(ForwarderState::New(d)))
   }
 
   fn take_deserializer(&self) -> D {
-    use TranscoderState::*;
+    use ForwarderState::*;
     match self.0.replace(Used(None)) {
       New(d) => d,
       Used(_) => panic!("transcoder may only be used once"),
@@ -467,7 +467,7 @@ where
   }
 
   fn capture(&self, derr: Option<D::Error>) {
-    use TranscoderState::*;
+    use ForwarderState::*;
     let old = self.0.replace(Used(derr));
     if let Used(Some(_)) = old {
       panic!("transcoder overwrote previous captured error");
@@ -475,7 +475,7 @@ where
   }
 
   fn into_deserializer_error(self) -> Option<D::Error> {
-    use TranscoderState::*;
+    use ForwarderState::*;
     match self.0.into_inner() {
       New(_) => None,
       Used(derr) => derr,
@@ -483,7 +483,7 @@ where
   }
 }
 
-impl<'de, D> ser::Serialize for Transcoder<'de, D>
+impl<'de, D> ser::Serialize for Forwarder<'de, D>
 where
   D: Deserializer<'de>,
 {
