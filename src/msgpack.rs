@@ -4,6 +4,13 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 
 use crate::{transcode, Input, InputHandle};
 
+/// The maximum allowed nesting depth of MessagePack values.
+///
+/// This particular value is the undocumented default from rmp_serde, which
+/// seems to be enough to reliably prevent stack overflows on debug builds of
+/// the program using the default main thread stack size.
+const DEPTH_LIMIT: usize = 1024;
+
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
@@ -12,19 +19,10 @@ where
     Input::Buffer(buf) => {
       let mut buf = buf.deref();
       while buf.len() > 0 {
-        // Note that next_value_size does not protect against stack overflows
-        // triggered by recursive sequences and maps in the input. This is
-        // partly why the help output says that jyt is not designed for use with
-        // untrusted input, since an input of around 3500 bytes (specifically,
-        // around 3500 nested MessagePack fixarrays of length 1) can crash a
-        // debug build of the program on my machine.
-        //
-        // rmp_serde limits its nesting depth to 1024 by default, which we may
-        // as well adopt as our own limit since that seems to give more than
-        // enough headroom.
-        let size = next_value_size(buf)?;
+        let size = next_value_size(buf, DEPTH_LIMIT)?;
         let (next, rest) = buf.split_at(size);
         let mut de = rmp_serde::Deserializer::from_read_ref(next);
+        de.set_max_depth(DEPTH_LIMIT);
         output.transcode_from(&mut de)?;
         buf = rest;
       }
@@ -48,6 +46,7 @@ where
       let mut r = BufReader::new(r);
       while has_data_left(&mut r)? {
         let mut de = rmp_serde::Deserializer::new(&mut r);
+        de.set_max_depth(DEPTH_LIMIT);
         output.transcode_from(&mut de)?;
       }
     }
@@ -101,9 +100,12 @@ impl<W: Write> crate::Output for Output<W> {
 /// without panicking, even if the input is not well-formed. For example, a
 /// MessagePack str or bin value with a reported length larger than the
 /// remainder of the input slice will produce an error.
-fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
+fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeError> {
   use rmp::Marker::*;
 
+  if depth_limit == 0 {
+    return Err(ReadSizeError::DepthLimitExceeded);
+  }
   if input.len() < 1 {
     return Ok(0);
   }
@@ -128,27 +130,27 @@ fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
     Str8 | Bin8 => 1 + try_read_length::<u8>(input)? as usize,
     Str16 | Bin16 => 2 + try_read_length::<u16>(input)? as usize,
     Str32 | Bin32 => 4 + try_read_length::<u32>(input)? as usize,
-    FixArray(count) => total_sequence_size(&input[1..], count as u64)?,
+    FixArray(count) => total_sequence_size(&input[1..], count as u64, depth_limit)?,
     Array16 => {
       let count = try_read_length::<u16>(input)? as u64;
       let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
-      2 + total_sequence_size(seq, count)?
+      2 + total_sequence_size(seq, count, depth_limit)?
     }
     Array32 => {
       let count = try_read_length::<u32>(input)? as u64;
       let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
-      4 + total_sequence_size(seq, count)?
+      4 + total_sequence_size(seq, count, depth_limit)?
     }
-    FixMap(pair_count) => total_sequence_size(&input[1..], pair_count as u64 * 2)?,
+    FixMap(pair_count) => total_sequence_size(&input[1..], pair_count as u64 * 2, depth_limit)?,
     Map16 => {
       let pair_count = try_read_length::<u16>(input)? as u64;
       let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
-      2 + total_sequence_size(seq, pair_count * 2)?
+      2 + total_sequence_size(seq, pair_count * 2, depth_limit)?
     }
     Map32 => {
       let pair_count = try_read_length::<u32>(input)? as u64;
       let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
-      4 + total_sequence_size(seq, pair_count * 2)?
+      4 + total_sequence_size(seq, pair_count * 2, depth_limit)?
     }
   };
 
@@ -160,7 +162,11 @@ fn next_value_size(input: &[u8]) -> Result<usize, ReadSizeError> {
   }
 }
 
-fn total_sequence_size(input: &[u8], count: u64) -> Result<usize, ReadSizeError> {
+fn total_sequence_size(
+  input: &[u8],
+  count: u64,
+  depth_limit: usize,
+) -> Result<usize, ReadSizeError> {
   let mut total = 0;
   let mut seq = input;
 
@@ -168,8 +174,7 @@ fn total_sequence_size(input: &[u8], count: u64) -> Result<usize, ReadSizeError>
     if seq.len() == 0 {
       return Err(ReadSizeError::Truncated);
     }
-    // TODO: Stack overflow protection.
-    let size = next_value_size(seq)?;
+    let size = next_value_size(seq, depth_limit - 1)?;
     total += size;
     seq = &seq[size..];
   }
@@ -217,6 +222,8 @@ pub enum ReadSizeError {
   Truncated,
   /// A MessagePack value in the input contained the reserved marker byte 0xc1.
   InvalidMarker,
+  /// The maximum allowed nesting depth of MessagePack values was exceeded.
+  DepthLimitExceeded,
 }
 
 impl Error for ReadSizeError {}
@@ -225,8 +232,9 @@ impl Display for ReadSizeError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     use ReadSizeError::*;
     match self {
-      Truncated => write!(f, "unexpected end of MessagePack input"),
-      InvalidMarker => write!(f, "invalid MessagePack marker in input"),
+      Truncated => f.write_str("unexpected end of MessagePack input"),
+      InvalidMarker => f.write_str("invalid MessagePack marker in input"),
+      DepthLimitExceeded => f.write_str("depth limit exceeded"), // same message as rmp_serde
     }
   }
 }
@@ -308,7 +316,7 @@ mod tests {
   #[test]
   fn test_valid_inputs() {
     for input in VALID_INPUTS {
-      assert_eq!(next_value_size(input), Ok(input.len()));
+      assert_eq!(next_value_size(input, DEPTH_LIMIT), Ok(input.len()));
     }
   }
 
@@ -316,7 +324,7 @@ mod tests {
   fn test_truncated_valid_inputs() {
     for input in VALID_INPUTS.iter().filter(|i| i.len() > 1) {
       for len in 1..(input.len() - 1) {
-        assert_eq!(next_value_size(&input[..len]), Err(Truncated))
+        assert_eq!(next_value_size(&input[..len], DEPTH_LIMIT), Err(Truncated))
       }
     }
   }
@@ -325,23 +333,37 @@ mod tests {
   fn test_nonsensically_large_input() {
     // The string "jyt," but with a reported length of 2^32-1 bytes.
     assert_eq!(
-      next_value_size(&hex!("db ff ff ff ff 6a 79 74")),
+      next_value_size(&hex!("db ff ff ff ff 6a 79 74"), DEPTH_LIMIT),
       Err(Truncated)
+    );
+  }
+
+  #[test]
+  fn test_excessively_deep_input() {
+    // [[true]]
+    assert_eq!(next_value_size(&hex!("91 91 c3"), 3), Ok(3));
+    // [[[true]]]
+    assert_eq!(
+      next_value_size(&hex!("91 91 91 c3"), 3),
+      Err(DepthLimitExceeded)
     );
   }
 
   #[test]
   fn test_invalid_marker() {
     // <invalid>
-    assert_eq!(next_value_size(&hex!("c1")), Err(InvalidMarker));
+    assert_eq!(
+      next_value_size(&hex!("c1"), DEPTH_LIMIT),
+      Err(InvalidMarker)
+    );
     // ["jyt", <invalid>]
     assert_eq!(
-      next_value_size(&hex!("92 a3 6a 79 74 c1")),
+      next_value_size(&hex!("92 a3 6a 79 74 c1"), DEPTH_LIMIT),
       Err(InvalidMarker)
     );
     // {"jyt": true, "good": <invalid>}
     assert_eq!(
-      next_value_size(&hex!("82 a3 6a 79 74 c3 a4 67 6f 6f 64 c1")),
+      next_value_size(&hex!("82 a3 6a 79 74 c3 a4 67 6f 6f 64 c1"), DEPTH_LIMIT),
       Err(InvalidMarker)
     );
   }
@@ -349,8 +371,11 @@ mod tests {
   #[test]
   fn test_suffixes_skipped() {
     // true; <invalid>
-    assert_eq!(next_value_size(&hex!("c3 c1")), Ok(1));
+    assert_eq!(next_value_size(&hex!("c3 c1"), DEPTH_LIMIT), Ok(1));
     // ["jyt"]; <invalid>
-    assert_eq!(next_value_size(&hex!("91 a3 6a 79 74 c1")), Ok(5));
+    assert_eq!(
+      next_value_size(&hex!("91 a3 6a 79 74 c1"), DEPTH_LIMIT),
+      Ok(5)
+    );
   }
 }
