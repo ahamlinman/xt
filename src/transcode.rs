@@ -107,10 +107,10 @@ where
   S: Serializer,
   D: Deserializer<'de>,
 {
-  let mut visitor = Visitor::new(s);
+  let mut visitor = Machine::new(s);
   match d.deserialize_any(&mut visitor) {
     Ok(value) => Ok(value),
-    Err(derr) => match visitor.into_serializer_error() {
+    Err(derr) => match visitor.into_used() {
       Some(serr) => Err(Error::Ser(serr, derr)),
       None => Err(Error::De(derr)),
     },
@@ -158,112 +158,123 @@ where
   }
 }
 
-/// Enables a Serde `Deserializer` to drive the contained Serde `Serializer`.
-///
-/// See the module level documentation for special considerations associated
-/// with usage of this type.
-///
-/// # Panics
-///
-/// Panics if used more than once. Any call to an implemented visitor method
-/// counts as a single use.
-enum Visitor<S>
-where
-  S: Serializer,
-{
-  New(S),
-  Used(Option<S::Error>),
+enum Machine<N, U> {
+  New(N),
+  Used(Option<U>),
 }
 
-impl<S> Visitor<S>
-where
-  S: Serializer,
-{
-  fn new(s: S) -> Visitor<S> {
-    Visitor::New(s)
+impl<N, U> Machine<N, U> {
+  fn new(n: N) -> Machine<N, U> {
+    Machine::New(n)
   }
 
-  fn take_serializer(&mut self) -> S {
-    use Visitor::*;
-    match mem::replace(self, Used(None)) {
-      New(s) => s,
-      Used(_) => panic!("visitor may only be used once"),
+  fn take_new(&mut self) -> N {
+    match mem::replace(self, Machine::Used(None)) {
+      Machine::New(n) => n,
+      Machine::Used(_) => panic!("cannot take_new from Machine::Used"),
     }
   }
 
-  fn capture(&mut self, serr: Option<S::Error>) {
-    use Visitor::*;
-    // Mimicking what we do with Cell<T> in a Forwarder.
-    let old = mem::replace(self, Used(serr));
-    if let Used(Some(_)) = old {
-      panic!("visitor overwrote previous captured error");
-    }
+  fn set_used(&mut self, u: Option<U>) {
+    *self = Machine::Used(u)
   }
 
-  fn into_serializer_error(self) -> Option<S::Error> {
-    use Visitor::*;
+  fn into_used(self) -> Option<U> {
     match self {
-      New(_) => None,
-      Used(serr) => serr,
+      Machine::New(_) => None,
+      Machine::Used(u) => u,
     }
   }
 }
 
-/// Implements the methods of a [`serde::de::Visitor`] that receive scalar
-/// values from a deserializer and forward them directly to a serializer.
-///
-/// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_transcode_visitor_methods {
-  ($($visit:ident($($arg:ident: $ty:ty)?) => $serialize:ident;)*) => {
-    $(
-      fn $visit<E>(self, $($arg: $ty)?) -> Result<Self::Value, E>
-      where
-        E: de::Error,
-      {
-        match self.take_serializer().$serialize($($arg)?) {
-          Ok(value) => Ok(value),
-          Err(serr) => {
-            self.capture(Some(serr));
-            Err(E::custom(TRANSLATION_FAILED))
-          }
-        }
-      }
-    )*
-  };
-}
-
-impl<'de, S> de::Visitor<'de> for &mut Visitor<S>
+fn forward_value<F, S, E>(m: &mut Machine<S, S::Error>, receive: F) -> Result<S::Ok, E>
 where
   S: Serializer,
+  E: de::Error,
+  F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
+  match receive(m.take_new()) {
+    Ok(value) => Ok(value),
+    Err(serr) => {
+      m.set_used(Some(serr));
+      Err(E::custom(TRANSLATION_FAILED))
+    }
+  }
+}
+
+impl<'de, S: Serializer> de::Visitor<'de> for &mut Machine<S, S::Error> {
   type Value = S::Ok;
 
   fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     write!(fmt, "any supported value")
   }
 
-  local_impl_transcode_visitor_methods! {
-    visit_unit() => serialize_unit;
-    visit_bool(v: bool) => serialize_bool;
+  fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_unit())
+  }
 
-    visit_i8(v: i8) => serialize_i8;
-    visit_i16(v: i16) => serialize_i16;
-    visit_i32(v: i32) => serialize_i32;
-    visit_i64(v: i64) => serialize_i64;
-    visit_i128(v: i128) => serialize_i128;
+  fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_bool(v))
+  }
 
-    visit_u8(v: u8) => serialize_u8;
-    visit_u16(v: u16) => serialize_u16;
-    visit_u32(v: u32) => serialize_u32;
-    visit_u64(v: u64) => serialize_u64;
-    visit_u128(v: u128) => serialize_u128;
+  fn visit_i8<E: de::Error>(self, v: i8) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_i8(v))
+  }
 
-    visit_f32(v: f32) => serialize_f32;
-    visit_f64(v: f64) => serialize_f64;
+  fn visit_i16<E: de::Error>(self, v: i16) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_i16(v))
+  }
 
-    visit_char(v: char) => serialize_char;
-    visit_str(v: &str) => serialize_str;
-    visit_bytes(v: &[u8]) => serialize_bytes;
+  fn visit_i32<E: de::Error>(self, v: i32) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_i32(v))
+  }
+
+  fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_i64(v))
+  }
+
+  fn visit_i128<E: de::Error>(self, v: i128) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_i128(v))
+  }
+
+  fn visit_u8<E: de::Error>(self, v: u8) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_u8(v))
+  }
+
+  fn visit_u16<E: de::Error>(self, v: u16) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_u16(v))
+  }
+
+  fn visit_u32<E: de::Error>(self, v: u32) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_u32(v))
+  }
+
+  fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_u64(v))
+  }
+
+  fn visit_u128<E: de::Error>(self, v: u128) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_u128(v))
+  }
+
+  fn visit_f32<E: de::Error>(self, v: f32) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_f32(v))
+  }
+
+  fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_f64(v))
+  }
+
+  fn visit_char<E: de::Error>(self, v: char) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_char(v))
+  }
+
+  fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_str(v))
+  }
+
+  fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+    forward_value(self, |s| s.serialize_bytes(v))
   }
 
   fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -272,21 +283,21 @@ where
   {
     use de::Error;
 
-    let mut s = match self.take_serializer().serialize_seq(seq.size_hint()) {
+    let mut s = match self.take_new().serialize_seq(seq.size_hint()) {
       Ok(s) => s,
       Err(serr) => {
-        self.capture(Some(serr));
+        self.set_used(Some(serr));
         return Err(A::Error::custom(TRANSLATION_FAILED));
       }
     };
 
     loop {
-      let mut seq_seed = SeqSeed::new(&mut s);
-      match seq.next_element_seed(&mut seq_seed) {
+      let mut seed = Machine::new(&mut s);
+      match seq.next_element_seed(&mut seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.capture(seq_seed.into_serializer_error());
+          self.set_used(seed.into_used());
           return Err(derr);
         }
       }
@@ -295,7 +306,7 @@ where
     match s.end() {
       Ok(value) => Ok(value),
       Err(serr) => {
-        self.capture(Some(serr));
+        self.set_used(Some(serr));
         Err(A::Error::custom(TRANSLATION_FAILED))
       }
     }
@@ -307,30 +318,30 @@ where
   {
     use de::Error;
 
-    let mut s = match self.take_serializer().serialize_map(map.size_hint()) {
+    let mut s = match self.take_new().serialize_map(map.size_hint()) {
       Ok(s) => s,
       Err(serr) => {
-        self.capture(Some(serr));
+        self.set_used(Some(serr));
         return Err(A::Error::custom(TRANSLATION_FAILED));
       }
     };
 
     loop {
-      let mut key_seed = KeySeed::new(&mut s);
+      let mut key_seed = KeySeed(Machine::new(&mut s));
       match map.next_key_seed(&mut key_seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.capture(key_seed.into_serializer_error());
+          self.set_used(key_seed.0.into_used());
           return Err(derr);
         }
       }
 
-      let mut value_seed = ValueSeed::new(&mut s);
+      let mut value_seed = ValueSeed(Machine::new(&mut s));
       match map.next_value_seed(&mut value_seed) {
         Ok(()) => {}
         Err(derr) => {
-          self.capture(value_seed.into_serializer_error());
+          self.set_used(value_seed.0.into_used());
           return Err(derr);
         }
       }
@@ -339,95 +350,59 @@ where
     match s.end() {
       Ok(value) => Ok(value),
       Err(serr) => {
-        self.capture(Some(serr));
+        self.set_used(Some(serr));
         Err(A::Error::custom(TRANSLATION_FAILED))
       }
     }
   }
 }
 
-/// Implements `DeserializeSeed` types that participate in the transcoding of
-/// sequence and map values.
-///
-/// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_transcode_seed_types {
-  ($($seed:ident => $ser_trait:ident :: $ser_method:ident;)*) => {
-    $(
-      enum $seed<'a, S>
-      where
-        S: $ser_trait,
-      {
-        New(&'a mut S),
-        Used(Option<S::Error>),
+fn forward_next<'de, D, F, S, E>(m: &mut Machine<S, E>, d: D, receive: F) -> Result<(), D::Error>
+where
+  D: Deserializer<'de>,
+  F: FnOnce(S, &Forwarder<'de, D>) -> Result<(), E>,
+{
+  use de::Error;
+
+  let forwarder = Forwarder::new(d);
+  match receive(m.take_new(), &forwarder) {
+    Ok(()) => Ok(()),
+    Err(err) => {
+      m.set_used(Some(err));
+      match forwarder.into_deserializer_error() {
+        Some(derr) => Err(derr),
+        None => Err(D::Error::custom(TRANSLATION_FAILED)),
       }
-
-      impl<'a, S> $seed<'a, S>
-      where
-        S: $ser_trait,
-      {
-        fn new(s: &'a mut S) -> $seed<'a, S> {
-          $seed::New(s)
-        }
-
-        fn take_serializer(&mut self) -> &'a mut S {
-          use $seed::*;
-          match mem::replace(self, Used(None)) {
-            New(s) => s,
-            Used(_) => panic!("seed may only be used once"),
-          }
-        }
-
-        fn capture(&mut self, serr: Option<S::Error>) {
-          use $seed::*;
-          // Mimicking what we do with Cell<T> in a Forwarder.
-          let old = mem::replace(self, Used(serr));
-          if let Used(Some(_)) = old {
-            panic!("seed overwrote previous captured error");
-          }
-        }
-
-        fn into_serializer_error(self) -> Option<S::Error> {
-          use $seed::*;
-          match self {
-            New(_) => None,
-            Used(serr) => serr,
-          }
-        }
-      }
-
-      impl<'a, 'de, S> DeserializeSeed<'de> for &mut $seed<'a, S>
-      where
-        S: $ser_trait,
-      {
-        type Value = ();
-
-        fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-        where
-          D: Deserializer<'de>,
-        {
-          use de::Error;
-
-          let forwarder = Forwarder::new(d);
-          match self.take_serializer().$ser_method(&forwarder) {
-            Ok(()) => Ok(()),
-            Err(serr) => {
-              self.capture(Some(serr));
-              match forwarder.into_deserializer_error() {
-                Some(derr) => Err(derr),
-                None => Err(D::Error::custom(TRANSLATION_FAILED)),
-              }
-            }
-          }
-        }
-      }
-    )*
-  };
+    }
+  }
 }
 
-local_impl_transcode_seed_types! {
-  SeqSeed => SerializeSeq::serialize_element;
-  KeySeed => SerializeMap::serialize_key;
-  ValueSeed => SerializeMap::serialize_value;
+impl<'de, S: SerializeSeq> DeserializeSeed<'de> for &mut Machine<&mut S, S::Error> {
+  type Value = ();
+
+  fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+    forward_next(self, d, |s, next| s.serialize_element(next))
+  }
+}
+
+struct KeySeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
+
+impl<'de, 'a, S: SerializeMap> DeserializeSeed<'de> for &mut KeySeed<'a, S> {
+  type Value = ();
+
+  fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+    forward_next(&mut self.0, d, |s, next| s.serialize_key(next))
+  }
+}
+
+struct ValueSeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
+
+impl<'de, 'a, S: SerializeMap> DeserializeSeed<'de> for &mut ValueSeed<'a, S> {
+  type Value = ();
+
+  fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+    forward_next(&mut self.0, d, |s, next| s.serialize_value(next))
+  }
 }
 
 /// Implements `Serialize` for a `Deserializer`.
@@ -462,16 +437,13 @@ where
     use ForwarderState::*;
     match self.0.replace(Used(None)) {
       New(d) => d,
-      Used(_) => panic!("transcoder may only be used once"),
+      Used(_) => panic!("forwarder may only be used once"),
     }
   }
 
   fn capture(&self, derr: Option<D::Error>) {
     use ForwarderState::*;
-    let old = self.0.replace(Used(derr));
-    if let Used(Some(_)) = old {
-      panic!("transcoder overwrote previous captured error");
-    }
+    self.0.replace(Used(derr));
   }
 
   fn into_deserializer_error(self) -> Option<D::Error> {
@@ -493,12 +465,12 @@ where
   {
     use ser::Error;
 
-    let mut visitor = Visitor::new(s);
+    let mut visitor = Machine::new(s);
     match self.take_deserializer().deserialize_any(&mut visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
         self.capture(Some(derr));
-        match visitor.into_serializer_error() {
+        match visitor.into_used() {
           Some(serr) => Err(serr),
           None => Err(S::Error::custom(TRANSLATION_FAILED)),
         }
@@ -577,7 +549,7 @@ impl Serialize for Value<'_> {
 /// construct a value and shove it into an `Ok` variant.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_value_visitor_methods {
+macro_rules! jyt_transcode_impl_value_visitors {
   ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
     $(
       fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
@@ -601,7 +573,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         write!(f, "any supported value")
       }
 
-      local_impl_value_visitor_methods! {
+      jyt_transcode_impl_value_visitors! {
         visit_unit() => Value::Unit;
 
         visit_bool(v: bool) => Value::Bool(v);
