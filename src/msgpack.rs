@@ -111,62 +111,50 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
   }
 
   let marker = rmp::Marker::from_u8(input[0]);
-  let size_after_marker = match marker {
+  let total_size = match marker {
     Reserved => return Err(ReadSizeError::InvalidMarker),
-    Null | True | False | FixPos(_) | FixNeg(_) => 0,
-    U8 | I8 => 1,
-    U16 | I16 => 2,
-    U32 | I32 | F32 => 4,
-    U64 | I64 | F64 => 8,
-    FixExt1 => 2,
-    FixExt2 => 3,
-    FixExt4 => 5,
-    FixExt8 => 9,
-    FixExt16 => 17,
 
-    Ext8 => 2 + try_read_length_8(input)? as usize,
-    Ext16 => 3 + try_read_length_16(input)? as usize,
-    Ext32 => 5 + try_read_length_32(input)? as usize,
+    Null | True | False | FixPos(_) | FixNeg(_) => 1,
 
-    FixStr(n) => n as usize,
-    Str8 | Bin8 => 1 + try_read_length_8(input)? as usize,
-    Str16 | Bin16 => 2 + try_read_length_16(input)? as usize,
-    Str32 | Bin32 => 4 + try_read_length_32(input)? as usize,
+    U8 | I8 => 2,
+    U16 | I16 => 3,
+    U32 | I32 | F32 => 5,
+    U64 | I64 | F64 => 9,
 
-    FixArray(n) => total_seq_size(&input[1..], n, depth_limit)?,
+    FixExt1 => 3,
+    FixExt2 => 4,
+    FixExt4 => 6,
+    FixExt8 => 10,
+    FixExt16 => 18,
+    Ext8 => 3 + try_read_length_8(input)? as usize,
+    Ext16 => 4 + try_read_length_16(input)? as usize,
+    Ext32 => 6 + try_read_length_32(input)? as usize,
+
+    FixStr(n) => 1 + n as usize,
+    Str8 | Bin8 => 2 + try_read_length_8(input)? as usize,
+    Str16 | Bin16 => 3 + try_read_length_16(input)? as usize,
+    Str32 | Bin32 => 5 + try_read_length_32(input)? as usize,
+
+    FixArray(count) => 1 + total_seq_size(&input[1..], count, depth_limit)?,
+    FixMap(pairs) => 1 + total_map_size(&input[1..], pairs, depth_limit)?,
     Array16 => {
-      2 + total_seq_size(
-        input.get(3..).ok_or(ReadSizeError::Truncated)?,
-        try_read_length_16(input)?,
-        depth_limit,
-      )?
+      let count = try_read_length_16(input)?;
+      3 + total_seq_size(&input[3..], count, depth_limit)?
+    }
+    Map16 => {
+      let pairs = try_read_length_16(input)?;
+      3 + total_map_size(&input[3..], pairs, depth_limit)?
     }
     Array32 => {
-      4 + total_seq_size(
-        input.get(5..).ok_or(ReadSizeError::Truncated)?,
-        try_read_length_32(input)?,
-        depth_limit,
-      )?
-    }
-
-    FixMap(n) => total_map_size(&input[1..], n, depth_limit)?,
-    Map16 => {
-      2 + total_map_size(
-        input.get(3..).ok_or(ReadSizeError::Truncated)?,
-        try_read_length_16(input)?,
-        depth_limit,
-      )?
+      let count = try_read_length_32(input)?;
+      5 + total_seq_size(&input[5..], count, depth_limit)?
     }
     Map32 => {
-      4 + total_map_size(
-        input.get(5..).ok_or(ReadSizeError::Truncated)?,
-        try_read_length_32(input)?,
-        depth_limit,
-      )?
+      let pairs = try_read_length_32(input)?;
+      5 + total_map_size(&input[5..], pairs, depth_limit)?
     }
   };
 
-  let total_size: usize = 1 + size_after_marker;
   if total_size <= input.len() {
     Ok(total_size)
   } else {
@@ -174,14 +162,15 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
   }
 }
 
-fn total_seq_size<N>(input: &[u8], elements: N, depth_limit: usize) -> Result<usize, ReadSizeError>
+fn total_seq_size<N>(input: &[u8], count: N, depth_limit: usize) -> Result<usize, ReadSizeError>
 where
   N: Into<u32>,
 {
+  let count = count.into();
   let mut total = 0;
   let mut seq = input;
 
-  for _ in 0..elements.into() {
+  for _ in 0..count {
     if seq.len() == 0 {
       return Err(ReadSizeError::Truncated);
     }
