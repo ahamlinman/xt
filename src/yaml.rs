@@ -31,7 +31,7 @@ where
   // like syntax errors regardless of where they show up. We take care of the
   // former case since it's pretty easy to handle, and hopefully covers most
   // things.
-  let input = strip_initial_bom_if_present(&input);
+  let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
 
   for de in serde_yaml::Deserializer::from_str(input) {
     output.transcode_from(de)?;
@@ -74,7 +74,7 @@ impl<W: Write> crate::Output for Output<W> {
 /// well defined. Conversions are optimized for simplicity and size, rather than
 /// performance. Input that is invalid in the detected encoding, or whose size
 /// does not evenly divide the detected code unit size, will return an error.
-fn ensure_utf8<'a>(buf: &'a [u8]) -> Result<Cow<'a, str>, Box<dyn Error>> {
+fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
   let prefix = {
     // We use -1 as a sentinel for truncated input so the match patterns are
     // shorter to write than with Option<u8> variants.
@@ -143,11 +143,4 @@ where
     })
   }
   Ok(result)
-}
-
-fn strip_initial_bom_if_present(input: &str) -> &str {
-  match input.strip_prefix("\u{FEFF}") {
-    Some(stripped) => stripped,
-    None => input,
-  }
 }

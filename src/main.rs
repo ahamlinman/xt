@@ -28,27 +28,24 @@ fn main() {
     },
   };
 
-  macro_rules! jyt_exit {
+  macro_rules! jyt_fail {
     ($fmt:literal, $($x:expr),*) => {{
-      eprint!(concat!("jyt error: ", $fmt, "\n"), $($x),*);
+      eprintln!(concat!("jyt error: ", $fmt), $($x),*);
       process::exit(1);
     }};
     ($x:expr) => {
-      jyt_exit!("{}", $x)
+      jyt_fail!("{}", $x)
     };
   }
 
   let mut output = BufWriter::new(io::stdout());
-  if atty::is(atty::Stream::Stdout) && !format_is_safe_for_terminal(args.to) {
-    jyt_exit!("refusing to output {} to a terminal", args.to);
+  if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
+    jyt_fail!("refusing to output {} to a terminal", args.to);
   }
 
-  let input = match args.input() {
-    Ok(input) => input,
-    Err(err) => jyt_exit!(err),
-  };
+  let input = args.input().unwrap_or_else(|err| jyt_fail!(err));
 
-  let jyt_err = jyt(input, args.detect_from(), args.to, &mut output);
+  let result = jyt(input, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a
@@ -56,7 +53,7 @@ fn main() {
   if let Err(err) = output.flush() {
     match is_broken_pipe(&err) {
       true => return,
-      false => jyt_exit!(err),
+      false => jyt_fail!(err),
     }
   }
 
@@ -64,38 +61,30 @@ fn main() {
   // check but do expose broken pipe errors in their error chain (maybe they
   // flush internally?). So we still have to check this case in addition to the
   // above.
-  if let Err(err) = jyt_err {
-    match is_broken_pipe(err.as_ref()) {
-      true => return,
-      false => jyt_exit!(err),
+  if let Err(err) = result {
+    if !is_broken_pipe(err.as_ref()) {
+      jyt_fail!(err)
     }
   }
 }
 
-fn format_is_safe_for_terminal(format: Format) -> bool {
-  match format {
-    Format::Msgpack => false,
-    _ => true,
-  }
+fn format_is_unsafe_for_terminal(format: Format) -> bool {
+  matches!(format, Format::Msgpack)
 }
 
 fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   use io::ErrorKind::BrokenPipe;
-
   let mut next = Some(err);
   while let Some(err) = next {
-    match err.downcast_ref::<io::Error>() {
-      Some(err) if err.kind() == BrokenPipe => return true,
-      _ => {
-        next = err.source();
-      }
+    if matches!(err.downcast_ref::<io::Error>(), Some(err) if err.kind() == BrokenPipe) {
+      return true;
     }
+    next = err.source()
   }
-
   false
 }
 
-const SHORT_HELP: &'static str = "Translate between serialized data formats
+const SHORT_HELP: &str = "Translate between serialized data formats
 
 Use --help for full usage information and available formats.";
 
@@ -188,7 +177,7 @@ impl Cli {
     }
     match &self.input_filename {
       None => None,
-      Some(path) => match path.extension().map(|ext| ext.to_str()).flatten() {
+      Some(path) => match path.extension().and_then(|ext| ext.to_str()) {
         Some("json") => Some(Format::Json),
         Some("yaml" | "yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),

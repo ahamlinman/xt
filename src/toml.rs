@@ -27,7 +27,7 @@ pub(crate) struct Output<W: Write> {
 
 impl<W: Write> Output<W> {
   pub fn new(w: W) -> Output<W> {
-    Output { w: w, used: false }
+    Output { w, used: false }
   }
 }
 
@@ -85,10 +85,10 @@ impl<W: Write> Output<W> {
   }
 
   fn ensure_one_use(&mut self) -> Result<(), &'static str> {
-    self.used = match self.used {
-      false => true,
-      true => return Err("TOML does not support multi-document output"),
-    };
+    if self.used {
+      return Err("TOML does not support multi-document output");
+    }
+    self.used = true;
     Ok(())
   }
 }
@@ -98,7 +98,7 @@ struct NonTableRootError;
 
 impl fmt::Display for NonTableRootError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "root of TOML output must be a table")
+    f.write_str("root of TOML output must be a table")
   }
 }
 

@@ -18,7 +18,7 @@ where
   match input.into() {
     Input::Buffer(buf) => {
       let mut buf = buf.deref();
-      while buf.len() > 0 {
+      while !buf.is_empty() {
         let size = next_value_size(buf, DEPTH_LIMIT)?;
         let (next, rest) = buf.split_at(size);
         let mut de = rmp_serde::Deserializer::from_read_ref(next);
@@ -106,55 +106,55 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
   if depth_limit == 0 {
     return Err(ReadSizeError::DepthLimitExceeded);
   }
-  if input.len() < 1 {
+  if input.is_empty() {
     return Ok(0);
   }
 
   let marker = rmp::Marker::from_u8(input[0]);
-  let size_after_marker = match marker {
+  let total_size = match marker {
     Reserved => return Err(ReadSizeError::InvalidMarker),
-    Null | True | False | FixPos(_) | FixNeg(_) => 0,
-    U8 | I8 => 1,
-    U16 | I16 => 2,
-    U32 | I32 | F32 => 4,
-    U64 | I64 | F64 => 8,
-    FixExt1 => 2,
-    FixExt2 => 3,
-    FixExt4 => 5,
-    FixExt8 => 9,
-    FixExt16 => 17,
-    Ext8 => 2 + try_read_length::<u8>(input)? as usize,
-    Ext16 => 3 + try_read_length::<u16>(input)? as usize,
-    Ext32 => 5 + try_read_length::<u32>(input)? as usize,
-    FixStr(n) => n as usize,
-    Str8 | Bin8 => 1 + try_read_length::<u8>(input)? as usize,
-    Str16 | Bin16 => 2 + try_read_length::<u16>(input)? as usize,
-    Str32 | Bin32 => 4 + try_read_length::<u32>(input)? as usize,
-    FixArray(count) => total_sequence_size(&input[1..], count as u64, depth_limit)?,
+
+    Null | True | False | FixPos(_) | FixNeg(_) => 1,
+
+    U8 | I8 => 2,
+    U16 | I16 => 3,
+    U32 | I32 | F32 => 5,
+    U64 | I64 | F64 => 9,
+
+    FixExt1 => 3,
+    FixExt2 => 4,
+    FixExt4 => 6,
+    FixExt8 => 10,
+    FixExt16 => 18,
+    Ext8 => 3 + try_read_length_8(input)? as usize,
+    Ext16 => 4 + try_read_length_16(input)? as usize,
+    Ext32 => 6 + try_read_length_32(input)? as usize,
+
+    FixStr(n) => 1 + n as usize,
+    Str8 | Bin8 => 2 + try_read_length_8(input)? as usize,
+    Str16 | Bin16 => 3 + try_read_length_16(input)? as usize,
+    Str32 | Bin32 => 5 + try_read_length_32(input)? as usize,
+
+    FixArray(count) => 1 + total_seq_size(&input[1..], count, depth_limit)?,
+    FixMap(pairs) => 1 + total_map_size(&input[1..], pairs, depth_limit)?,
     Array16 => {
-      let count = try_read_length::<u16>(input)? as u64;
-      let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
-      2 + total_sequence_size(seq, count, depth_limit)?
+      let count = try_read_length_16(input)?;
+      3 + total_seq_size(&input[3..], count, depth_limit)?
+    }
+    Map16 => {
+      let pairs = try_read_length_16(input)?;
+      3 + total_map_size(&input[3..], pairs, depth_limit)?
     }
     Array32 => {
-      let count = try_read_length::<u32>(input)? as u64;
-      let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
-      4 + total_sequence_size(seq, count, depth_limit)?
-    }
-    FixMap(pair_count) => total_sequence_size(&input[1..], pair_count as u64 * 2, depth_limit)?,
-    Map16 => {
-      let pair_count = try_read_length::<u16>(input)? as u64;
-      let seq = input.get(3..).ok_or(ReadSizeError::Truncated)?;
-      2 + total_sequence_size(seq, pair_count * 2, depth_limit)?
+      let count = try_read_length_32(input)?;
+      5 + total_seq_size(&input[5..], count, depth_limit)?
     }
     Map32 => {
-      let pair_count = try_read_length::<u32>(input)? as u64;
-      let seq = input.get(5..).ok_or(ReadSizeError::Truncated)?;
-      4 + total_sequence_size(seq, pair_count * 2, depth_limit)?
+      let pairs = try_read_length_32(input)?;
+      5 + total_map_size(&input[5..], pairs, depth_limit)?
     }
   };
 
-  let total_size: usize = 1 + size_after_marker;
   if total_size <= input.len() {
     Ok(total_size)
   } else {
@@ -162,16 +162,16 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
   }
 }
 
-fn total_sequence_size(
-  input: &[u8],
-  count: u64,
-  depth_limit: usize,
-) -> Result<usize, ReadSizeError> {
+fn total_seq_size<N>(input: &[u8], count: N, depth_limit: usize) -> Result<usize, ReadSizeError>
+where
+  N: Into<u32>,
+{
+  let count = count.into();
   let mut total = 0;
   let mut seq = input;
 
   for _ in 0..count {
-    if seq.len() == 0 {
+    if seq.is_empty() {
       return Err(ReadSizeError::Truncated);
     }
     let size = next_value_size(seq, depth_limit - 1)?;
@@ -182,38 +182,39 @@ fn total_sequence_size(
   Ok(total)
 }
 
-fn try_read_length<'a, T>(input: &'a [u8]) -> Result<T, ReadSizeError>
+fn total_map_size<N>(input: &[u8], pairs: N, depth_limit: usize) -> Result<usize, ReadSizeError>
 where
-  &'a [u8]: TryReadPrefix<T>,
+  N: Into<u32>,
 {
-  match <&[u8] as TryReadPrefix<T>>::try_read_prefix(&input[1..]) {
-    Some(n) => Ok(n),
-    None => Err(ReadSizeError::Truncated),
-  }
+  let pairs = pairs.into();
+  let first = total_seq_size(input, pairs, depth_limit)?;
+  Ok(first + total_seq_size(&input[first..], pairs, depth_limit)?)
 }
 
-trait TryReadPrefix<T> {
-  fn try_read_prefix(self) -> Option<T>;
+fn try_read_length_8(input: &[u8]) -> Result<u8, ReadSizeError> {
+  try_read_length(input, u8::from_be_bytes)
 }
 
-// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_byte_slice_try_read_prefix {
-  ($ty:ty) => {
-    impl TryReadPrefix<$ty> for &[u8] {
-      fn try_read_prefix(self) -> Option<$ty> {
-        const SIZE: usize = std::mem::size_of::<$ty>();
-        match self.get(..SIZE)?.try_into() {
-          Ok(arr) => Some(<$ty>::from_be_bytes(arr)),
-          Err(_) => None,
-        }
-      }
-    }
-  };
+fn try_read_length_16(input: &[u8]) -> Result<u16, ReadSizeError> {
+  try_read_length(input, u16::from_be_bytes)
 }
 
-local_impl_byte_slice_try_read_prefix!(u8);
-local_impl_byte_slice_try_read_prefix!(u16);
-local_impl_byte_slice_try_read_prefix!(u32);
+fn try_read_length_32(input: &[u8]) -> Result<u32, ReadSizeError> {
+  try_read_length(input, u32::from_be_bytes)
+}
+
+fn try_read_length<const N: usize, T, F>(input: &[u8], convert: F) -> Result<T, ReadSizeError>
+where
+  F: FnOnce([u8; N]) -> T,
+{
+  Ok(convert(
+    input
+      .get(1..N + 1)
+      .ok_or(ReadSizeError::Truncated)?
+      .try_into()
+      .unwrap(),
+  ))
+}
 
 /// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
