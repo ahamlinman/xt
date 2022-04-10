@@ -8,28 +8,28 @@
 //!
 //! # Fundamentals of Transcoding
 //!
-//! Transcoding is fundamentally similar to normal deserialization. Where a
-//! typical Serde user seeks to deserialize some input into an in-memory data
+//! At a fundamental level, transcoding is similar to normal deserialization.
+//! Where typical Serde usage would deserialize an input into an in-memory data
 //! structure, a Serde transcoder seeks to "deserialize" that input into the
 //! abstract result of serializing that data as some other format, including
 //! side effects like writing the serialized output to a stream.
 //!
 //! To summarize the process: a Serde [`Deserializer`] parses some input to find
-//! the next useful value, and calls a Serde [`de::Visitor`] method
+//! the next useful value, and calls a Serde [`Visitor`][`de::Visitor`] method
 //! corresponding to the type of that value. For simple types like numbers and
 //! strings, the visitor will receive the value directly.  For complex types
 //! like sequences and maps, the deserializer will provide an "accessor" that
 //! allows the visitor to deserialize (with another visitor) each element in
 //! turn. A typical visitor, of the kind that `serde_derive` might generate,
 //! would construct and return some kind of value using these inputs. A
-//! transcoding visitor instead invokes the Serde [`Serializer`] method
-//! corresponding to the visitor method that the deserializer called.
+//! transcoding visitor will instead invoke the Serde [`Serializer`] methods
+//! corresponding to those inputs.
 //!
 //! # Implementation Overview
 //!
 //! The transcoder's implementations of Serde traits are relatively unique, as
-//! our use case often requires us to transfer ownership of values across Serde
-//! API boundaries that aren't designed to handle them directly.
+//! they often need to transfer owned values across Serde API boundaries that
+//! aren't designed to handle them directly.
 //!
 //! For example, the transcoder must implement Serde's [`Serialize`] trait to
 //! serialize the elements of sequences and maps:
@@ -58,76 +58,79 @@
 //! }
 //! ```
 //!
-//! This pattern shouldn't be hard for a typical data structure to implement,
-//! but poses a couple of challenges for us:
+//! This pattern isn't too hard for a typical data structure to implement.
+//! However, the transcoder faces a couple of challenges:
 //!
-//! 1. Unlike a typical data structure, we won't know which `serializer` method
-//!    to call until we ask the deserializer to drive a visitor. This consumes
-//!    the deserializer, which means that we'll need to safely take ownership of
-//!    it from the `&self` provided to us.
+//! 1. Unlike with a typical data structure, `serialize` can't know which
+//!    `serializer` method to call until it asks the deserializer to drive a new
+//!    visitor. This consumes the deserializer, which means that `serialize`
+//!    will need to safely take ownership of it from the provided `&self`.
 //!
 //! 2. If the deserializer fails, for example due to a syntax error in the
-//!    input, we can't return that original error directly. `serialize` must
+//!    input, `serialize` can't return that original error directly. It must
 //!    return an `S::Error`, which it can only construct with a string-like
 //!    value via the [`ser::Error::custom`] function.
 //!
-//! In general, all of our implementations of Serde traits face similar
-//! challenges, with the details varying based on which part of the transcode
+//! In general, all of the transcoder's trait implementations face similar
+//! challenges, with the details varying based on which part of the process
 //! they're involved with. As such, these implementations all center around a
-//! common [`Machine`] type. A machine initially owns an unused (de)serializer,
-//! and after transferring ownership of the (de)serializer provides a writable
-//! slot for any error value that the method can't return directly.
+//! common [`Machine`] type. A machine initially owns an unused (de)serializer
+//! for a trait method to take, and subsequently provides a writable slot for
+//! any error value that the method can't return directly.
 //!
-//! A typical implementation of a Serde trait method on `Machine` looks as
-//! follows:
+//! A typical implementation of a Serde trait method on `Machine` will:
 //!
 //! 1. Take ownership of the (de)serializer held by the machine, replacing the
 //!    machine state with an empty error slot. (Subsequent attempts to do this
 //!    will panic.)
 //!
 //! 2. Call the appropriate (de)serializer method for the next step of the
-//!    transcode. We might just need to serialize a simple value, or we might
-//!    need to construct a new "inner" machine and pass a reference to it so
-//!    that the callee can invoke other Serde trait methods.
+//!    transcode. It might just need to serialize a simple value, or it might
+//!    need to pass the callee a reference to a newly constructed "inner"
+//!    machine, through which the callee can invoke other Serde trait methods.
 //!
-//! 3. If that call returns an error that can't be returned directly, stash it
-//!    in the machine's error slot. Then, return an error of the appropriate
-//!    type, either by constructing one with a generic message, or by extracting
-//!    one from an inner machine that was captured further down the call stack.
+//! 3. Stash any error from that call in the machine's error slot if it can't be
+//!    returned directly. Then, return an error of the appropriate type, either
+//!    by constructing one with a generic message, or by extracting one from an
+//!    inner machine that was captured further down the call stack.
 //!
-//! The capturing and extracting of error values throughout the call stack
-//! ensures that a failed transcode follows the same error handling paths that
-//! the serializer and deserializer would expect to traverse when aborting a
-//! regular (de)serialize operation in the middle of a value. In particular,
-//! experience has shown that some deserializers don't like when their visitors
-//! attempt to return an `Ok` without fully consuming a sequence or map.
+//! This plumbing of error values through the call stack ensures that a failed
+//! transcode follows the same error paths that the serializer and deserializer
+//! would normally traverse when aborting a typical (de)serialize operation in
+//! the middle of a value. An early implementation of the jyt transcoder simply
+//! attempted to make its `Visitor` yield `Result<S::Ok, S::Error>` instead of
+//! `S::Ok`. However, at least one deserializer was found to panic when the
+//! transcoder attempted to return a serializer error through the deserializer's
+//! success path (by returning `Ok(Err(_))` from visitor methods) without fully
+//! consuming the deserializer's current input value.
 //!
 //! # Other Differences From `serde_transcode`
 //!
 //! - jyt's transcoder defines a custom `Error` type that wraps the original
 //!   serializer and deserializer error values, and indicates which side of the
-//!   transcode initially failed. When the serializer triggers the failure, jyt
-//!   includes the corresponding deserializer error to provide additional
+//!   transcode initially failed. When the serializer triggers the failure, the
+//!   transcoder includes a corresponding deserializer error for additional
 //!   context. For example, when jyt attempts to transcode a `null` map key in a
-//!   YAML file to JSON, and the JSON encoder refuses to accept the non-string
-//!   key, jyt will print the line and column of the null key in the YAML input,
-//!   as the YAML deserializer's error provides this information.
+//!   YAML file to JSON, and the JSON encoder halts the transcode by refusing to
+//!   accept the non-string key, jyt will print the line and column of the null
+//!   key in the YAML input, as the YAML deserializer's error provides this
+//!   information.
 //!
 //! - `serde_transcode` exposes a `Transcoder` type that implements `Serialize`
 //!   for a `Deserializer`, while jyt's transcoder only exposes a top-level
-//!   `transcode` function. Serde's `serialize` method can only expose the error
-//!   value from the serializer, so it can't provide the same level of rich
-//!   error information without forcing end users to extract error values the
-//!   same way the transcoder's internals do.
+//!   `transcode` function. The top-level function enables jyt's transcoder to
+//!   cleanly expose the richer errors described above, while a public
+//!   `Serialize` implementation would force end users to extract these richer
+//!   errors in similar fashion to the transcoder's internals.
 //!
 //! - jyt does not support transcoding `Option<T>` and newtype struct values, as
 //!   no jyt input format is expected to produce such values on its own. The
-//!   implementation could probably be extended to support this.
+//!   implementation could be extended to support this.
 //!
 //! Most importantly of all:
 //!
 //! - jyt's transcoder is far less mature than `serde_transcode`, and far more
-//!   complex (i.e. less maintainable). If the error propagation support isn't
+//!   complex (read: less maintainable). If the error propagation support isn't
 //!   an absolute requirement for your use case, **you should really just use
 //!   `serde_transcode`**.
 //!
