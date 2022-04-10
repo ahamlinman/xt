@@ -158,7 +158,7 @@ where
   let visitor = Machine::new(s);
   match d.deserialize_any(&visitor) {
     Ok(value) => Ok(value),
-    Err(derr) => match visitor.into_used() {
+    Err(derr) => match visitor.into_error() {
       Some(serr) => Err(Error::Ser(serr, derr)),
       None => Err(Error::De(derr)),
     },
@@ -208,33 +208,33 @@ where
 ///
 /// See the module level documentation for a more comprehensive explanation of
 /// this type's usage.
-struct Machine<N, U>(Cell<MachineState<N, U>>);
+struct Machine<V, E>(Cell<MachineState<V, E>>);
 
-enum MachineState<N, U> {
-  New(N),
-  Used(Option<U>),
+enum MachineState<V, E> {
+  New(V),
+  Used(Option<E>),
 }
 
-impl<N, U> Machine<N, U> {
-  fn new(n: N) -> Machine<N, U> {
-    Machine(Cell::new(MachineState::New(n)))
+impl<V, E> Machine<V, E> {
+  fn new(v: V) -> Machine<V, E> {
+    Machine(Cell::new(MachineState::New(v)))
   }
 
-  fn take_new(&self) -> N {
+  fn take_new(&self) -> V {
     match self.0.replace(MachineState::Used(None)) {
       MachineState::New(n) => n,
       MachineState::Used(_) => panic!("transcode machine is already used"),
     }
   }
 
-  fn set_used(&self, u: Option<U>) {
-    self.0.set(MachineState::Used(u))
+  fn capture_error(&self, e: Option<E>) {
+    self.0.set(MachineState::Used(e))
   }
 
-  fn into_used(self) -> Option<U> {
+  fn into_error(self) -> Option<E> {
     match self.0.into_inner() {
       MachineState::New(_) => None,
-      MachineState::Used(u) => u,
+      MachineState::Used(e) => e,
     }
   }
 }
@@ -247,10 +247,11 @@ where
   E: de::Error,
   F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
-  match f(m.take_new()) {
+  let serializer = m.take_new();
+  match f(serializer) {
     Ok(value) => Ok(value),
     Err(serr) => {
-      m.set_used(Some(serr));
+      m.capture_error(Some(serr));
       Err(de::Error::custom(TRANSLATION_FAILED))
     }
   }
@@ -342,7 +343,7 @@ where
       .take_new()
       .serialize_seq(input.size_hint())
       .map_err(|serr| {
-        self.set_used(Some(serr));
+        self.capture_error(Some(serr));
         de::Error::custom(TRANSLATION_FAILED)
       })?;
 
@@ -352,14 +353,14 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.set_used(seed.into_used());
+          self.capture_error(seed.into_error());
           return Err(derr);
         }
       }
     }
 
     output.end().map_err(|serr| {
-      self.set_used(Some(serr));
+      self.capture_error(Some(serr));
       de::Error::custom(TRANSLATION_FAILED)
     })
   }
@@ -372,7 +373,7 @@ where
       .take_new()
       .serialize_map(input.size_hint())
       .map_err(|serr| {
-        self.set_used(Some(serr));
+        self.capture_error(Some(serr));
         de::Error::custom(TRANSLATION_FAILED)
       })?;
 
@@ -382,20 +383,20 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.set_used(key_seed.0.into_used());
+          self.capture_error(key_seed.0.into_error());
           return Err(derr);
         }
       }
 
       let value_seed = ValueSeed(Machine::new(&mut output));
       if let Err(derr) = input.next_value_seed(&value_seed) {
-        self.set_used(value_seed.0.into_used());
+        self.capture_error(value_seed.0.into_error());
         return Err(derr);
       }
     }
 
     output.end().map_err(|serr| {
-      self.set_used(Some(serr));
+      self.capture_error(Some(serr));
       de::Error::custom(TRANSLATION_FAILED)
     })
   }
@@ -415,8 +416,8 @@ where
   match f(serializer, &forwarder) {
     Ok(()) => Ok(()),
     Err(serr) => {
-      m.set_used(Some(serr));
-      match forwarder.into_used() {
+      m.capture_error(Some(serr));
+      match forwarder.into_error() {
         Some(derr) => Err(derr),
         None => Err(de::Error::custom(TRANSLATION_FAILED)),
       }
@@ -438,9 +439,7 @@ where
   }
 }
 
-struct KeySeed<'a, S>(Machine<&'a mut S, S::Error>)
-where
-  S: SerializeMap;
+struct KeySeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
 
 impl<'de, 'a, S> DeserializeSeed<'de> for &KeySeed<'a, S>
 where
@@ -456,9 +455,7 @@ where
   }
 }
 
-struct ValueSeed<'a, S>(Machine<&'a mut S, S::Error>)
-where
-  S: SerializeMap;
+struct ValueSeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
 
 impl<'de, 'a, S> DeserializeSeed<'de> for &ValueSeed<'a, S>
 where
@@ -487,8 +484,8 @@ where
     match deserializer.deserialize_any(&visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
-        self.set_used(Some(derr));
-        match visitor.into_used() {
+        self.capture_error(Some(derr));
+        match visitor.into_error() {
           Some(serr) => Err(serr),
           None => Err(ser::Error::custom(TRANSLATION_FAILED)),
         }
