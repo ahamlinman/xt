@@ -266,8 +266,8 @@ where
 {
   type Value = S::Ok;
 
-  fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-    write!(fmt, "any supported value")
+  fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str("any supported value")
   }
 
   fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
@@ -588,7 +588,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       type Value = Value<'a>;
 
       fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "any supported value")
+        f.write_str("any supported value")
       }
 
       jyt_transcode_impl_value_visitors! {
