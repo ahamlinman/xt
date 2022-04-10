@@ -97,19 +97,19 @@ impl Output for Discard {
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! jyt_detect_impl_discard_methods {
   () => {};
-  (($($decl:tt)*) discards $value:expr; $($rest:tt)*) => {
+  ({ $($decl:tt)* } discards $value:expr; $($rest:tt)*) => {
     fn $($decl)* -> Result<Self::Ok, Self::Error> {
       Serialize::serialize($value, Discard)
     }
     jyt_detect_impl_discard_methods! { $($rest)* }
   };
-  (($($decl:tt)*) returns Discard; $($rest:tt)*) => {
+  ({ $($decl:tt)* } returns Discard; $($rest:tt)*) => {
     fn $($decl)* -> Result<Discard, Self::Error> {
       Ok(Discard)
     }
     jyt_detect_impl_discard_methods! { $($rest)* }
   };
-  (($($decl:tt)*); $($rest:tt)*) => {
+  ({ $($decl:tt)* } does nothing; $($rest:tt)*) => {
     fn $($decl)* -> Result<(), Self::Error> {
       Ok(())
     }
@@ -130,48 +130,38 @@ impl Serializer for Discard {
   type SerializeStructVariant = Discard;
 
   jyt_detect_impl_discard_methods! {
-    (serialize_unit(self));
-    (serialize_bool(self, _: bool));
-    (serialize_i8(self, _: i8));
-    (serialize_i16(self, _: i16));
-    (serialize_i32(self, _: i32));
-    (serialize_i64(self, _: i64));
-    (serialize_i128(self, _: i128));
-    (serialize_u8(self, _: u8));
-    (serialize_u16(self, _: u16));
-    (serialize_u32(self, _: u32));
-    (serialize_u64(self, _: u64));
-    (serialize_u128(self, _: u128));
-    (serialize_f32(self, _: f32));
-    (serialize_f64(self, _: f64));
-    (serialize_char(self, _: char));
-    (serialize_str(self, _: &str));
-    (serialize_bytes(self, _: &[u8]));
-    (serialize_none(self));
-    (serialize_unit_struct(self, _: &'static str));
-    (serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str));
+    { serialize_unit(self) } does nothing;
+    { serialize_bool(self, _: bool) } does nothing;
+    { serialize_i8(self, _: i8) } does nothing;
+    { serialize_i16(self, _: i16) } does nothing;
+    { serialize_i32(self, _: i32) } does nothing;
+    { serialize_i64(self, _: i64) } does nothing;
+    { serialize_i128(self, _: i128) } does nothing;
+    { serialize_u8(self, _: u8) } does nothing;
+    { serialize_u16(self, _: u16) } does nothing;
+    { serialize_u32(self, _: u32) } does nothing;
+    { serialize_u64(self, _: u64) } does nothing;
+    { serialize_u128(self, _: u128) } does nothing;
+    { serialize_f32(self, _: f32) } does nothing;
+    { serialize_f64(self, _: f64) } does nothing;
+    { serialize_char(self, _: char) } does nothing;
+    { serialize_str(self, _: &str) } does nothing;
+    { serialize_bytes(self, _: &[u8]) } does nothing;
+    { serialize_none(self) } does nothing;
+    { serialize_unit_struct(self, _: &'static str) } does nothing;
+    { serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str) } does nothing;
 
-    (serialize_some<T: ?Sized + Serialize>(self, value: &T))
-      discards value;
-    (serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, value: &T))
-      discards value;
-    (serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, value: &T))
-      discards value;
+    { serialize_some<T: ?Sized + Serialize>(self, value: &T) } discards value;
+    { serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, value: &T) } discards value;
+    { serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, value: &T) } discards value;
 
-    (serialize_seq(self, _: Option<usize>))
-      returns Discard;
-    (serialize_tuple(self, _: usize))
-      returns Discard;
-    (serialize_tuple_struct(self, _: &'static str, _: usize))
-      returns Discard;
-    (serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
-      returns Discard;
-    (serialize_map(self, _: Option<usize>))
-      returns Discard;
-    (serialize_struct(self, _: &'static str, _: usize))
-      returns Discard;
-    (serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize))
-      returns Discard;
+    { serialize_seq(self, _: Option<usize>) } returns Discard;
+    { serialize_tuple(self, _: usize) } returns Discard;
+    { serialize_tuple_struct(self, _: &'static str, _: usize) } returns Discard;
+    { serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
+    { serialize_map(self, _: Option<usize>) } returns Discard;
+    { serialize_struct(self, _: &'static str, _: usize) } returns Discard;
+    { serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
   }
 }
 
@@ -193,47 +183,39 @@ macro_rules! jyt_detect_impl_discard_traits {
 
 jyt_detect_impl_discard_traits! {
   ser::SerializeSeq {
-    (serialize_element<T: ?Sized + Serialize>(&mut self, value: &T))
-      discards value;
-    (end(self));
+    { serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeTuple {
-    (serialize_element<T: ?Sized + Serialize>(&mut self, value: &T))
-      discards value;
-    (end(self));
+    { serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeTupleStruct {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, value: &T))
-      discards value;
-    (end(self));
+    { serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeTupleVariant {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, value: &T))
-      discards value;
-    (end(self));
+    { serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeMap {
-    (serialize_key<T: ?Sized + Serialize>(&mut self, key: &T))
-      discards key;
-    (serialize_value<T: ?Sized + Serialize>(&mut self, value: &T))
-      discards value;
-    (end(self));
+    { serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) } discards key;
+    { serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeStruct {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T))
-      discards value;
-    (end(self));
+    { serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 
   ser::SerializeStructVariant {
-    (serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T))
-      discards value;
-    (end(self));
+    { serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T) } discards value;
+    { end(self) } does nothing;
   };
 }
 
