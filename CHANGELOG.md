@@ -1,3 +1,12 @@
+## v0.7.4 (2022-04-10)
+
+### Changed
+
+- Several parts of the jyt codebase, including most of the core translation
+  logic, have been cleaned up in an attempt to make them easier for jyt
+  developers to understand. Testing has not identified any notable performance
+  or functional impact associated with these changes.
+
 ## v0.7.3 (2022-04-09)
 
 ### Fixed
