@@ -27,7 +27,7 @@ pub(crate) struct Output<W: Write> {
 
 impl<W: Write> Output<W> {
   pub fn new(w: W) -> Output<W> {
-    Output { w: w, used: false }
+    Output { w, used: false }
   }
 }
 

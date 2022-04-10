@@ -16,7 +16,7 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
   // string. Cargo.lock is a great example of this, if you're curious.
   for from in [Format::Json, Format::Toml] {
-    if let Ok(_) = transcode_input(input.try_clone()?, from, Discard) {
+    if transcode_input(input.try_clone()?, from, Discard).is_ok() {
       return Ok(Some(from));
     }
   }
@@ -33,10 +33,9 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   if matches!(
     input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
     Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
-  ) {
-    if let Ok(_) = transcode_input(input.try_clone()?, Format::Msgpack, Discard) {
-      return Ok(Some(Format::Msgpack));
-    }
+  ) && transcode_input(input.try_clone()?, Format::Msgpack, Discard).is_ok()
+  {
+    return Ok(Some(Format::Msgpack));
   }
 
   // Finally, YAML is our traditional fallback format. Yes, we still get the
@@ -49,7 +48,7 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
   // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
   // the byte patterns for UTF-16-LE YAML input.
-  if let Ok(_) = transcode_input(input, Format::Yaml, Discard) {
+  if transcode_input(input, Format::Yaml, Discard).is_ok() {
     return Ok(Some(Format::Yaml));
   }
 

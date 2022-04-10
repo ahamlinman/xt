@@ -146,7 +146,7 @@ use serde::{
 };
 
 /// The message used to generate generic serializer and deserializer errors.
-const TRANSLATION_FAILED: &'static str = "translation failed";
+const TRANSLATION_FAILED: &str = "translation failed";
 
 /// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
 ///

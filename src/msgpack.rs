@@ -18,7 +18,7 @@ where
   match input.into() {
     Input::Buffer(buf) => {
       let mut buf = buf.deref();
-      while buf.len() > 0 {
+      while !buf.is_empty() {
         let size = next_value_size(buf, DEPTH_LIMIT)?;
         let (next, rest) = buf.split_at(size);
         let mut de = rmp_serde::Deserializer::from_read_ref(next);
@@ -106,7 +106,7 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
   if depth_limit == 0 {
     return Err(ReadSizeError::DepthLimitExceeded);
   }
-  if input.len() < 1 {
+  if input.is_empty() {
     return Ok(0);
   }
 
@@ -171,7 +171,7 @@ where
   let mut seq = input;
 
   for _ in 0..count {
-    if seq.len() == 0 {
+    if seq.is_empty() {
       return Err(ReadSizeError::Truncated);
     }
     let size = next_value_size(seq, depth_limit - 1)?;

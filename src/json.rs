@@ -24,7 +24,7 @@ where
       // into a value. It looks like transcode::Value is forced to copy every
       // string from a &str reference, which probably explains the difference.
       let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
-      while let Err(_) = de.end() {
+      while de.end().is_err() {
         output.transcode_from(&mut de)?;
       }
     }
@@ -48,7 +48,7 @@ impl<W: Write> crate::Output for Output<W> {
   {
     let mut ser = serde_json::Serializer::new(&mut self.0);
     transcode::transcode(&mut ser, de)?;
-    writeln!(&mut self.0, "")?;
+    writeln!(&mut self.0)?;
     Ok(())
   }
 
@@ -57,7 +57,7 @@ impl<W: Write> crate::Output for Output<W> {
     S: serde::ser::Serialize,
   {
     serde_json::to_writer(&mut self.0, &value)?;
-    writeln!(&mut self.0, "")?;
+    writeln!(&mut self.0)?;
     Ok(())
   }
 }

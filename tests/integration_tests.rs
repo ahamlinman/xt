@@ -90,8 +90,8 @@ fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
 
 #[test]
 fn test_toml_reordering() {
-  const INPUT: &'static [u8] = include_bytes!("single_reordered.json");
-  const EXPECTED: &'static str = include_str!("single.toml");
+  const INPUT: &[u8] = include_bytes!("single_reordered.json");
+  const EXPECTED: &str = include_str!("single.toml");
   let mut output = Vec::with_capacity(EXPECTED.len());
   jyt(
     InputHandle::from_buffer(INPUT),
@@ -103,7 +103,7 @@ fn test_toml_reordering() {
   assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
-const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
+const YAML_REENCODING_INPUTS: [&[u8]; 7] = [
   include_bytes!("utf16be.yaml"),
   include_bytes!("utf16le.yaml"),
   include_bytes!("utf32be.yaml"),
@@ -115,7 +115,7 @@ const YAML_REENCODING_INPUTS: [&'static [u8]; 7] = [
 
 #[test]
 fn test_yaml_reencoding() {
-  const EXPECTED: &'static str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
+  const EXPECTED: &str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
   for input in YAML_REENCODING_INPUTS {
     let mut output = Vec::with_capacity(EXPECTED.len());
     jyt(
@@ -135,7 +135,7 @@ fn test_halting_yaml_deserializer_without_panic() {
   // doesn't panic and crash. The particular example is a YAML input with a null
   // map key trying to transcode to JSON, where keys must be strings. If we're
   // not careful, we can break invariants of the YAML deserializer.
-  const INPUT: &'static [u8] = include_bytes!("nullkey.yaml");
+  const INPUT: &[u8] = include_bytes!("nullkey.yaml");
   let _ = jyt(
     InputHandle::from_buffer(INPUT),
     Some(Format::Yaml),
@@ -155,7 +155,7 @@ fn test_msgpack_depth_limit() {
   const DEPTH_LIMIT: usize = 1024;
 
   // Nested arrays enclosing a null.
-  let mut input = [0x91 as u8; DEPTH_LIMIT];
+  let mut input = [0x91_u8; DEPTH_LIMIT];
   *input.last_mut().unwrap() = 0xc0;
 
   // See https://stackoverflow.com/a/42960702. Cargo runs tests on secondary
