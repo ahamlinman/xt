@@ -65,10 +65,8 @@ impl Output for Discard {
     D: de::Deserializer<'de, Error = E>,
     E: de::Error + 'static,
   {
-    match de::IgnoredAny::deserialize(de) {
-      Ok(_) => Ok(()),
-      Err(err) => Err(err.into()),
-    }
+    de::IgnoredAny::deserialize(de)?;
+    Ok(())
   }
 
   fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>

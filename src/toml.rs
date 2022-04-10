@@ -85,10 +85,10 @@ impl<W: Write> Output<W> {
   }
 
   fn ensure_one_use(&mut self) -> Result<(), &'static str> {
-    self.used = match self.used {
-      false => true,
-      true => return Err("TOML does not support multi-document output"),
-    };
+    if self.used {
+      return Err("TOML does not support multi-document output");
+    }
+    self.used = true;
     Ok(())
   }
 }

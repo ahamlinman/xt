@@ -43,10 +43,7 @@ fn main() {
     jyt_fail!("refusing to output {} to a terminal", args.to);
   }
 
-  let input = match args.input() {
-    Ok(input) => input,
-    Err(err) => jyt_fail!(err),
-  };
+  let input = args.input().unwrap_or_else(|err| jyt_fail!(err));
 
   let result = jyt(input, args.detect_from(), args.to, &mut output);
 
@@ -77,17 +74,13 @@ fn format_is_unsafe_for_terminal(format: Format) -> bool {
 
 fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
   use io::ErrorKind::BrokenPipe;
-
   let mut next = Some(err);
   while let Some(err) = next {
-    match err.downcast_ref::<io::Error>() {
-      Some(err) if err.kind() == BrokenPipe => return true,
-      _ => {
-        next = err.source();
-      }
+    if matches!(err.downcast_ref::<io::Error>(), Some(err) if err.kind() == BrokenPipe) {
+      return true;
     }
+    next = err.source()
   }
-
   false
 }
 
