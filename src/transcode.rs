@@ -2,41 +2,39 @@
 //!
 //! jyt's transcoder is somewhat inspired by the [`serde_transcode`] crate
 //! advertised in the Serde documentation. However, its implementation has
-//! diverged rather significantly to enable it to preserve original
-//! (de)serializer error values that could not normally transit Serde API
-//! boundaries, rather than stringify such errors and potentially destroy useful
-//! information about them.
+//! diverged significantly to enable the preservation of original (de)serializer
+//! error values, in contrast to `serde_transcode`'s approach of stringifying
+//! errors to meet Serde API requirements.
 //!
 //! # Fundamentals of Transcoding
 //!
-//! Transcoding is fundamentally similar to the process of deserializing a value
-//! in general. Where a typical Serde user seeks to deserialize some input into
-//! an in-memory data structure, a Serde transcoder seeks to "deserialize" that
-//! input into the abstract result of serializing that data as some other
-//! format, including side effects like writing the serialized output to a
-//! stream.
+//! Transcoding is fundamentally similar to normal deserialization. Where a
+//! typical Serde user seeks to deserialize some input into an in-memory data
+//! structure, a Serde transcoder seeks to "deserialize" that input into the
+//! abstract result of serializing that data as some other format, including
+//! side effects like writing the serialized output to a stream.
 //!
-//! To summarize the process: a Serde [`Deserializer`] parses some text or
-//! binary input to find the next useful value, and calls a Serde [`Visitor`]
-//! method corresponding to the type of that value. For simple types like
-//! numbers and strings, the visitor will receive the value directly. For
-//! complex types like sequences and maps, the deserializer will provide an
-//! "accessor" that allows the visitor to deserialize (with another visitor)
-//! each element in turn. A typical visitor, of the kind that `serde_derive`
-//! might generate, would construct and return some kind of value using these
-//! inputs. A transcoding visitor instead invokes the Serde [`Serializer`]
-//! method corresponding to the visitor method that the deserializer called.
+//! To summarize the process: a Serde [`Deserializer`] parses some input to find
+//! the next useful value, and calls a Serde [`de::Visitor`] method
+//! corresponding to the type of that value. For simple types like numbers and
+//! strings, the visitor will receive the value directly.  For complex types
+//! like sequences and maps, the deserializer will provide an "accessor" that
+//! allows the visitor to deserialize (with another visitor) each element in
+//! turn. A typical visitor, of the kind that `serde_derive` might generate,
+//! would construct and return some kind of value using these inputs. A
+//! transcoding visitor instead invokes the Serde [`Serializer`] method
+//! corresponding to the visitor method that the deserializer called.
 //!
 //! # Implementation Overview
 //!
 //! The transcoder's implementations of Serde traits are relatively unique, as
 //! our use case often requires us to transfer ownership of values across Serde
-//! API boundaries that aren't generally designed to handle them directly.
+//! API boundaries that aren't designed to handle them directly.
 //!
 //! For example, the transcoder must implement Serde's [`Serialize`] trait to
 //! serialize the elements of sequences and maps:
 //!
-//! ```
+//! ```ignore
 //! pub trait Serialize {
 //!     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 //!     where
@@ -44,11 +42,24 @@
 //! }
 //! ```
 //!
-//! `serialize` is expected to consume `serializer` by calling one of its
-//! methods to emit a value (e.g. `serializer.serialize_bool(v)`), and to
-//! directly return the `Result` produced by that call. This shouldn't be hard
-//! for a typical data structure to implement, but poses a couple of challenges
-//! for us:
+//! A typical `serialize` body will consume the `serializer` by calling one of
+//! its methods to emit a value, and directly return the `Result` produced by
+//! that call. For example, Serde provides the following for the basic `bool`
+//! type:
+//!
+//! ```ignore
+//! impl Serialize for bool {
+//!     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//!     where
+//!         S: Serializer,
+//!     {
+//!         serializer.serialize_bool(*self)
+//!     }
+//! }
+//! ```
+//!
+//! This pattern shouldn't be hard for a typical data structure to implement,
+//! but poses a couple of challenges for us:
 //!
 //! 1. Unlike a typical data structure, we won't know which `serializer` method
 //!    to call until we ask the deserializer to drive a visitor. This consumes
@@ -60,7 +71,7 @@
 //!    return an `S::Error`, which it can only construct with a string-like
 //!    value via the [`ser::Error::custom`] function.
 //!
-//! In general, all of our implementations of Serde traits face these two
+//! In general, all of our implementations of Serde traits face similar
 //! challenges, with the details varying based on which part of the transcode
 //! they're involved with. As such, these implementations all center around a
 //! common [`Machine`] type. A machine initially owns an unused (de)serializer,
@@ -162,8 +173,8 @@ pub(crate) enum Error<S, D> {
   /// provide useful context, such as the location of the value that the
   /// serializer could not handle.
   Ser(S, D),
-  /// The deserializer triggered the transcode failure, for example due to
-  /// invalid input.
+  /// The deserializer triggered the transcode failure, for example due to a
+  /// syntax error in the input.
   De(D),
 }
 
@@ -173,10 +184,9 @@ where
   D: de::Error,
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    use Error::*;
     match self {
-      Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
-      De(derr) => fmt::Display::fmt(derr, f),
+      Error::Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
+      Error::De(derr) => fmt::Display::fmt(derr, f),
     }
   }
 }
@@ -187,10 +197,9 @@ where
   D: de::Error + 'static,
 {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    use Error::*;
     match self {
-      Ser(serr, _) => Some(serr),
-      De(derr) => Some(derr),
+      Error::Ser(serr, _) => Some(serr),
+      Error::De(derr) => Some(derr),
     }
   }
 }
@@ -230,17 +239,19 @@ impl<N, U> Machine<N, U> {
   }
 }
 
-fn forward_value<F, S, E>(m: &Machine<S, S::Error>, receive: F) -> Result<S::Ok, E>
+/// Handles the capture and mapping of serializer errors in visitor methods that
+/// only need to forward simple values.
+fn forward_value<S, E, F>(m: &Machine<S, S::Error>, f: F) -> Result<S::Ok, E>
 where
   S: Serializer,
   E: de::Error,
   F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
-  match receive(m.take_new()) {
+  match f(m.take_new()) {
     Ok(value) => Ok(value),
     Err(serr) => {
       m.set_used(Some(serr));
-      Err(E::custom(TRANSLATION_FAILED))
+      Err(de::Error::custom(TRANSLATION_FAILED))
     }
   }
 }
@@ -323,23 +334,21 @@ where
     forward_value(self, |s| s.serialize_bytes(v))
   }
 
-  fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+  fn visit_seq<A>(self, mut input: A) -> Result<Self::Value, A::Error>
   where
     A: de::SeqAccess<'de>,
   {
-    use de::Error;
-
-    let mut s = self
+    let mut output = self
       .take_new()
-      .serialize_seq(seq.size_hint())
+      .serialize_seq(input.size_hint())
       .map_err(|serr| {
         self.set_used(Some(serr));
-        A::Error::custom(TRANSLATION_FAILED)
+        de::Error::custom(TRANSLATION_FAILED)
       })?;
 
     loop {
-      let seed = Machine::new(&mut s);
-      match seq.next_element_seed(&seed) {
+      let seed = Machine::new(&mut output);
+      match input.next_element_seed(&seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
@@ -349,29 +358,27 @@ where
       }
     }
 
-    s.end().map_err(|serr| {
+    output.end().map_err(|serr| {
       self.set_used(Some(serr));
-      A::Error::custom(TRANSLATION_FAILED)
+      de::Error::custom(TRANSLATION_FAILED)
     })
   }
 
-  fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+  fn visit_map<A>(self, mut input: A) -> Result<Self::Value, A::Error>
   where
     A: de::MapAccess<'de>,
   {
-    use de::Error;
-
-    let mut s = self
+    let mut output = self
       .take_new()
-      .serialize_map(map.size_hint())
+      .serialize_map(input.size_hint())
       .map_err(|serr| {
         self.set_used(Some(serr));
-        A::Error::custom(TRANSLATION_FAILED)
+        de::Error::custom(TRANSLATION_FAILED)
       })?;
 
     loop {
-      let key_seed = KeySeed(Machine::new(&mut s));
-      match map.next_key_seed(&key_seed) {
+      let key_seed = KeySeed(Machine::new(&mut output));
+      match input.next_key_seed(&key_seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
@@ -380,35 +387,38 @@ where
         }
       }
 
-      let value_seed = ValueSeed(Machine::new(&mut s));
-      if let Err(derr) = map.next_value_seed(&value_seed) {
+      let value_seed = ValueSeed(Machine::new(&mut output));
+      if let Err(derr) = input.next_value_seed(&value_seed) {
         self.set_used(value_seed.0.into_used());
         return Err(derr);
       }
     }
 
-    s.end().map_err(|serr| {
+    output.end().map_err(|serr| {
       self.set_used(Some(serr));
-      A::Error::custom(TRANSLATION_FAILED)
+      de::Error::custom(TRANSLATION_FAILED)
     })
   }
 }
 
-fn forward_next<'de, D, F, S, E>(m: &Machine<S, E>, d: D, receive: F) -> Result<(), D::Error>
+/// Handles the capture and mapping of errors when forwarding the next value
+/// from a deserializer to a sequence or map serializer method. As these methods
+/// require `Serialize` values, we automatically wrap the deserializer with an
+/// inner machine and propagate its captured error.
+fn forward_next<'de, D, F, S, E>(m: &Machine<S, E>, d: D, f: F) -> Result<(), D::Error>
 where
   D: Deserializer<'de>,
   F: FnOnce(S, &Machine<D, D::Error>) -> Result<(), E>,
 {
-  use de::Error;
-
+  let serializer = m.take_new();
   let forwarder = Machine::new(d);
-  match receive(m.take_new(), &forwarder) {
+  match f(serializer, &forwarder) {
     Ok(()) => Ok(()),
     Err(serr) => {
       m.set_used(Some(serr));
       match forwarder.into_used() {
         Some(derr) => Err(derr),
-        None => Err(D::Error::custom(TRANSLATION_FAILED)),
+        None => Err(de::Error::custom(TRANSLATION_FAILED)),
       }
     }
   }
@@ -424,7 +434,7 @@ where
   where
     D: Deserializer<'de>,
   {
-    forward_next(self, d, |s, m| s.serialize_element(m))
+    forward_next(self, d, |s, f| s.serialize_element(f))
   }
 }
 
@@ -438,8 +448,11 @@ where
 {
   type Value = ();
 
-  fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
-    forward_next(&self.0, d, |s, m| s.serialize_key(m))
+  fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    forward_next(&self.0, d, |s, f| s.serialize_key(f))
   }
 }
 
@@ -453,8 +466,11 @@ where
 {
   type Value = ();
 
-  fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
-    forward_next(&self.0, d, |s, m| s.serialize_value(m))
+  fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    forward_next(&self.0, d, |s, f| s.serialize_value(f))
   }
 }
 
@@ -466,16 +482,15 @@ where
   where
     S: Serializer,
   {
-    use ser::Error;
-
+    let deserializer = self.take_new();
     let visitor = Machine::new(s);
-    match self.take_new().deserialize_any(&visitor) {
+    match deserializer.deserialize_any(&visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
         self.set_used(Some(derr));
         match visitor.into_used() {
           Some(serr) => Err(serr),
-          None => Err(S::Error::custom(TRANSLATION_FAILED)),
+          None => Err(ser::Error::custom(TRANSLATION_FAILED)),
         }
       }
     }
