@@ -96,25 +96,25 @@ impl Output for Discard {
 /// ```
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_discard_serializer_methods {
+macro_rules! jyt_detect_impl_discard_methods {
   () => {};
   (($($decl:tt)*) discards $value:expr; $($rest:tt)*) => {
     fn $($decl)* -> Result<Self::Ok, Self::Error> {
       Serialize::serialize($value, Discard)
     }
-    local_impl_discard_serializer_methods! { $($rest)* }
+    jyt_detect_impl_discard_methods! { $($rest)* }
   };
   (($($decl:tt)*) returns Discard; $($rest:tt)*) => {
     fn $($decl)* -> Result<Discard, Self::Error> {
       Ok(Discard)
     }
-    local_impl_discard_serializer_methods! { $($rest)* }
+    jyt_detect_impl_discard_methods! { $($rest)* }
   };
   (($($decl:tt)*); $($rest:tt)*) => {
     fn $($decl)* -> Result<(), Self::Error> {
       Ok(())
     }
-    local_impl_discard_serializer_methods! { $($rest)* }
+    jyt_detect_impl_discard_methods! { $($rest)* }
   };
 }
 
@@ -130,7 +130,7 @@ impl Serializer for Discard {
   type SerializeStruct = Discard;
   type SerializeStructVariant = Discard;
 
-  local_impl_discard_serializer_methods! {
+  jyt_detect_impl_discard_methods! {
     (serialize_unit(self));
     (serialize_bool(self, _: bool));
     (serialize_i8(self, _: i8));
@@ -180,21 +180,19 @@ impl Serializer for Discard {
 /// [`Discard`], using our special macro syntax for serializer methods.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! local_impl_discard_serializer_traits {
+macro_rules! jyt_detect_impl_discard_traits {
   () => {};
   ($ty:ty { $($body:tt)* }; $($rest:tt)*) => {
     impl $ty for Discard {
       type Ok = ();
       type Error = DiscardError;
-
-      local_impl_discard_serializer_methods! { $($body)* }
+      jyt_detect_impl_discard_methods! { $($body)* }
     }
-
-    local_impl_discard_serializer_traits! { $($rest)* }
+    jyt_detect_impl_discard_traits! { $($rest)* }
   };
 }
 
-local_impl_discard_serializer_traits! {
+jyt_detect_impl_discard_traits! {
   ser::SerializeSeq {
     (serialize_element<T: ?Sized + Serialize>(&mut self, value: &T))
       discards value;

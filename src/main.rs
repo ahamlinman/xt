@@ -30,7 +30,7 @@ fn main() {
 
   macro_rules! jyt_exit {
     ($fmt:literal, $($x:expr),*) => {{
-      eprint!(concat!("jyt error: ", $fmt, "\n"), $($x),*);
+      eprintln!(concat!("jyt error: ", $fmt), $($x),*);
       process::exit(1);
     }};
     ($x:expr) => {
