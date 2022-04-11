@@ -1,7 +1,8 @@
 [package]
 name = "xt"
-description = "Translate between serialized data formats"
 version = "0.8.0"
+description = "Translate between serialized data formats"
+repository = "https://github.com/ahamlinman/xt"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2021"
