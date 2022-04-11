@@ -26,11 +26,13 @@ $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -fj -tm > events.m
 
 ## Installation
 
-At this time, you must build xt manually using Rust 1.56.0 or later.
+You can install xt [from crates.io][crate], using Rust 1.56.0 or later.
 
 ```sh
-cargo install --locked --git https://github.com/ahamlinman/xt.git
+cargo install --locked xt
 ```
+
+[crate]: https://crates.io/crates/xt
 
 ## Usage and Features
 
