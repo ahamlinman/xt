@@ -1,4 +1,4 @@
-//! The main entrypoint for the jyt serialized data translation tool.
+//! The main entrypoint for the xt serialized data translation tool.
 //!
 //! **This interface is not stable!** To convert between serialized data formats
 //! in Rust code, consider [`serde_transcode`](https://docs.rs/serde-transcode)
@@ -22,9 +22,9 @@ pub use input::InputHandle;
 
 /// Translates serialized input to serialized output in a different format.
 ///
-/// When `from` is `None`, jyt will attempt to detect the input format using an
+/// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
-pub fn jyt<W>(
+pub fn translate<W>(
   mut input: InputHandle<'_>,
   from: Option<Format>,
   to: Format,
@@ -72,7 +72,7 @@ trait Output {
     S: serde::ser::Serialize;
 }
 
-/// The set of input and output formats supported by jyt.
+/// The set of input and output formats supported by xt.
 #[derive(Copy, Clone)]
 pub enum Format {
   Json,

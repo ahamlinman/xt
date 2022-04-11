@@ -37,7 +37,7 @@ impl<W: Write> crate::Output for Output<W> {
     D: serde::de::Deserializer<'de, Error = E>,
     E: serde::de::Error + 'static,
   {
-    // TOML is pretty unique among jyt's supported output formats, and requires
+    // TOML is pretty unique among xt's supported output formats, and requires
     // some special considerations.
 
     // Since TOML has no concept of multiple documents in a single stream, and
@@ -70,7 +70,7 @@ impl<W: Write> crate::Output for Output<W> {
 impl<W: Write> Output<W> {
   fn output_value(&mut self, value: ::toml::Value) -> Result<(), Box<dyn Error>> {
     // From the spec: "TOML is designed to map unambiguously to a hash table."
-    // jyt's other input formats can produce something like a boolean or array
+    // xt's other input formats can produce something like a boolean or array
     // at the top level, which we would dump into an invalid TOML document if
     // we're not careful. For example, a top-level array could get dumped as an
     // array of tables with an empty name, i.e. with "[[]]" headers.

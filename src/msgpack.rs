@@ -31,8 +31,8 @@ where
       // Note that in reader mode, the MessagePack deserializer will eagerly
       // allocate zero-filled buffers for binary and string data based on the
       // length specified in the input. This is partly why the help output says
-      // that jyt is not designed for use with untrusted input, since a 5-byte
-      // input could force jyt to allocate as much as 4 GiB of memory before
+      // that xt is not designed for use with untrusted input, since a 5-byte
+      // input could force xt to allocate as much as 4 GiB of memory before
       // dying with an error.
       //
       // That said, the zero-filling optimizes pretty well in release builds
@@ -269,7 +269,7 @@ mod tests {
     // float format family
     &hex!("ca 64 7a 5a 6e"),             // single precision
     &hex!("cb 54 79 4b 50 45 67 4e 64"), // double precision
-    // str format family: "jyt"
+    // str format family: "xt"
     &hex!("a3 6a 79 74"),             // fixstr
     &hex!("d9 03 6a 79 74"),          // str 8
     &hex!("da 00 03 6a 79 74"),       // str 16
@@ -279,7 +279,7 @@ mod tests {
     &hex!("d9 00"),          // str 8
     &hex!("da 00 00"),       // str 16
     &hex!("db 00 00 00 00"), // str 32
-    // bin format family: b"jyt"
+    // bin format family: b"xt"
     &hex!("c4 03 6a 79 74"),          // bin 8
     &hex!("c5 00 03 6a 79 74"),       // bin 16
     &hex!("c6 00 00 00 03 6a 79 74"), // bin 32
@@ -287,7 +287,7 @@ mod tests {
     &hex!("c4 00"),          // bin 8
     &hex!("c5 00 00"),       // bin 16
     &hex!("c6 00 00 00 00"), // bin 32
-    // array format family: ["jyt", true]
+    // array format family: ["xt", true]
     &hex!("92 a3 6a 79 74 c3"),             // fixarray
     &hex!("dc 00 02 a3 6a 79 74 c3"),       // array 16
     &hex!("dd 00 00 00 02 a3 6a 79 74 c3"), // array 32
@@ -295,7 +295,7 @@ mod tests {
     &hex!("90"),             // fixarray
     &hex!("dc 00 00"),       // array 16
     &hex!("dd 00 00 00 00"), // array 32
-    // map format family: {"jyt": true, "good": true}
+    // map format family: {"xt": true, "good": true}
     &hex!("82 a3 6a 79 74 c3 a4 67 6f 6f 64 c3"), // fixmap
     &hex!("de 00 02 a3 6a 79 74 c3 a4 67 6f 6f 64 c3"), // map 16
     &hex!("df 00 00 00 02 a3 6a 79 74 c3 a4 67 6f 6f 64 c3"), // map 32
@@ -332,7 +332,7 @@ mod tests {
 
   #[test]
   fn test_nonsensically_large_input() {
-    // The string "jyt," but with a reported length of 2^32-1 bytes.
+    // The string "xt," but with a reported length of 2^32-1 bytes.
     assert_eq!(
       next_value_size(&hex!("db ff ff ff ff 6a 79 74"), DEPTH_LIMIT),
       Err(Truncated)
@@ -357,12 +357,12 @@ mod tests {
       next_value_size(&hex!("c1"), DEPTH_LIMIT),
       Err(InvalidMarker)
     );
-    // ["jyt", <invalid>]
+    // ["xt", <invalid>]
     assert_eq!(
       next_value_size(&hex!("92 a3 6a 79 74 c1"), DEPTH_LIMIT),
       Err(InvalidMarker)
     );
-    // {"jyt": true, "good": <invalid>}
+    // {"xt": true, "good": <invalid>}
     assert_eq!(
       next_value_size(&hex!("82 a3 6a 79 74 c3 a4 67 6f 6f 64 c1"), DEPTH_LIMIT),
       Err(InvalidMarker)
@@ -373,7 +373,7 @@ mod tests {
   fn test_suffixes_skipped() {
     // true; <invalid>
     assert_eq!(next_value_size(&hex!("c3 c1"), DEPTH_LIMIT), Ok(1));
-    // ["jyt"]; <invalid>
+    // ["xt"]; <invalid>
     assert_eq!(
       next_value_size(&hex!("91 a3 6a 79 74 c1"), DEPTH_LIMIT),
       Ok(5)

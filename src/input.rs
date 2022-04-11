@@ -5,7 +5,7 @@ use std::rc::Rc;
 /// An opaque handle to serialized input data from a buffer or reader source.
 ///
 /// While either kind of input is fully supported and will produce the same
-/// output for the same input data, jyt may be able to modify or optimize its
+/// output for the same input data, xt may be able to modify or optimize its
 /// internal behavior in useful ways based on the kind of input provided.
 pub struct InputHandle<'a>(Input<'a>);
 
@@ -32,8 +32,8 @@ impl<'a> InputHandle<'a> {
 
   /// Creates a handle for an input reader.
   ///
-  /// Use of a reader handle does not guarantee that jyt will process input in
-  /// streaming fashion, as some input formats and jyt features require buffered
+  /// Use of a reader handle does not guarantee that xt will process input in
+  /// streaming fashion, as some input formats and xt features require buffered
   /// input.
   ///
   /// If possible, the reader should avoid performing its own buffering. For

@@ -1,9 +1,9 @@
-use jyt::{jyt, Format, InputHandle};
+use xt::{Format, InputHandle};
 
-/// A single jyt test input.
+/// A single xt test input.
 ///
 /// The inputs for a given set of integration tests contain the same serialized
-/// content, as formatted by jyt itself. Translating any input to any format
+/// content, as formatted by xt itself. Translating any input to any format
 /// (including the source format itself) should produce the test input for that
 /// format, regardless of whether the format is auto detected or specified
 /// explicitly. This may impose limitations on the structure and values that the
@@ -28,7 +28,7 @@ fn test_single_document_buffer() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
     for from in [None, Some(from)] {
       let mut output = Vec::with_capacity(expected.len());
-      jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
+      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
@@ -39,7 +39,7 @@ fn test_single_document_reader() {
   for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
     for from in [None, Some(from)] {
       let mut output = Vec::with_capacity(expected.len());
-      jyt(InputHandle::from_reader(input), from, to, &mut output).unwrap();
+      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
@@ -61,7 +61,7 @@ fn test_multi_document_buffer() {
   for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
     for from in [None, Some(from)] {
       let mut output = Vec::with_capacity(expected.len());
-      jyt(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
+      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
@@ -72,7 +72,7 @@ fn test_multi_document_reader() {
   for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
     for from in [None, Some(from)] {
       let mut output = Vec::with_capacity(expected.len());
-      jyt(InputHandle::from_reader(input), from, to, &mut output).unwrap();
+      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
       assert_eq!(&output, expected);
     }
   }
@@ -93,7 +93,7 @@ fn test_toml_reordering() {
   const INPUT: &[u8] = include_bytes!("single_reordered.json");
   const EXPECTED: &str = include_str!("single.toml");
   let mut output = Vec::with_capacity(EXPECTED.len());
-  jyt(
+  xt::translate(
     InputHandle::from_buffer(INPUT),
     Some(Format::Json),
     Format::Toml,
@@ -118,7 +118,7 @@ fn test_yaml_reencoding() {
   const EXPECTED: &str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
   for input in YAML_REENCODING_INPUTS {
     let mut output = Vec::with_capacity(EXPECTED.len());
-    jyt(
+    xt::translate(
       InputHandle::from_buffer(input),
       Some(Format::Yaml),
       Format::Json,
@@ -136,7 +136,7 @@ fn test_halting_yaml_deserializer_without_panic() {
   // map key trying to transcode to JSON, where keys must be strings. If we're
   // not careful, we can break invariants of the YAML deserializer.
   const INPUT: &[u8] = include_bytes!("nullkey.yaml");
-  let _ = jyt(
+  let _ = xt::translate(
     InputHandle::from_buffer(INPUT),
     Some(Format::Yaml),
     Format::Json,
@@ -165,7 +165,7 @@ fn test_msgpack_depth_limit() {
   const STACK_SIZE: usize = 8 * 1024 * 1024;
 
   stacker::grow(STACK_SIZE, || {
-    jyt(
+    xt::translate(
       InputHandle::from_reader(&input[..]),
       Some(Format::Msgpack),
       Format::Msgpack,
@@ -175,7 +175,7 @@ fn test_msgpack_depth_limit() {
   });
 
   stacker::grow(STACK_SIZE, || {
-    jyt(
+    xt::translate(
       InputHandle::from_buffer(&input[..]),
       Some(Format::Msgpack),
       Format::Msgpack,

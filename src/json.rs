@@ -11,7 +11,7 @@ where
     Input::Buffer(buf) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
-      // iteration if we allow it to deserialize into an actual value, so jyt
+      // iteration if we allow it to deserialize into an actual value, so xt
       // implements a value type that can borrow strings from the input slice
       // (one of serde's major features).
       let de = serde_json::Deserializer::from_slice(&buf);

@@ -1,6 +1,6 @@
 //! Functions and types to support translation between Serde data formats.
 //!
-//! jyt's transcoder is somewhat inspired by the [`serde_transcode`] crate
+//! xt's transcoder is somewhat inspired by the [`serde_transcode`] crate
 //! advertised in the Serde documentation. However, its implementation has
 //! diverged significantly to enable the preservation of original (de)serializer
 //! error values, in contrast to `serde_transcode`'s approach of stringifying
@@ -97,7 +97,7 @@
 //! This plumbing of error values through the call stack ensures that a failed
 //! transcode follows the same error paths that the serializer and deserializer
 //! would normally traverse when aborting a typical (de)serialize operation in
-//! the middle of a value. An early implementation of the jyt transcoder simply
+//! the middle of a value. An early implementation of the xt transcoder simply
 //! attempted to make its `Visitor` yield `Result<S::Ok, S::Error>` instead of
 //! `S::Ok`. However, at least one deserializer was found to panic when the
 //! transcoder attempted to return a serializer error through the deserializer's
@@ -106,30 +106,30 @@
 //!
 //! # Other Differences From `serde_transcode`
 //!
-//! - jyt's transcoder defines a custom `Error` type that wraps the original
+//! - xt's transcoder defines a custom `Error` type that wraps the original
 //!   serializer and deserializer error values, and indicates which side of the
 //!   transcode initially failed. When the serializer triggers the failure, the
 //!   transcoder includes a corresponding deserializer error for additional
-//!   context. For example, when jyt attempts to transcode a `null` map key in a
+//!   context. For example, when xt attempts to transcode a `null` map key in a
 //!   YAML file to JSON, and the JSON encoder halts the transcode by refusing to
-//!   accept the non-string key, jyt will print the line and column of the null
+//!   accept the non-string key, xt will print the line and column of the null
 //!   key in the YAML input, as the YAML deserializer's error provides this
 //!   information.
 //!
 //! - `serde_transcode` exposes a `Transcoder` type that implements `Serialize`
-//!   for a `Deserializer`, while jyt's transcoder only exposes a top-level
-//!   `transcode` function. The top-level function enables jyt's transcoder to
+//!   for a `Deserializer`, while xt's transcoder only exposes a top-level
+//!   `transcode` function. The top-level function enables xt's transcoder to
 //!   cleanly expose the richer errors described above, while a public
 //!   `Serialize` implementation would force end users to extract these richer
 //!   errors in similar fashion to the transcoder's internals.
 //!
-//! - jyt does not support transcoding `Option<T>` and newtype struct values, as
-//!   no jyt input format is expected to produce such values on its own. The
+//! - xt does not support transcoding `Option<T>` and newtype struct values, as
+//!   no xt input format is expected to produce such values on its own. The
 //!   implementation could be extended to support this.
 //!
 //! Most importantly of all:
 //!
-//! - jyt's transcoder is far less mature than `serde_transcode`, and far more
+//! - xt's transcoder is far less mature than `serde_transcode`, and far more
 //!   complex (read: less maintainable). If the error propagation support isn't
 //!   an absolute requirement for your use case, **you should really just use
 //!   `serde_transcode`**.
@@ -499,12 +499,12 @@ where
 
 /// A deserialized value referencing borrowed data.
 ///
-/// In some cases, a jyt input format may not be able to provide a
-/// `Deserializer` for use with the [`transcode`] function, and must instead
-/// deserialize to a data structure. `Value` uses simple data structures along
-/// with Serde's famous zero copy deserialization to facilitate this use case
-/// more efficiently than with typical generic value types, at the cost of the
-/// greater flexibility such types often provide.
+/// In some cases, an xt input format can't provide a `Deserializer` for use
+/// with the [`transcode`] function, and must instead deserialize to a data
+/// structure. `Value` uses simple data structures along with Serde's famous
+/// zero copy deserialization to facilitate this use case more efficiently than
+/// with typical generic value types, at the cost of the greater flexibility
+/// such types often provide.
 pub(crate) enum Value<'a> {
   Unit,
   Bool(bool),
@@ -567,7 +567,7 @@ impl Serialize for Value<'_> {
 /// construct a value and shove it into an `Ok` variant.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! jyt_transcode_impl_value_visitors {
+macro_rules! xt_transcode_impl_value_visitors {
   ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
     $(
       fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
@@ -591,7 +591,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
         f.write_str("any supported value")
       }
 
-      jyt_transcode_impl_value_visitors! {
+      xt_transcode_impl_value_visitors! {
         visit_unit() => Value::Unit;
 
         visit_bool(v: bool) => Value::Bool(v);

@@ -114,23 +114,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
-name = "jyt"
-version = "0.7.4"
-dependencies = [
- "atty",
- "clap",
- "hex-literal",
- "memmap2",
- "rmp",
- "rmp-serde",
- "serde",
- "serde_json",
- "serde_yaml",
- "stacker",
- "toml",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -361,6 +344,23 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "xt"
+version = "0.8.0"
+dependencies = [
+ "atty",
+ "clap",
+ "hex-literal",
+ "memmap2",
+ "rmp",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "stacker",
+ "toml",
+]
 
 [[package]]
 name = "yaml-rust"

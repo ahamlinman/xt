@@ -40,7 +40,7 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
 
   // Finally, YAML is our traditional fallback format. Yes, we still get the
   // giant string behavior described above for arbitrary text documents, but it
-  // is how jyt has worked for a long time and it's not like the behavior is
+  // is how xt has worked for a long time and it's not like the behavior is
   // actively harmful. We do try to defer the YAML check for as long as we can,
   // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
   // might be expensive. In particular, we do it after the MessagePack check
@@ -93,25 +93,25 @@ impl Output for Discard {
 /// ```
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! jyt_detect_impl_discard_methods {
+macro_rules! xt_detect_impl_discard_methods {
   () => {};
   ({ $($decl:tt)* } discards $value:expr; $($rest:tt)*) => {
     fn $($decl)* -> Result<Self::Ok, Self::Error> {
       Serialize::serialize($value, Discard)
     }
-    jyt_detect_impl_discard_methods! { $($rest)* }
+    xt_detect_impl_discard_methods! { $($rest)* }
   };
   ({ $($decl:tt)* } returns Discard; $($rest:tt)*) => {
     fn $($decl)* -> Result<Discard, Self::Error> {
       Ok(Discard)
     }
-    jyt_detect_impl_discard_methods! { $($rest)* }
+    xt_detect_impl_discard_methods! { $($rest)* }
   };
   ({ $($decl:tt)* } does nothing; $($rest:tt)*) => {
     fn $($decl)* -> Result<(), Self::Error> {
       Ok(())
     }
-    jyt_detect_impl_discard_methods! { $($rest)* }
+    xt_detect_impl_discard_methods! { $($rest)* }
   };
 }
 
@@ -127,7 +127,7 @@ impl Serializer for Discard {
   type SerializeStruct = Discard;
   type SerializeStructVariant = Discard;
 
-  jyt_detect_impl_discard_methods! {
+  xt_detect_impl_discard_methods! {
     { serialize_unit(self) } does nothing;
     { serialize_bool(self, _: bool) } does nothing;
     { serialize_i8(self, _: i8) } does nothing;
@@ -167,19 +167,19 @@ impl Serializer for Discard {
 /// [`Discard`], using our special macro syntax for serializer methods.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
-macro_rules! jyt_detect_impl_discard_traits {
+macro_rules! xt_detect_impl_discard_traits {
   () => {};
   ($ty:ty { $($body:tt)* }; $($rest:tt)*) => {
     impl $ty for Discard {
       type Ok = ();
       type Error = DiscardError;
-      jyt_detect_impl_discard_methods! { $($body)* }
+      xt_detect_impl_discard_methods! { $($body)* }
     }
-    jyt_detect_impl_discard_traits! { $($rest)* }
+    xt_detect_impl_discard_traits! { $($rest)* }
   };
 }
 
-jyt_detect_impl_discard_traits! {
+xt_detect_impl_discard_traits! {
   ser::SerializeSeq {
     { serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;

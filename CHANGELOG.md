@@ -1,3 +1,20 @@
+## v0.8.0 (2022-04-10)
+
+**jyt is now known as xt!** 
+
+In anticipation of publishing this tool to crates.io to support easier
+installation, I discovered that the "jyt" name had recently been acquired by
+another tool providing similar functionality. In addition to differentiating
+from this unrelated project, I see two other benefits to the new name:
+
+- It reflects the tool's expansion into MessagePack support.
+- It is even shorter than the previous name.
+
+For the time being, past changelog entries will refer to the tool by the name
+that it held as of the listed release version. Several test cases will also
+continue to use the old name for the time being. However, the crate name and
+other user-facing documentation should all be up to date as of this writing.
+
 ## v0.7.4 (2022-04-10)
 
 ### Changed

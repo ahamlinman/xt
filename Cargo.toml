@@ -1,7 +1,7 @@
 [package]
-name = "jyt"
+name = "xt"
 description = "Translate between serialized data formats"
-version = "0.7.4"
+version = "0.8.0"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2021"

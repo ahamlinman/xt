@@ -9,7 +9,7 @@ use clap::{
   Parser,
 };
 
-use jyt::{jyt, Format, InputHandle};
+use xt::{Format, InputHandle};
 
 fn main() {
   let args = match Cli::try_parse() {
@@ -22,30 +22,30 @@ fn main() {
         // for both argument and translation errors. It is a bit fragile, since
         // it's unlikely that clap's error message format is guaranteed to be
         // stable.
-        eprint!("jyt {}", err);
+        eprint!("xt {}", err);
         process::exit(1);
       }
     },
   };
 
-  macro_rules! jyt_fail {
+  macro_rules! xt_fail {
     ($fmt:literal, $($x:expr),*) => {{
-      eprintln!(concat!("jyt error: ", $fmt), $($x),*);
+      eprintln!(concat!("xt error: ", $fmt), $($x),*);
       process::exit(1);
     }};
     ($x:expr) => {
-      jyt_fail!("{}", $x)
+      xt_fail!("{}", $x)
     };
   }
 
   let mut output = BufWriter::new(io::stdout());
   if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
-    jyt_fail!("refusing to output {} to a terminal", args.to);
+    xt_fail!("refusing to output {} to a terminal", args.to);
   }
 
-  let input = args.input().unwrap_or_else(|err| jyt_fail!(err));
+  let input = args.input().unwrap_or_else(|err| xt_fail!(err));
 
-  let result = jyt(input, args.detect_from(), args.to, &mut output);
+  let result = xt::translate(input, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a
@@ -53,7 +53,7 @@ fn main() {
   if let Err(err) = output.flush() {
     match is_broken_pipe(&err) {
       true => return,
-      false => jyt_fail!(err),
+      false => xt_fail!(err),
     }
   }
 
@@ -63,7 +63,7 @@ fn main() {
   // above.
   if let Err(err) = result {
     if !is_broken_pipe(err.as_ref()) {
-      jyt_fail!(err)
+      xt_fail!(err)
     }
   }
 }
@@ -92,7 +92,7 @@ Use --help for full usage information and available formats.";
 #[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
-/// This version of jyt supports the following formats, each of which may be
+/// This version of xt supports the following formats, each of which may be
 /// specified by full name or first character (e.g. '-ty' == '-t yaml'):
 ///
 ///      json  Multi-document with self-delineating values (object, array,
@@ -112,12 +112,12 @@ Use --help for full usage information and available formats.";
 /// known in advance to enable streaming, usually with an explicit -f.
 ///
 /// When the input format is not known in advance with an explicit -f or file
-/// extension, jyt will attempt to auto-detect it by buffering all input into
+/// extension, xt will attempt to auto-detect it by buffering all input into
 /// memory and running an unspecified algorithm that is subject to change.
 ///
-/// jyt does not guarantee that every translation is possible, or lossless, or
-/// reversible. jyt's behavior is undefined if an input file is modified while
-/// running. jyt is not designed for use with untrusted input.
+/// xt does not guarantee that every translation is possible, or lossless, or
+/// reversible. xt's behavior is undefined if an input file is modified while
+/// running. xt is not designed for use with untrusted input.
 struct Cli {
   #[clap(
     name = "file",
