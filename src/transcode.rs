@@ -444,7 +444,7 @@ where
 
 struct KeySeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
 
-impl<'de, 'a, S> DeserializeSeed<'de> for &KeySeed<'a, S>
+impl<'de, S> DeserializeSeed<'de> for &KeySeed<'_, S>
 where
   S: SerializeMap,
 {
@@ -460,7 +460,7 @@ where
 
 struct ValueSeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
 
-impl<'de, 'a, S> DeserializeSeed<'de> for &ValueSeed<'a, S>
+impl<'de, S> DeserializeSeed<'de> for &ValueSeed<'_, S>
 where
   S: SerializeMap,
 {
