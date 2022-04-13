@@ -89,12 +89,11 @@ impl Output for Discard {
 /// ([function signature]) returns Discard;
 ///
 /// // Returns `Ok(())`
-/// ([function signature]);
+/// ([function signature]) does nothing;
 /// ```
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! xt_detect_impl_discard_methods {
-  () => {};
   ({ $($decl:tt)* } discards $value:expr; $($rest:tt)*) => {
     fn $($decl)* -> Result<Self::Ok, Self::Error> {
       Serialize::serialize($value, Discard)
@@ -113,6 +112,7 @@ macro_rules! xt_detect_impl_discard_methods {
     }
     xt_detect_impl_discard_methods! { $($rest)* }
   };
+  () => {};
 }
 
 impl Serializer for Discard {
