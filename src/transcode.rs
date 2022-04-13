@@ -145,64 +145,71 @@ use serde::{
   ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
-/// The message used to generate generic serializer and deserializer errors.
-const TRANSLATION_FAILED: &str = "translation failed";
-
 /// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
 ///
 /// The transcoder forwards the output produced by the deserializer directly to
 /// the serializer without collecting it into an intermediate data structure. An
 /// error on either side will halt further transcoding.
-pub(crate) fn transcode<'de, S, D>(s: S, d: D) -> Result<S::Ok, Error<S::Error, D::Error>>
+pub(crate) fn transcode<'de, D, S>(s: S, d: D) -> Result<S::Ok, Error<D::Error, S::Error>>
 where
-  S: Serializer,
   D: Deserializer<'de>,
+  S: Serializer,
 {
   let visitor = Machine::new(s);
-  match d.deserialize_any(&visitor) {
-    Ok(value) => Ok(value),
-    Err(derr) => match visitor.into_error() {
-      Some(serr) => Err(Error::Ser(serr, derr)),
-      None => Err(Error::De(derr)),
-    },
-  }
+  d.deserialize_any(&visitor).map_err(|derr| Error {
+    de: derr,
+    ser: visitor.into_error(),
+  })
 }
+
+/// The message used to generate generic serializer and deserializer errors. See
+/// [`Error`] for details.
+pub(crate) const TRANSLATION_FAILED: &str = "translation failed";
 
 /// Holds an error produced during transcoding.
+///
+/// Because the deserializer drives the transcoding process, it will always
+/// produce an error even when the serializer is responsible for halting the
+/// transcode, and the formatted form of a transcoder error will always include
+/// its message. Even for serializer errors, the deserializer's error may
+/// provide useful information, like the line and column of an input value that
+/// the serializer could not translate.
+///
+/// The presence of a serializer error does not necessarily indicate that the
+/// serializer was responsible for a transcode failure, as the transcoder may
+/// generate errors in the serializer to safely back out of a failed transcode,
+/// using [`TRANSLATION_FAILED`] as the custom error message. However, the
+/// implementation of `Error` generally assumes this for the sake of determining
+/// error sources and formatting error messages, as its own ability to inspect
+/// the error's contents is limited.
 #[derive(Debug)]
-pub(crate) enum Error<S, D> {
-  /// The serializer triggered the transcode failure, for example due to an
-  /// input value it could not handle. The included deserializer error may
-  /// provide useful context, such as the location of the value that the
-  /// serializer could not handle.
-  Ser(S, D),
-  /// The deserializer triggered the transcode failure, for example due to a
-  /// syntax error in the input.
-  De(D),
+pub(crate) struct Error<D, S> {
+  pub de: D,
+  pub ser: Option<S>,
 }
 
-impl<S, D> fmt::Display for Error<S, D>
+impl<D, S> fmt::Display for Error<D, S>
 where
-  S: ser::Error,
   D: de::Error,
+  S: ser::Error,
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Error::Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
-      Error::De(derr) => fmt::Display::fmt(derr, f),
+    match &self.ser {
+      Some(ser) => write!(f, "{}: {}", &self.de, ser),
+      None => fmt::Display::fmt(&self.de, f),
     }
   }
 }
 
-impl<S, D> std::error::Error for Error<S, D>
+impl<D, S> std::error::Error for Error<D, S>
 where
-  S: ser::Error + 'static,
   D: de::Error + 'static,
+  S: ser::Error + 'static,
 {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    match self {
-      Error::Ser(serr, _) => Some(serr),
-      Error::De(derr) => Some(derr),
+    match &self.ser {
+      Some(ser) => Some(ser),
+      None => Some(&self.de),
     }
   }
 }
