@@ -74,15 +74,14 @@
 //! In general, all of the transcoder's trait implementations face similar
 //! challenges, with the details varying based on which part of the process
 //! they're involved with. As such, these implementations all center around a
-//! common [`Machine`] type. A machine initially owns an unused (de)serializer
-//! for a trait method to take, and subsequently provides a writable slot for
+//! common [`Machine`] type. A machine initially owns an unused parent
+//! (de)serializer for a trait method to take, and provides a writable slot for
 //! any error value that the method can't return directly.
 //!
 //! A typical implementation of a Serde trait method on `Machine` will:
 //!
-//! 1. Take ownership of the (de)serializer held by the machine, replacing the
-//!    machine state with an empty error slot. (Subsequent attempts to do this
-//!    will panic.)
+//! 1. Take ownership of the parent (de)serializer held by the machine.
+//!    Subsequent attempts to do this will panic.
 //!
 //! 2. Call the appropriate (de)serializer method for the next step of the
 //!    transcode. It might just need to serialize a simple value, or it might
@@ -211,34 +210,32 @@ where
 ///
 /// See the module level documentation for a more comprehensive explanation of
 /// this type's usage.
-struct Machine<V, E>(Cell<MachineState<V, E>>);
-
-enum MachineState<V, E> {
-  New(V),
-  Used(Option<E>),
+struct Machine<V, E> {
+  parent: Cell<Option<V>>,
+  error: Cell<Option<E>>,
 }
 
 impl<V, E> Machine<V, E> {
   fn new(v: V) -> Machine<V, E> {
-    Machine(Cell::new(MachineState::New(v)))
+    Machine {
+      parent: Cell::new(Some(v)),
+      error: Cell::new(None),
+    }
   }
 
-  fn take_new(&self) -> V {
-    match self.0.replace(MachineState::Used(None)) {
-      MachineState::New(n) => n,
-      MachineState::Used(_) => panic!("transcode machine is already used"),
+  fn take_parent(&self) -> V {
+    match self.parent.replace(None) {
+      Some(parent) => parent,
+      None => panic!("parent already taken from machine"),
     }
   }
 
   fn capture_error(&self, e: Option<E>) {
-    self.0.set(MachineState::Used(e))
+    self.error.set(e)
   }
 
   fn into_error(self) -> Option<E> {
-    match self.0.into_inner() {
-      MachineState::New(_) => None,
-      MachineState::Used(e) => e,
-    }
+    self.error.into_inner()
   }
 }
 
@@ -250,7 +247,7 @@ where
   E: de::Error,
   F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
-  let serializer = m.take_new();
+  let serializer = m.take_parent();
   match f(serializer) {
     Ok(value) => Ok(value),
     Err(serr) => {
@@ -343,7 +340,7 @@ where
     A: de::SeqAccess<'de>,
   {
     let mut output = self
-      .take_new()
+      .take_parent()
       .serialize_seq(input.size_hint())
       .map_err(|serr| {
         self.capture_error(Some(serr));
@@ -373,7 +370,7 @@ where
     A: de::MapAccess<'de>,
   {
     let mut output = self
-      .take_new()
+      .take_parent()
       .serialize_map(input.size_hint())
       .map_err(|serr| {
         self.capture_error(Some(serr));
@@ -414,7 +411,7 @@ where
   D: Deserializer<'de>,
   F: FnOnce(S, &Machine<D, D::Error>) -> Result<(), E>,
 {
-  let serializer = m.take_new();
+  let serializer = m.take_parent();
   let forwarder = Machine::new(d);
   match f(serializer, &forwarder) {
     Ok(()) => Ok(()),
@@ -482,7 +479,7 @@ where
   where
     S: Serializer,
   {
-    let deserializer = self.take_new();
+    let deserializer = self.take_parent();
     let visitor = Machine::new(s);
     match deserializer.deserialize_any(&visitor) {
       Ok(value) => Ok(value),
