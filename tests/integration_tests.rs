@@ -115,7 +115,7 @@ const YAML_REENCODING_INPUTS: [&[u8]; 7] = [
 
 #[test]
 fn test_yaml_reencoding() {
-  const EXPECTED: &str = concat!(r#"{"jyt":"🧑‍💻"}"#, "\n");
+  const EXPECTED: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
   for input in YAML_REENCODING_INPUTS {
     let mut output = Vec::with_capacity(EXPECTED.len());
     xt::translate(
