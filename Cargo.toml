@@ -7,6 +7,8 @@ authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.56"
+categories = ["command-line-utilities"]
+keywords = ["cli"]
 
 [dependencies]
 atty = "0.2"
