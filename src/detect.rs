@@ -78,22 +78,28 @@ impl Output for Discard {
   }
 }
 
-/// Implements the methods of a [`serde::Serializer`] that are useful for
-/// [`Discard`], using terms of the following form:
+/// Implements [`Serializer`] methods for [`Discard`], using terms that combine
+/// a function signature (sans return type) with a well defined action.
 ///
-/// ```
-/// // Returns the result of serializing `$expr` with the `Discard` serializer
-/// ([function signature]) discards $expr;
+/// - `does nothing`: Returns `Ok(())` to ignore primitive values.
+/// - `discards $expr`: Serializes `$expr` with the `Discard` serializer to
+///   recursively discard complex values like sequences and maps.
+/// - `returns Discard`: Returns `Ok(Discard)` to provide access to additional
+///   serializer traits.
 ///
-/// // Returns `Ok(Discard)` as a `Result<Discard, Self::Error>`
-/// ([function signature]) returns Discard;
-///
-/// // Returns `Ok(())`
-/// ([function signature]) does nothing;
-/// ```
+/// This is admittedly a weird macro, but given the high number of methods and
+/// traits that a serializer needs to implement, and the extreme consistency in
+/// their particular implementations here, I'm willing to believe it ultimately
+/// helps more than it hurts.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! xt_detect_impl_discard_methods {
+  ({ $($decl:tt)* } does nothing; $($rest:tt)*) => {
+    fn $($decl)* -> Result<(), Self::Error> {
+      Ok(())
+    }
+    xt_detect_impl_discard_methods! { $($rest)* }
+  };
   ({ $($decl:tt)* } discards $value:expr; $($rest:tt)*) => {
     fn $($decl)* -> Result<Self::Ok, Self::Error> {
       Serialize::serialize($value, Discard)
@@ -103,12 +109,6 @@ macro_rules! xt_detect_impl_discard_methods {
   ({ $($decl:tt)* } returns Discard; $($rest:tt)*) => {
     fn $($decl)* -> Result<Discard, Self::Error> {
       Ok(Discard)
-    }
-    xt_detect_impl_discard_methods! { $($rest)* }
-  };
-  ({ $($decl:tt)* } does nothing; $($rest:tt)*) => {
-    fn $($decl)* -> Result<(), Self::Error> {
-      Ok(())
     }
     xt_detect_impl_discard_methods! { $($rest)* }
   };
@@ -163,19 +163,19 @@ impl Serializer for Discard {
   }
 }
 
-/// Implements the additional traits required of a [`serde::Serializer`] on
-/// [`Discard`], using our special macro syntax for serializer methods.
+/// Implements additional [`Serializer`] traits on [`Discard`] using
+/// [`xt_detect_impl_discard_methods`] syntax.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! xt_detect_impl_discard_traits {
-  () => {};
-  ($ty:ty { $($body:tt)* }; $($rest:tt)*) => {
-    impl $ty for Discard {
-      type Ok = ();
-      type Error = DiscardError;
-      xt_detect_impl_discard_methods! { $($body)* }
-    }
-    xt_detect_impl_discard_traits! { $($rest)* }
+  ($($ty:ty { $($body:tt)* })*) => {
+    $(
+      impl $ty for Discard {
+        type Ok = ();
+        type Error = DiscardError;
+        xt_detect_impl_discard_methods! { $($body)* }
+      }
+    )*
   };
 }
 
@@ -183,38 +183,38 @@ xt_detect_impl_discard_traits! {
   ser::SerializeSeq {
     { serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeTuple {
     { serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeTupleStruct {
     { serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeTupleVariant {
     { serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeMap {
     { serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) } discards key;
     { serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeStruct {
     { serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 
   ser::SerializeStructVariant {
     { serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, value: &T) } discards value;
     { end(self) } does nothing;
-  };
+  }
 }
 
 /// An error type for the [`Discard`] type's mostly infallible implementation of
