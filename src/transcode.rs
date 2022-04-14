@@ -92,15 +92,15 @@
 //!
 //! 2. Call the appropriate (de)serializer method for the next step of the
 //!    transcode. It might just need to serialize a simple value, or it might
-//!    need to pass the callee a reference to a newly constructed "inner"
-//!    transcoder, through which the callee can invoke other Serde trait
-//!    methods.
+//!    need to construct a new "inner" transcoder to allow the callee to invoke
+//!    other Serde trait methods.
 //!
 //! 3. Capture any state from that call that the method can't return directly,
 //!    including the call's true error value and the appropriate error source
-//!    information. Then, return an error of the method's return type, either by
-//!    constructing one with a generic message or extracting one from an inner
-//!    transcoder.
+//!    information.
+//!
+//! 4. Return an error of the method's return type, either by constructing one
+//!    with a generic message or extracting one from an inner transcoder.
 //!
 //! This method of error propagation ensures that a failed transcode follows the
 //! same error paths that the serializer and deserializer would usually traverse
