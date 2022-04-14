@@ -225,7 +225,7 @@ where
   }
 }
 
-/// A generic single-use state machine representing a single transcoding step.
+/// A generic helper representing a single transcoding step.
 ///
 /// See the module level documentation for a more comprehensive explanation of
 /// this type's usage.
