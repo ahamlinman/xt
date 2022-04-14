@@ -1,3 +1,12 @@
+## Unreleased
+
+### Fixed
+
+- **Awkward messages for some translation errors.** Previous versions of xt
+  appended a spurious "translation failed" message to certain kinds of input
+  errors. This version will only include this message in the context of output
+  errors, as originally intended.
+
 ## v0.8.0 (2022-04-10)
 
 ### Added
