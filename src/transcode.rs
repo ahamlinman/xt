@@ -74,24 +74,25 @@
 //! In general, all of the transcoder's trait implementations face similar
 //! challenges, with the details varying based on which part of the process
 //! they're involved with. As such, these implementations all center around a
-//! common [`Machine`] type. A machine initially owns an unused parent
+//! common [`Transcoder`] type. A transcoder initially owns an unused parent
 //! (de)serializer for a trait method to take, and provides a writable slot for
 //! any error value that the method can't return directly.
 //!
-//! A typical implementation of a Serde trait method on `Machine` will:
+//! A typical implementation of a Serde trait method on `Transcoder` will:
 //!
-//! 1. Take ownership of the parent (de)serializer held by the machine.
+//! 1. Take ownership of the parent (de)serializer held by the transcoder.
 //!    Subsequent attempts to do this will panic.
 //!
 //! 2. Call the appropriate (de)serializer method for the next step of the
 //!    transcode. It might just need to serialize a simple value, or it might
 //!    need to pass the callee a reference to a newly constructed "inner"
-//!    machine, through which the callee can invoke other Serde trait methods.
+//!    transcoder, through which the callee can invoke other Serde trait
+//!    methods.
 //!
-//! 3. Stash any error from that call in the machine's error slot if it can't be
-//!    returned directly. Then, return an error of the appropriate type, either
-//!    by constructing one with a generic message, or by extracting one from an
-//!    inner machine that was captured further down the call stack.
+//! 3. Stash any error from that call in the transcoder's error slot if it can't
+//!    be returned directly. Then, return an error of the appropriate type,
+//!    either by constructing one with a generic message, or by extracting one
+//!    from an inner transcoder that was captured further down the call stack.
 //!
 //! This plumbing of error values through the call stack ensures that a failed
 //! transcode follows the same error paths that the serializer and deserializer
@@ -157,7 +158,7 @@ where
   S: Serializer,
   D: Deserializer<'de>,
 {
-  let visitor = Machine::new(s);
+  let visitor = Transcoder::new(s);
   match d.deserialize_any(&visitor) {
     Ok(value) => Ok(value),
     Err(derr) => match visitor.error_source() {
@@ -210,8 +211,8 @@ where
 ///
 /// See the module level documentation for a more comprehensive explanation of
 /// this type's usage.
-struct Machine<V, E> {
-  parent: Cell<Option<V>>,
+struct Transcoder<P, E> {
+  parent: Cell<Option<P>>,
   error: Cell<Option<E>>,
   source: Cell<ErrorSource>,
 }
@@ -222,19 +223,19 @@ enum ErrorSource {
   De,
 }
 
-impl<V, E> Machine<V, E> {
-  fn new(v: V) -> Machine<V, E> {
-    Machine {
+impl<P, E> Transcoder<P, E> {
+  fn new(v: P) -> Transcoder<P, E> {
+    Transcoder {
       parent: Cell::new(Some(v)),
       error: Cell::new(None),
       source: Cell::new(ErrorSource::De),
     }
   }
 
-  fn take_parent(&self) -> V {
+  fn take_parent(&self) -> P {
     match self.parent.replace(None) {
       Some(parent) => parent,
-      None => panic!("parent already taken from machine"),
+      None => panic!("parent already taken from transcoder"),
     }
   }
 
@@ -257,24 +258,24 @@ impl<V, E> Machine<V, E> {
 
 /// Handles the capture and mapping of serializer errors in visitor methods that
 /// only need to forward simple values.
-fn forward_value<S, E, F>(m: &Machine<S, S::Error>, f: F) -> Result<S::Ok, E>
+fn forward_value<S, E, F>(t: &Transcoder<S, S::Error>, f: F) -> Result<S::Ok, E>
 where
   S: Serializer,
   E: de::Error,
   F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
-  let serializer = m.take_parent();
+  let serializer = t.take_parent();
   match f(serializer) {
     Ok(value) => Ok(value),
     Err(serr) => {
-      m.capture_source(ErrorSource::Ser);
-      m.capture_error(Some(serr));
+      t.capture_source(ErrorSource::Ser);
+      t.capture_error(Some(serr));
       Err(de::Error::custom(TRANSLATION_FAILED))
     }
   }
 }
 
-impl<'de, S> de::Visitor<'de> for &Machine<S, S::Error>
+impl<'de, S> de::Visitor<'de> for &Transcoder<S, S::Error>
 where
   S: Serializer,
 {
@@ -366,7 +367,7 @@ where
       })?;
 
     loop {
-      let seed = Machine::new(&mut output);
+      let seed = Transcoder::new(&mut output);
       match input.next_element_seed(&seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
@@ -399,7 +400,7 @@ where
       })?;
 
     loop {
-      let key_seed = KeySeed(Machine::new(&mut output));
+      let key_seed = KeySeed(Transcoder::new(&mut output));
       match input.next_key_seed(&key_seed) {
         Ok(None) => break,
         Ok(Some(())) => {}
@@ -410,7 +411,7 @@ where
         }
       }
 
-      let value_seed = ValueSeed(Machine::new(&mut output));
+      let value_seed = ValueSeed(Transcoder::new(&mut output));
       if let Err(derr) = input.next_value_seed(&value_seed) {
         self.capture_source(value_seed.0.error_source());
         self.capture_error(value_seed.0.into_error());
@@ -429,19 +430,19 @@ where
 /// Handles the capture and mapping of errors when forwarding the next value
 /// from a deserializer to a sequence or map serializer method. As these methods
 /// require `Serialize` values, we automatically wrap the deserializer with an
-/// inner machine and propagate its captured error.
-fn forward_next<'de, D, F, S, E>(m: &Machine<S, E>, d: D, f: F) -> Result<(), D::Error>
+/// inner transcoder and propagate its captured error.
+fn forward_next<'de, D, F, S, E>(t: &Transcoder<S, E>, d: D, f: F) -> Result<(), D::Error>
 where
   D: Deserializer<'de>,
-  F: FnOnce(S, &Machine<D, D::Error>) -> Result<(), E>,
+  F: FnOnce(S, &Transcoder<D, D::Error>) -> Result<(), E>,
 {
-  let serializer = m.take_parent();
-  let forwarder = Machine::new(d);
+  let serializer = t.take_parent();
+  let forwarder = Transcoder::new(d);
   match f(serializer, &forwarder) {
     Ok(()) => Ok(()),
     Err(serr) => {
-      m.capture_source(forwarder.error_source());
-      m.capture_error(Some(serr));
+      t.capture_source(forwarder.error_source());
+      t.capture_error(Some(serr));
       match forwarder.into_error() {
         Some(derr) => Err(derr),
         None => Err(de::Error::custom(TRANSLATION_FAILED)),
@@ -450,7 +451,7 @@ where
   }
 }
 
-impl<'de, S> DeserializeSeed<'de> for &Machine<&mut S, S::Error>
+impl<'de, S> DeserializeSeed<'de> for &Transcoder<&mut S, S::Error>
 where
   S: SerializeSeq,
 {
@@ -464,7 +465,7 @@ where
   }
 }
 
-struct KeySeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
+struct KeySeed<'a, S: SerializeMap>(Transcoder<&'a mut S, S::Error>);
 
 impl<'de, S> DeserializeSeed<'de> for &KeySeed<'_, S>
 where
@@ -480,7 +481,7 @@ where
   }
 }
 
-struct ValueSeed<'a, S: SerializeMap>(Machine<&'a mut S, S::Error>);
+struct ValueSeed<'a, S: SerializeMap>(Transcoder<&'a mut S, S::Error>);
 
 impl<'de, S> DeserializeSeed<'de> for &ValueSeed<'_, S>
 where
@@ -496,7 +497,7 @@ where
   }
 }
 
-impl<'de, D> Serialize for Machine<D, D::Error>
+impl<'de, D> Serialize for Transcoder<D, D::Error>
 where
   D: Deserializer<'de>,
 {
@@ -505,7 +506,7 @@ where
     S: Serializer,
   {
     let deserializer = self.take_parent();
-    let visitor = Machine::new(s);
+    let visitor = Transcoder::new(s);
     match deserializer.deserialize_any(&visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
