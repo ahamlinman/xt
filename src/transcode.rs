@@ -665,10 +665,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       }
 
       fn visit_seq<A: de::SeqAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
-        let mut vec = match v.size_hint() {
-          None => Vec::new(),
-          Some(s) => Vec::with_capacity(s),
-        };
+        let mut vec = Vec::with_capacity(v.size_hint().unwrap_or(0));
         while let Some(e) = v.next_element()? {
           vec.push(e)
         }
@@ -676,10 +673,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       }
 
       fn visit_map<A: de::MapAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
-        let mut vec = match v.size_hint() {
-          None => Vec::new(),
-          Some(s) => Vec::with_capacity(s),
-        };
+        let mut vec = Vec::with_capacity(v.size_hint().unwrap_or(0));
         while let Some(entry) = v.next_entry()? {
           vec.push(entry)
         }
