@@ -273,14 +273,14 @@ impl<P, E> Transcoder<P, E> {
 
 /// Handles the capture and mapping of serializer errors in visitor methods that
 /// only need to forward simple values.
-fn forward_value<S, E, F>(t: &Transcoder<S, S::Error>, f: F) -> Result<S::Ok, E>
+fn forward_value<S, E, F>(t: &Transcoder<S, S::Error>, op: F) -> Result<S::Ok, E>
 where
   S: Serializer,
   E: de::Error,
   F: FnOnce(S) -> Result<S::Ok, S::Error>,
 {
   let serializer = t.take_parent();
-  match f(serializer) {
+  match op(serializer) {
     Ok(value) => Ok(value),
     Err(serr) => {
       t.capture_error(ErrorSource::Ser, Some(serr));
@@ -438,14 +438,14 @@ where
 /// from a deserializer to a sequence or map serializer method. As these methods
 /// require `Serialize` values, we automatically wrap the deserializer with an
 /// inner transcoder and propagate its captured error.
-fn forward_next<'de, D, F, S, E>(t: &Transcoder<S, E>, d: D, f: F) -> Result<(), D::Error>
+fn forward_next<'de, D, F, S, SErr>(t: &Transcoder<S, SErr>, d: D, op: F) -> Result<(), D::Error>
 where
   D: Deserializer<'de>,
-  F: FnOnce(S, &Transcoder<D, D::Error>) -> Result<(), E>,
+  F: FnOnce(S, &Transcoder<D, D::Error>) -> Result<(), SErr>,
 {
   let serializer = t.take_parent();
   let forwarder = Transcoder::new(d);
-  match f(serializer, &forwarder) {
+  match op(serializer, &forwarder) {
     Ok(()) => Ok(()),
     Err(serr) => {
       t.capture_error(forwarder.error_source(), Some(serr));
