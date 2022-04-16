@@ -257,16 +257,13 @@ impl<P, E> Transcoder<P, E> {
     }
   }
 
-  fn capture_source(&self, source: ErrorSource) {
-    self.source.set(source)
+  fn capture_error(&self, source: ErrorSource, error: Option<E>) {
+    self.source.set(source);
+    self.error.set(error);
   }
 
   fn error_source(&self) -> ErrorSource {
     self.source.get()
-  }
-
-  fn capture_error(&self, error: Option<E>) {
-    self.error.set(error)
   }
 
   fn into_error(self) -> Option<E> {
@@ -286,8 +283,7 @@ where
   match f(serializer) {
     Ok(value) => Ok(value),
     Err(serr) => {
-      t.capture_source(ErrorSource::Ser);
-      t.capture_error(Some(serr));
+      t.capture_error(ErrorSource::Ser, Some(serr));
       Err(de::Error::custom(TRANSLATION_FAILED))
     }
   }
@@ -379,8 +375,7 @@ where
       .take_parent()
       .serialize_seq(input.size_hint())
       .map_err(|serr| {
-        self.capture_source(ErrorSource::Ser);
-        self.capture_error(Some(serr));
+        self.capture_error(ErrorSource::Ser, Some(serr));
         de::Error::custom(TRANSLATION_FAILED)
       })?;
 
@@ -390,16 +385,14 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.capture_source(seed.error_source());
-          self.capture_error(seed.into_error());
+          self.capture_error(seed.error_source(), seed.into_error());
           return Err(derr);
         }
       }
     }
 
     output.end().map_err(|serr| {
-      self.capture_source(ErrorSource::Ser);
-      self.capture_error(Some(serr));
+      self.capture_error(ErrorSource::Ser, Some(serr));
       de::Error::custom(TRANSLATION_FAILED)
     })
   }
@@ -412,8 +405,7 @@ where
       .take_parent()
       .serialize_map(input.size_hint())
       .map_err(|serr| {
-        self.capture_source(ErrorSource::Ser);
-        self.capture_error(Some(serr));
+        self.capture_error(ErrorSource::Ser, Some(serr));
         de::Error::custom(TRANSLATION_FAILED)
       })?;
 
@@ -423,23 +415,20 @@ where
         Ok(None) => break,
         Ok(Some(())) => {}
         Err(derr) => {
-          self.capture_source(key_seed.0.error_source());
-          self.capture_error(key_seed.0.into_error());
+          self.capture_error(key_seed.0.error_source(), key_seed.0.into_error());
           return Err(derr);
         }
       }
 
       let value_seed = ValueSeed(Transcoder::new(&mut output));
       if let Err(derr) = input.next_value_seed(&value_seed) {
-        self.capture_source(value_seed.0.error_source());
-        self.capture_error(value_seed.0.into_error());
+        self.capture_error(value_seed.0.error_source(), value_seed.0.into_error());
         return Err(derr);
       }
     }
 
     output.end().map_err(|serr| {
-      self.capture_source(ErrorSource::Ser);
-      self.capture_error(Some(serr));
+      self.capture_error(ErrorSource::Ser, Some(serr));
       de::Error::custom(TRANSLATION_FAILED)
     })
   }
@@ -459,8 +448,7 @@ where
   match f(serializer, &forwarder) {
     Ok(()) => Ok(()),
     Err(serr) => {
-      t.capture_source(forwarder.error_source());
-      t.capture_error(Some(serr));
+      t.capture_error(forwarder.error_source(), Some(serr));
       match forwarder.into_error() {
         Some(derr) => Err(derr),
         None => Err(de::Error::custom(TRANSLATION_FAILED)),
@@ -528,8 +516,7 @@ where
     match deserializer.deserialize_any(&visitor) {
       Ok(value) => Ok(value),
       Err(derr) => {
-        self.capture_source(visitor.error_source());
-        self.capture_error(Some(derr));
+        self.capture_error(visitor.error_source(), Some(derr));
         match visitor.into_error() {
           Some(serr) => Err(serr),
           None => Err(ser::Error::custom(TRANSLATION_FAILED)),
