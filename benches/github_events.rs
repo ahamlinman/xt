@@ -1,17 +1,18 @@
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use xt::{Format, InputHandle};
 
 criterion_main!(benches);
-criterion_group!(
-  benches,
-  bench_yaml_slice_to_json,
-  bench_msgpack_slice_to_json
-);
+criterion_group!(benches, bench_yaml_input, bench_msgpack_input,);
 
-fn bench_yaml_slice_to_json(c: &mut Criterion) {
+fn bench_yaml_input(c: &mut Criterion) {
+  let mut group = c.benchmark_group("yaml");
   let input = load_event_data(Format::Yaml);
-  c.bench_function("yaml slice", |b| {
+
+  group.measurement_time(Duration::from_secs(60));
+  group.bench_function("slice_to_json", |b| {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(input.as_ref()),
@@ -21,11 +22,15 @@ fn bench_yaml_slice_to_json(c: &mut Criterion) {
       )
     })
   });
+
+  group.finish();
 }
 
-fn bench_msgpack_slice_to_json(c: &mut Criterion) {
+fn bench_msgpack_input(c: &mut Criterion) {
+  let mut group = c.benchmark_group("msgpack");
   let input = load_event_data(Format::Msgpack);
-  c.bench_function("msgpack slice", |b| {
+
+  group.bench_function("slice_to_json", |b| {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(input.as_ref()),
@@ -35,6 +40,19 @@ fn bench_msgpack_slice_to_json(c: &mut Criterion) {
       )
     })
   });
+
+  group.bench_function("reader_to_json", |b| {
+    b.iter(|| {
+      xt::translate(
+        InputHandle::from_reader(&*input),
+        Some(Format::Msgpack),
+        Format::Json,
+        std::io::sink(),
+      )
+    })
+  });
+
+  group.finish();
 }
 
 static GITHUB_EVENTS_MSGPACK_ZST: &[u8] = include_bytes!("github-events.msgpack.zst");
