@@ -550,9 +550,11 @@ where
 /// `Value` is optimized for transcoding use cases rather than generic use. For
 /// example:
 ///
-/// - It leverages Serde's zero-copy deserialization capabilities, which limits
-///   the lifetime of the value as well as the types of inputs it can
-///   deserialize from.
+/// - It leverages Serde's zero-copy deserialization capabilities for strings
+///   and byte sequences, which limits the lifetime of the value as well as the
+///   types of inputs it can deserialize from. (It can still capture owned data
+///   if necessary, for example if the deserializer replaces escape sequences in
+///   strings with their corresponding literal characters.)
 ///
 /// - It represents maps as `Vec`s of key-value pairs, and therefore does not
 ///   facilitate random access to map values.

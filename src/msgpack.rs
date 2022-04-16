@@ -8,7 +8,7 @@ use crate::{transcode, Input, InputHandle};
 ///
 /// This particular value is the undocumented default from rmp_serde, which
 /// seems to be enough to reliably prevent stack overflows on debug builds of
-/// the program using the default main thread stack size.
+/// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
