@@ -5,13 +5,19 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use xt::{Format, InputHandle};
 
 criterion_main!(benches);
-criterion_group!(benches, bench_yaml_input, bench_msgpack_input,);
+
+criterion_group! {
+  name = benches;
+  config = Criterion::default()
+             .warm_up_time(Duration::from_secs(10))
+             .measurement_time(Duration::from_secs(60));
+  targets = bench_yaml_input, bench_msgpack_input
+}
 
 fn bench_yaml_input(c: &mut Criterion) {
   let mut group = c.benchmark_group("yaml");
   let input = load_event_data(Format::Yaml);
 
-  group.measurement_time(Duration::from_secs(60));
   group.bench_function("slice_to_json", |b| {
     b.iter(|| {
       xt::translate(
