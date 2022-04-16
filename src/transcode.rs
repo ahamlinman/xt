@@ -541,12 +541,21 @@ where
 
 /// A deserialized value referencing borrowed data.
 ///
-/// In some cases, an xt input format can't provide a `Deserializer` for use
-/// with the [`transcode`] function, and must instead deserialize to a data
-/// structure. `Value` uses simple data structures along with Serde's famous
-/// zero copy deserialization to facilitate this use case more efficiently than
-/// with typical generic value types, at the cost of the greater flexibility
-/// such types often provide.
+/// `Value` supports use cases where a deserializer cannot provide direct
+/// transcoding and must deserialize into an in-memory value. For example, a
+/// deserializer may handle sequences of inputs by providing an `Iterator` of
+/// values, rather than allowing the deserializer to be reused or providing an
+/// `Iterator` of deserializers.
+///
+/// `Value` is optimized for transcoding use cases rather than generic use. For
+/// example:
+///
+/// - It leverages Serde's zero-copy deserialization capabilities, which limits
+///   the lifetime of the value as well as the types of inputs it can
+///   deserialize from.
+///
+/// - It represents maps as `Vec`s of key-value pairs, and therefore does not
+///   facilitate random access to map values.
 pub(crate) enum Value<'a> {
   Unit,
   Bool(bool),
