@@ -1,0 +1,31 @@
+The GitHub events corpus is based on a test file from the json-iterator
+project: https://github.com/json-iterator/test-data. For TOML compatibility,
+I've removed null values from the data and moved the top-level array into the
+"events" key of a top-level map. For distribution efficiency, I've translated
+the data to MessagePack with xt and compressed it with zstd. Across all xt
+formats, the input expands to around 23 - 28 MB in size after decompression
+and translation.
+
+The license for the original json-iterator test data follows:
+
+MIT License
+
+Copyright (c) 2016 json-iterator
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
