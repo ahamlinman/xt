@@ -31,6 +31,15 @@ features = ["preserve_order"]
 [dev-dependencies]
 hex-literal = "0.3"
 stacker = "0.1"
+zstd = "0.11"
+
+[dev-dependencies.criterion]
+version = "0.3"
+features = ["html_reports"]
+
+[[bench]]
+name = "github_events"
+harness = false
 
 [profile.dev]
 panic = "abort"
