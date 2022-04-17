@@ -1,0 +1,1 @@
+„ªapiVersion¨batch/v1¤kind£Job¨metadata¤name«hello-world¤spec¨template‚¨metadata¦labels£job«hello-world¤spec‚­restartPolicy¥Neverªcontainers‘‚¤name«hello-world¥imageÙ$docker.io/library/hello-world:latest
