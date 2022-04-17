@@ -38,11 +38,7 @@ version = "0.3"
 features = ["html_reports"]
 
 [[bench]]
-name = "k8s_job"
-harness = false
-
-[[bench]]
-name = "github_events"
+name = "criterion"
 harness = false
 
 [profile.dev]
