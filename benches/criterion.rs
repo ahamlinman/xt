@@ -10,18 +10,18 @@ criterion_group! {
   name = small;
   config = Criterion::default();
   targets = small_json_to_msgpack,
-            bench_small_yaml_input,
-            bench_small_toml_input,
-            bench_small_msgpack_input
+            small_yaml_to_json,
+            small_toml_to_json,
+            small_msgpack_to_json,
 }
 
 criterion_group! {
   name = large;
   config = Criterion::default().measurement_time(Duration::from_secs(30));
-  targets = bench_large_json_input,
-            bench_large_yaml_input,
-            bench_large_toml_input,
-            bench_large_msgpack_input
+  targets = large_json_to_msgpack,
+            large_yaml_to_json,
+            large_toml_to_json,
+            large_msgpack_to_json,
 }
 
 macro_rules! xt_benchmark {
@@ -65,168 +65,60 @@ xt_benchmark! {
   sources     = buffer, reader;
 }
 
-fn bench_small_yaml_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("small_yaml");
-  let input = load_small_data(Format::Yaml);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Yaml)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = small_yaml_to_json;
+  loader      = load_small_data;
+  translation = Format::Yaml => Format::Json;
+  sources     = buffer;
 }
 
-fn bench_small_toml_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("small_toml");
-  let input = load_small_data(Format::Toml);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Toml)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = small_toml_to_json;
+  loader      = load_small_data;
+  translation = Format::Toml => Format::Json;
+  sources     = buffer;
 }
 
-fn bench_small_msgpack_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("small_msgpack");
-  let input = load_small_data(Format::Msgpack);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Msgpack)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.bench_function("reader_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_reader(&*input),
-        black_box(Some(Format::Msgpack)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = small_msgpack_to_json;
+  loader      = load_small_data;
+  translation = Format::Msgpack => Format::Json;
+  sources     = buffer, reader;
 }
 
-fn bench_large_json_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("large_json");
-  let input = load_large_data(Format::Json);
-
-  group.bench_function("buffer_to_msgpack", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Json)),
-        black_box(Format::Msgpack),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.bench_function("reader_to_msgpack", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_reader(&*input),
-        black_box(Some(Format::Json)),
-        black_box(Format::Msgpack),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = large_json_to_msgpack;
+  loader      = load_large_data;
+  translation = Format::Json => Format::Msgpack;
+  sources     = buffer, reader;
 }
 
-fn bench_large_yaml_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("large_yaml");
-  let input = load_large_data(Format::Yaml);
-
-  group.sample_size(50);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Yaml)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = large_yaml_to_json;
+  loader      = load_large_data;
+  translation = Format::Yaml => Format::Json;
+  sources     = buffer;
+  group_config {
+    sample_size = 50;
+  }
 }
 
-fn bench_large_toml_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("large_toml");
-  let input = load_large_data(Format::Toml);
-
-  group.measurement_time(Duration::from_secs(60));
-  group.sample_size(20);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Toml)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = large_toml_to_json;
+  loader      = load_large_data;
+  translation = Format::Toml => Format::Json;
+  sources     = buffer;
+  group_config {
+    measurement_time = Duration::from_secs(60);
+    sample_size      = 20;
+  }
 }
 
-fn bench_large_msgpack_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("large_msgpack");
-  let input = load_large_data(Format::Msgpack);
-
-  group.bench_function("buffer_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Msgpack)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.bench_function("reader_to_json", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_reader(&*input),
-        black_box(Some(Format::Msgpack)),
-        black_box(Format::Json),
-        std::io::sink(),
-      )
-    })
-  });
-
-  group.finish();
+xt_benchmark! {
+  name        = large_msgpack_to_json;
+  loader      = load_large_data;
+  translation = Format::Msgpack => Format::Json;
+  sources     = buffer, reader;
 }
 
 fn load_small_data(format: Format) -> Vec<u8> {
