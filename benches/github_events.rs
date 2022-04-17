@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use xt::{Format, InputHandle};
 
@@ -23,8 +23,8 @@ fn bench_json_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(&*input),
-        Some(Format::Json),
-        Format::Msgpack,
+        black_box(Some(Format::Json)),
+        black_box(Format::Msgpack),
         std::io::sink(),
       )
     })
@@ -34,8 +34,8 @@ fn bench_json_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_reader(&*input),
-        Some(Format::Json),
-        Format::Msgpack,
+        black_box(Some(Format::Json)),
+        black_box(Format::Msgpack),
         std::io::sink(),
       )
     })
@@ -54,8 +54,8 @@ fn bench_yaml_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(&*input),
-        Some(Format::Yaml),
-        Format::Json,
+        black_box(Some(Format::Yaml)),
+        black_box(Format::Json),
         std::io::sink(),
       )
     })
@@ -75,8 +75,8 @@ fn bench_toml_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(&*input),
-        Some(Format::Toml),
-        Format::Json,
+        black_box(Some(Format::Toml)),
+        black_box(Format::Json),
         std::io::sink(),
       )
     })
@@ -93,8 +93,8 @@ fn bench_msgpack_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_buffer(&*input),
-        Some(Format::Msgpack),
-        Format::Json,
+        black_box(Some(Format::Msgpack)),
+        black_box(Format::Json),
         std::io::sink(),
       )
     })
@@ -104,8 +104,8 @@ fn bench_msgpack_input(c: &mut Criterion) {
     b.iter(|| {
       xt::translate(
         InputHandle::from_reader(&*input),
-        Some(Format::Msgpack),
-        Format::Json,
+        black_box(Some(Format::Msgpack)),
+        black_box(Format::Json),
         std::io::sink(),
       )
     })
