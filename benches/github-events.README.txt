@@ -2,9 +2,9 @@ The GitHub events corpus is based on a test file from the json-iterator
 project: https://github.com/json-iterator/test-data. For TOML compatibility,
 I've removed null values from the data and moved the top-level array into the
 "events" key of a top-level map. For distribution efficiency, I've translated
-the data to MessagePack with xt and compressed it with zstd. Across all xt
-formats, the input expands to around 23 - 28 MB in size after decompression
-and translation.
+the data to MessagePack with xt and compressed it with zstd. Depending on the
+format, the input expands to around 23 - 30 MB in size after decompression and
+translation.
 
 The license for the original json-iterator test data follows:
 

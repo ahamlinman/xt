@@ -117,8 +117,9 @@ fn bench_msgpack_input(c: &mut Criterion) {
 static GITHUB_EVENTS_MSGPACK_ZST: &[u8] = include_bytes!("github-events.msgpack.zst");
 
 fn load_event_data(format: Format) -> Vec<u8> {
-  // Across all formats, the expanded and translated test data ranges from
-  // around 23 - 28 MB in size.
+  // Depending on the format, the input expands to around 23 - 30 MB in size
+  // after decompression and translation. Let's just go with a nice, round size
+  // that we know will not require further allocation.
   let mut output = Vec::with_capacity(32 * 1024 * 1024);
 
   xt::translate(
