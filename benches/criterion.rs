@@ -9,7 +9,7 @@ criterion_main!(small, large);
 criterion_group! {
   name = small;
   config = Criterion::default();
-  targets = bench_small_json_input,
+  targets = small_json_to_msgpack,
             bench_small_yaml_input,
             bench_small_toml_input,
             bench_small_msgpack_input
@@ -24,33 +24,45 @@ criterion_group! {
             bench_large_msgpack_input
 }
 
-fn bench_small_json_input(c: &mut Criterion) {
-  let mut group = c.benchmark_group("small_json");
-  let input = load_small_data(Format::Json);
+macro_rules! xt_benchmark {
+  (
+    name        = $name:ident;
+    loader      = $loader:path;
+    translation = $from:path => $to:path;
+    sources     = $($source:ident),+;
+    $(group_config { $($setting_name:ident = $setting_value:expr;)* })?
+  ) => {
+    fn $name(c: &mut Criterion) {
+      let mut group = c.benchmark_group(stringify!($name));
+      let input = $loader($from);
 
-  group.bench_function("buffer_to_msgpack", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_buffer(&*input),
-        black_box(Some(Format::Json)),
-        black_box(Format::Msgpack),
-        std::io::sink(),
-      )
-    })
-  });
+      $($(group.$setting_name($setting_value);)*)?
 
-  group.bench_function("reader_to_msgpack", |b| {
-    b.iter(|| {
-      xt::translate(
-        InputHandle::from_reader(&*input),
-        black_box(Some(Format::Json)),
-        black_box(Format::Msgpack),
-        std::io::sink(),
-      )
-    })
-  });
+      $(
+        group.bench_function(stringify!($source), |b| {
+          b.iter(|| {
+            xt::translate(
+              xt_benchmark!(@input_handle $source &*input),
+              black_box(Some($from)),
+              black_box($to),
+              std::io::sink(),
+            )
+          })
+        });
+      )+
 
-  group.finish();
+      group.finish();
+    }
+  };
+  (@input_handle buffer $input:expr) => { InputHandle::from_buffer($input) };
+  (@input_handle reader $input:expr) => { InputHandle::from_reader($input) };
+}
+
+xt_benchmark! {
+  name        = small_json_to_msgpack;
+  loader      = load_small_data;
+  translation = Format::Json => Format::Msgpack;
+  sources     = buffer, reader;
 }
 
 fn bench_small_yaml_input(c: &mut Criterion) {
