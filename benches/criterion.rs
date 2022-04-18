@@ -9,19 +9,19 @@ criterion_main!(small, large);
 criterion_group! {
   name = small;
   config = Criterion::default();
-  targets = small_json_to_msgpack,
-            small_yaml_to_json,
-            small_toml_to_json,
-            small_msgpack_to_json,
+  targets = small_json,
+            small_yaml,
+            small_toml,
+            small_msgpack,
 }
 
 criterion_group! {
   name = large;
   config = Criterion::default().measurement_time(Duration::from_secs(30));
-  targets = large_json_to_msgpack,
-            large_yaml_to_json,
-            large_toml_to_json,
-            large_msgpack_to_json,
+  targets = large_json,
+            large_yaml,
+            large_toml,
+            large_msgpack,
 }
 
 macro_rules! xt_benchmark {
@@ -59,42 +59,42 @@ macro_rules! xt_benchmark {
 }
 
 xt_benchmark! {
-  name        = small_json_to_msgpack;
+  name        = small_json;
   loader      = load_small_data;
   translation = Format::Json => Format::Msgpack;
   sources     = buffer, reader;
 }
 
 xt_benchmark! {
-  name        = small_yaml_to_json;
+  name        = small_yaml;
   loader      = load_small_data;
   translation = Format::Yaml => Format::Json;
   sources     = buffer;
 }
 
 xt_benchmark! {
-  name        = small_toml_to_json;
+  name        = small_toml;
   loader      = load_small_data;
   translation = Format::Toml => Format::Json;
   sources     = buffer;
 }
 
 xt_benchmark! {
-  name        = small_msgpack_to_json;
+  name        = small_msgpack;
   loader      = load_small_data;
   translation = Format::Msgpack => Format::Json;
   sources     = buffer, reader;
 }
 
 xt_benchmark! {
-  name        = large_json_to_msgpack;
+  name        = large_json;
   loader      = load_large_data;
   translation = Format::Json => Format::Msgpack;
   sources     = buffer, reader;
 }
 
 xt_benchmark! {
-  name        = large_yaml_to_json;
+  name        = large_yaml;
   loader      = load_large_data;
   translation = Format::Yaml => Format::Json;
   sources     = buffer;
@@ -104,7 +104,7 @@ xt_benchmark! {
 }
 
 xt_benchmark! {
-  name        = large_toml_to_json;
+  name        = large_toml;
   loader      = load_large_data;
   translation = Format::Toml => Format::Json;
   sources     = buffer;
@@ -115,7 +115,7 @@ xt_benchmark! {
 }
 
 xt_benchmark! {
-  name        = large_msgpack_to_json;
+  name        = large_msgpack;
   loader      = load_large_data;
   translation = Format::Msgpack => Format::Json;
   sources     = buffer, reader;
