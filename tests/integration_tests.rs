@@ -1,3 +1,22 @@
+//! xt's integration test suite.
+//! 
+//! Most of xt's integration tests are based on the philosophy that xt should
+//! produce consistent output for a given input regardless of how it consumes
+//! that input. That is, xt should always work the same way whether it reads
+//! from a file or a stream, or whether it auto-detects the input format or
+//! knows it in advance.
+//! 
+//! The test suite looks at sets of documents containing the same serialized
+//! content as translated and output by xt itself, and exhaustively checks all
+//! possible xt invocations—yes, all O(n²) of them—for translating one of those
+//! documents to another (including itself). Besides generating a quadratic
+//! blow-up of test cases, this may impose limitations on the structure and
+//! values of the test inputs within a given set, and may cause some annoyance
+//! if the specific formatting of a given output ever changes. However, I'm not
+//! sure of another approach that would cover this much with this little effort.
+//! 
+//! "Little," that is, if you're ready for some fun with macros.
+
 use paste::paste;
 
 use xt::{Format, InputHandle};
@@ -71,6 +90,14 @@ static SINGLE_YAML_INPUT: &[u8] = include_bytes!("single.yaml");
 static SINGLE_TOML_INPUT: &[u8] = include_bytes!("single.toml");
 static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
 
+// Tests single document transcoding.
+// 
+// TOML's limitations impose several restrictions on these inputs:
+// 
+// 1. No null values.
+// 2. The root of each input must be a map.
+// 3. The values in the map must appear in an order that TOML can support
+//    (non-tables before tables at a given level of nesting).
 xt_test_all_combinations! {
   single;
   (Json, SINGLE_JSON_INPUT);
@@ -83,6 +110,13 @@ static MULTI_JSON_INPUT: &[u8] = include_bytes!("multi.json");
 static MULTI_YAML_INPUT: &[u8] = include_bytes!("multi.yaml");
 static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
 
+// Tests multi-document transcoding.
+//
+// The current MessagePack auto detection logic imposes a restriction on these
+// inputs: the root of the first input in the stream must be a map or array.
+// Subsequent values may be of any supported type.
+//
+// TOML does not support multi-document transcoding.
 xt_test_all_combinations! {
   multi;
   (Json, MULTI_JSON_INPUT);
@@ -92,8 +126,14 @@ xt_test_all_combinations! {
 
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 
-/// Tests the translation of YAML documents from various text encodings
-/// supported by YAML 1.2.
+/// Tests the translation of YAML documents from various text encodings.
+/// 
+/// YAML 1.2 requires support for the UTF-8, UTF-16, and UTF-32 character
+/// encodings. Because yaml-rust (and by extension serde_yaml) only supports
+/// UTF-8 as of this writing, xt takes care of re-encoding inputs where
+/// necessary. The test inputs cover a reasonable subset of the possible
+/// combinations of code unit size, type of endianness, and presence or lack of
+/// a BOM.
 macro_rules! xt_test_yaml_encodings {
   ($($filename:ident),+ $(,)?) => {
     paste! {
