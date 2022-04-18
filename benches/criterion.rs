@@ -27,9 +27,9 @@ criterion_group! {
 macro_rules! xt_benchmark {
   (
     name        = $name:ident;
+    sources     = $($source:ident),+;
     loader      = $loader:path;
     translation = $from:path => $to:path;
-    sources     = $($source:ident),+;
     $(group_config { $($setting_name:ident = $setting_value:expr;)* })?
   ) => {
     fn $name(c: &mut Criterion) {
@@ -60,44 +60,44 @@ macro_rules! xt_benchmark {
 
 xt_benchmark! {
   name        = small_json;
+  sources     = buffer, reader;
   loader      = load_small_data;
   translation = Format::Json => Format::Msgpack;
-  sources     = buffer, reader;
 }
 
 xt_benchmark! {
   name        = small_yaml;
+  sources     = buffer;
   loader      = load_small_data;
   translation = Format::Yaml => Format::Json;
-  sources     = buffer;
 }
 
 xt_benchmark! {
   name        = small_toml;
+  sources     = buffer;
   loader      = load_small_data;
   translation = Format::Toml => Format::Json;
-  sources     = buffer;
 }
 
 xt_benchmark! {
   name        = small_msgpack;
+  sources     = buffer, reader;
   loader      = load_small_data;
   translation = Format::Msgpack => Format::Json;
-  sources     = buffer, reader;
 }
 
 xt_benchmark! {
   name        = large_json;
+  sources     = buffer, reader;
   loader      = load_large_data;
   translation = Format::Json => Format::Msgpack;
-  sources     = buffer, reader;
 }
 
 xt_benchmark! {
   name        = large_yaml;
+  sources     = buffer;
   loader      = load_large_data;
   translation = Format::Yaml => Format::Json;
-  sources     = buffer;
   group_config {
     sample_size = 50;
   }
@@ -105,9 +105,9 @@ xt_benchmark! {
 
 xt_benchmark! {
   name        = large_toml;
+  sources     = buffer;
   loader      = load_large_data;
   translation = Format::Toml => Format::Json;
-  sources     = buffer;
   group_config {
     measurement_time = Duration::from_secs(60);
     sample_size      = 20;
@@ -116,9 +116,9 @@ xt_benchmark! {
 
 xt_benchmark! {
   name        = large_msgpack;
+  sources     = buffer, reader;
   loader      = load_large_data;
   translation = Format::Msgpack => Format::Json;
-  sources     = buffer, reader;
 }
 
 fn load_small_data(format: Format) -> Vec<u8> {
