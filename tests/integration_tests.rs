@@ -98,8 +98,47 @@ xt_test_all_combinations! {
   (Msgpack, MULTI_MSGPACK_INPUT);
 }
 
+const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
+
+/// Tests the translation of YAML documents from various text encodings
+/// supported by YAML 1.2.
+macro_rules! xt_test_yaml_encodings {
+  ($($filename:ident),+ $(,)?) => {
+    paste! {
+      $(
+        #[test]
+        fn [<yaml_encoding_ $filename>]() {
+          static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
+          let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+          xt::translate(
+            InputHandle::from_buffer(INPUT),
+            Some(Format::Yaml),
+            Format::Json,
+            &mut output,
+          )
+          .unwrap();
+          assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+        }
+      )+
+    }
+  };
+}
+
+xt_test_yaml_encodings![ 
+  utf16be,
+  utf16le,
+  utf32be,
+  utf32le,
+  utf8bom,
+  utf16bebom,
+  utf32lebom,
+ ];
+
+/// Tests that TOML output re-orders inputs as needed to meet TOML-specific
+/// requirements, in particular that all non-table values must appear before any
+/// tables at the same level.
 #[test]
-fn test_toml_reordering() {
+fn toml_reordering() {
   const INPUT: &[u8] = include_bytes!("single_reordered.json");
   const EXPECTED: &str = include_str!("single.toml");
   let mut output = Vec::with_capacity(EXPECTED.len());
@@ -113,38 +152,14 @@ fn test_toml_reordering() {
   assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
-const YAML_REENCODING_INPUTS: [&[u8]; 7] = [
-  include_bytes!("utf16be.yaml"),
-  include_bytes!("utf16le.yaml"),
-  include_bytes!("utf32be.yaml"),
-  include_bytes!("utf32le.yaml"),
-  include_bytes!("utf8bom.yaml"),
-  include_bytes!("utf16bebom.yaml"),
-  include_bytes!("utf32lebom.yaml"),
-];
-
+/// Tests that halting transcoding in the middle of a YAML input does not panic
+/// and crash.
+/// 
+/// The particular example involves translating a YAML input with a null key to
+/// JSON, which refuses to accept the non-string key. Past versions of xt's
+/// transcoder broke internal YAML deserializer variants when this happened.
 #[test]
-fn test_yaml_reencoding() {
-  const EXPECTED: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
-  for input in YAML_REENCODING_INPUTS {
-    let mut output = Vec::with_capacity(EXPECTED.len());
-    xt::translate(
-      InputHandle::from_buffer(input),
-      Some(Format::Yaml),
-      Format::Json,
-      &mut output,
-    )
-    .unwrap();
-    assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
-  }
-}
-
-#[test]
-fn test_halting_yaml_deserializer_without_panic() {
-  // Regression test to ensure that halting transcoding in the middle of a value
-  // doesn't panic and crash. The particular example is a YAML input with a null
-  // map key trying to transcode to JSON, where keys must be strings. If we're
-  // not careful, we can break invariants of the YAML deserializer.
+fn yaml_halting_without_panic() {
   const INPUT: &[u8] = include_bytes!("nullkey.yaml");
   let _ = xt::translate(
     InputHandle::from_buffer(INPUT),
@@ -154,13 +169,14 @@ fn test_halting_yaml_deserializer_without_panic() {
   );
 }
 
+/// Tests that MessagePack recursion depth limits behave consistently for both
+/// buffer and reader inputs.
+/// 
+/// Buffer inputs implement their own depth check on top of rmp_serde's when
+/// they determine the sizes of input values. It should behave consistently with
+/// rmp_serde, which performs the only depth check for reader inputs.
 #[test]
-fn test_msgpack_depth_limit() {
-  // Ensure that msgpack depth limits behave consistently for both buffer and
-  // reader inputs. Buffer inputs implement their own depth check on top of
-  // rmp_serde's when determining the size of the value, which should not bound
-  // the limit any lower than rmp_serde itself.
-
+fn msgpack_depth_limit() {
   // Magic private constant from msgpack.rs.
   const DEPTH_LIMIT: usize = 1024;
 
