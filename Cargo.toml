@@ -30,6 +30,7 @@ features = ["preserve_order"]
 
 [dev-dependencies]
 hex-literal = "0.3"
+paste = "1"
 stacker = "0.1"
 zstd = "0.11"
 

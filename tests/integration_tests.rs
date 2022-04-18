@@ -1,91 +1,101 @@
+use paste::paste;
+
 use xt::{Format, InputHandle};
 
-/// A single xt test input.
-///
-/// The inputs for a given set of integration tests contain the same serialized
-/// content, as formatted by xt itself. Translating any input to any format
-/// (including the source format itself) should produce the test input for that
-/// format, regardless of whether the format is auto detected or specified
-/// explicitly. This may impose limitations on the structure and values that the
-/// test input can contain.
-type TestInput = (Format, &'static [u8]);
-
-/// Test inputs for single document transcoding.
-///
-/// TOML's limitations impose several restrictions on these inputs. First, no
-/// input can contain a null value. Second, the root of each input must be a
-/// map. Third, the values in the map must appear in an order that TOML can
-/// support (non-tables appear before tables at a given level of nesting).
-const SINGLE_INPUTS: [TestInput; 4] = [
-  (Format::Json, include_bytes!("single.json")),
-  (Format::Yaml, include_bytes!("single.yaml")),
-  (Format::Toml, include_bytes!("single.toml")),
-  (Format::Msgpack, include_bytes!("single.msgpack")),
-];
-
-#[test]
-fn test_single_document_buffer() {
-  for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
+/// Tests a single call to xt::translate against expected output.
+macro_rules! xt_single_test {
+  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+    #[test]
+    fn $name() {
+      let mut output = Vec::with_capacity($expected.len());
+      xt::translate($input, $from, $to, &mut output).unwrap();
+      assert_eq!(&output, $expected);
     }
-  }
+  };
 }
 
-#[test]
-fn test_single_document_reader() {
-  for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
+/// Tests that xt produces equivalent translations regardless of whether the
+/// input format is auto-detected or explicitly provided.
+macro_rules! xt_test_detected_vs_explicit {
+  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+    paste! {
+      xt_single_test!([<$name _detected>], $input, None, $to, $expected);
+      xt_single_test!([<$name _explicit>], $input, Some($from), $to, $expected);
     }
-  }
+  };
 }
 
-/// Test inputs for multi document transcoding.
-///
-/// The current auto detection logic for MessagePack imposes a restriction on
-/// these inputs: the root of the first input in the stream must be a map or
-/// array. Subsequent values may be of any supported type.
-const MULTI_INPUTS: [TestInput; 3] = [
-  (Format::Json, include_bytes!("multi.json")),
-  (Format::Yaml, include_bytes!("multi.yaml")),
-  (Format::Msgpack, include_bytes!("multi.msgpack")),
-];
-
-#[test]
-fn test_multi_document_buffer() {
-  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
+/// Tests that xt produces equivalent translations for buffer and reader inputs.
+macro_rules! xt_test_reader_vs_buffer {
+  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+    paste! {
+      xt_test_detected_vs_explicit!([<$name _buffer>], InputHandle::from_buffer($input), $from, $to, $expected);
+      xt_test_detected_vs_explicit!([<$name _reader>], InputHandle::from_reader($input), $from, $to, $expected);
     }
-  }
+  };
 }
 
-#[test]
-fn test_multi_document_reader() {
-  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
+/// Tests that all possible xt invocations for the document on the left side
+/// produce the document on the right side, and vice versa.
+macro_rules! xt_test_reflection {
+  ($name:ident, $lf:ident, $lin:expr, $rf:ident, $rin:expr) => {
+    paste! {
+      xt_test_reader_vs_buffer!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
+      xt_test_reader_vs_buffer!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
     }
-  }
+  };
+  ($name:ident, $lf:ident, $lin:expr) => {
+    paste! {
+      xt_test_reader_vs_buffer!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
+    }
+  };
 }
 
-fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
-  let mut result = Vec::with_capacity(inputs.len() * inputs.len());
-  for x in inputs {
-    for y in inputs {
-      result.push((*x, *y))
-    }
-  }
-  result
+/// Exhaustively tests all possible translations between a set of documents.
+macro_rules! xt_test_all_combinations {
+  // A: Select the first document as our left side, or recurse and select the
+  //    next document as the left side.
+  ($name:ident; ($lf:ident, $lin:expr); $($rest:tt)*) => {
+    xt_test_all_combinations!($name; $lf, $lin; $($rest)*); // => B or C
+    xt_test_all_combinations!($name; $($rest)*);            // => A or D
+  };
+  // B: We have a left side and a right side. Test that combination, then test
+  //    the left side against the remaining right sides.
+  ($name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($rest:tt)*) => {
+    xt_test_reflection!($name, $lf, $lin, $rf, $rin);
+    xt_test_all_combinations!($name; $lf, $lin; $($rest)*); // => B or C
+  };
+  // C: We have a left side, but we ran out of right sides. Test the left side
+  //    against itself.
+  ($name:ident; $lf:ident, $lin:expr;) => {
+    xt_test_reflection!($name, $lf, $lin);
+  };
+  // D: We ran out of possible left sides.
+  ($name:ident;) => {};
+}
+
+static SINGLE_JSON_INPUT: &[u8] = include_bytes!("single.json");
+static SINGLE_YAML_INPUT: &[u8] = include_bytes!("single.yaml");
+static SINGLE_TOML_INPUT: &[u8] = include_bytes!("single.toml");
+static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
+
+xt_test_all_combinations! {
+  single;
+  (Json, SINGLE_JSON_INPUT);
+  (Yaml, SINGLE_YAML_INPUT);
+  (Toml, SINGLE_TOML_INPUT);
+  (Msgpack, SINGLE_MSGPACK_INPUT);
+}
+
+static MULTI_JSON_INPUT: &[u8] = include_bytes!("multi.json");
+static MULTI_YAML_INPUT: &[u8] = include_bytes!("multi.yaml");
+static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
+
+xt_test_all_combinations! {
+  multi;
+  (Json, MULTI_JSON_INPUT);
+  (Yaml, MULTI_YAML_INPUT);
+  (Msgpack, MULTI_MSGPACK_INPUT);
 }
 
 #[test]
