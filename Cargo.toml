@@ -38,7 +38,7 @@ version = "0.3"
 features = ["html_reports"]
 
 [[bench]]
-name = "github_events"
+name = "criterion"
 harness = false
 
 [profile.dev]
