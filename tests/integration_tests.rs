@@ -14,25 +14,17 @@ macro_rules! xt_single_test {
   };
 }
 
-/// Tests that xt produces equivalent translations regardless of whether the
-/// input format is auto-detected or explicitly provided.
-macro_rules! xt_test_detected_vs_explicit {
+/// Tests that xt produces equivalent translations for all possible invocations
+/// that translate a given input to a given output format.
+macro_rules! xt_test_all_invocations {
   ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
     paste! {
-      xt_single_test!([<$name _detected>], $input, None, $to, $expected);
-      xt_single_test!([<$name _explicit>], $input, Some($from), $to, $expected);
+      xt_single_test!([<$name _buffer_detected>], InputHandle::from_buffer($input), None, $to, $expected);
+      xt_single_test!([<$name _reader_detected>], InputHandle::from_reader($input), None, $to, $expected);
+      xt_single_test!([<$name _buffer_explicit>], InputHandle::from_buffer($input), Some($from), $to, $expected);
+      xt_single_test!([<$name _reader_explicit>], InputHandle::from_reader($input), Some($from), $to, $expected);
     }
-  };
-}
-
-/// Tests that xt produces equivalent translations for buffer and reader inputs.
-macro_rules! xt_test_reader_vs_buffer {
-  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-    paste! {
-      xt_test_detected_vs_explicit!([<$name _buffer>], InputHandle::from_buffer($input), $from, $to, $expected);
-      xt_test_detected_vs_explicit!([<$name _reader>], InputHandle::from_reader($input), $from, $to, $expected);
-    }
-  };
+  }
 }
 
 /// Tests that all possible xt invocations for the document on the left side
@@ -40,13 +32,13 @@ macro_rules! xt_test_reader_vs_buffer {
 macro_rules! xt_test_reflection {
   ($name:ident, $lf:ident, $lin:expr, $rf:ident, $rin:expr) => {
     paste! {
-      xt_test_reader_vs_buffer!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
-      xt_test_reader_vs_buffer!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
+      xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
+      xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
     }
   };
   ($name:ident, $lf:ident, $lin:expr) => {
     paste! {
-      xt_test_reader_vs_buffer!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
+      xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
     }
   };
 }
@@ -56,14 +48,14 @@ macro_rules! xt_test_all_combinations {
   // A: Select the first document as our left side, or recurse and select the
   //    next document as the left side.
   ($name:ident; ($lf:ident, $lin:expr); $($rest:tt)*) => {
-    xt_test_all_combinations!($name; $lf, $lin; $($rest)*); // => B or C
-    xt_test_all_combinations!($name; $($rest)*);            // => A or D
+    xt_test_all_combinations!{ $name; $lf, $lin; $($rest)* } // => B or C
+    xt_test_all_combinations!{ $name; $($rest)* }            // => A or D
   };
   // B: We have a left side and a right side. Test that combination, then test
   //    the left side against the remaining right sides.
   ($name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($rest:tt)*) => {
     xt_test_reflection!($name, $lf, $lin, $rf, $rin);
-    xt_test_all_combinations!($name; $lf, $lin; $($rest)*); // => B or C
+    xt_test_all_combinations!{ $name; $lf, $lin; $($rest)* } // => B or C
   };
   // C: We have a left side, but we ran out of right sides. Test the left side
   //    against itself.
