@@ -67,14 +67,11 @@ impl<'a> InputHandle<'a> {
   }
 
   fn ensure_buffered(&mut self) -> io::Result<()> {
-    self.0 = match &mut self.0 {
-      Input::Buffer(_) => return Ok(()),
-      Input::Reader(r) => {
-        let mut buf = Vec::new();
-        r.read_to_end(&mut buf)?;
-        Input::Buffer(Rc::new(buf))
-      }
-    };
+    if let Input::Reader(r) = &mut self.0 {
+      let mut buf = vec![];
+      r.read_to_end(&mut buf)?;
+      self.0 = Input::Buffer(Rc::new(buf));
+    }
     Ok(())
   }
 }
