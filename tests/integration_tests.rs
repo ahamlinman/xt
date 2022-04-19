@@ -1,95 +1,159 @@
+//! xt's integration test suite.
+//!
+//! Most of xt's integration tests are based on the philosophy that xt should
+//! produce consistent output for a given input regardless of how it consumes
+//! that input. That is, xt should always work the same way whether it reads
+//! from a file or a stream, or whether it auto-detects the input format or
+//! knows it in advance.
+//!
+//! The test suite looks at sets of documents containing the same serialized
+//! content as translated and output by xt itself, and exhaustively checks all
+//! possible xt invocations—yes, all O(n²) of them—for translating one of those
+//! documents to another (including itself). Besides generating a quadratic
+//! blow-up of test cases, this may impose limitations on the structure and
+//! values of the test inputs within a given set, and may cause some annoyance
+//! if the specific formatting of a given output ever changes. However, I'm not
+//! sure of another approach that would cover this much with this little effort.
+//!
+//! "Little," that is, if you're ready for some fun with macros.
+
+use paste::paste;
+
 use xt::{Format, InputHandle};
 
-/// A single xt test input.
+/// Tests a single call to xt::translate against expected output.
+macro_rules! xt_single_test {
+  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+    #[test]
+    fn $name() {
+      let mut output = Vec::with_capacity($expected.len());
+      xt::translate($input, $from, $to, &mut output).unwrap();
+      assert_eq!(&output, $expected);
+    }
+  };
+}
+
+/// Tests that xt produces equivalent translations for all possible invocations
+/// that translate a given input to a given output format.
+macro_rules! xt_test_all_invocations {
+  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+    paste! {
+      xt_single_test!([<$name _buffer_detected>], InputHandle::from_buffer($input), None, $to, $expected);
+      xt_single_test!([<$name _reader_detected>], InputHandle::from_reader($input), None, $to, $expected);
+      xt_single_test!([<$name _buffer_explicit>], InputHandle::from_buffer($input), Some($from), $to, $expected);
+      xt_single_test!([<$name _reader_explicit>], InputHandle::from_reader($input), Some($from), $to, $expected);
+    }
+  }
+}
+
+/// Exhaustively tests all possible translations between a set of documents.
+macro_rules! xt_test_all_combinations {
+  // A: Select the first document as our left side and test it against the
+  //    remaining right sides, or recurse and select the next document as the
+  //    left side.
+  { $name:ident; ($lf:ident, $lin:expr); $($tail:tt)* } => {
+    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
+    xt_test_all_combinations!{ $name; $($tail)* }            // => A or D
+  };
+  // B: We have a left side and a right side. Test both possible translation
+  //    directions for that pair, then test the left side against the remaining
+  //    right sides.
+  { $name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($tail:tt)* } => {
+    paste! {
+      xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
+      xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
+    }
+    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
+  };
+  // C: We have a left side, but we ran out of right sides. Test the left side
+  //    against itself.
+  { $name:ident; $lf:ident, $lin:expr; } => {
+    paste! {
+      xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
+    }
+  };
+  // D: We ran out of possible left sides.
+  { $name:ident; } => {};
+}
+
+static SINGLE_JSON_INPUT: &[u8] = include_bytes!("single.json");
+static SINGLE_YAML_INPUT: &[u8] = include_bytes!("single.yaml");
+static SINGLE_TOML_INPUT: &[u8] = include_bytes!("single.toml");
+static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
+
+// Tests single document transcoding.
+//
+// TOML's limitations impose several restrictions on these inputs:
+//
+// 1. No null values.
+// 2. The root of each input must be a map.
+// 3. The values in the map must appear in an order that TOML can support
+//    (non-tables before tables at a given level of nesting).
+xt_test_all_combinations! {
+  single;
+  (Json, SINGLE_JSON_INPUT);
+  (Yaml, SINGLE_YAML_INPUT);
+  (Toml, SINGLE_TOML_INPUT);
+  (Msgpack, SINGLE_MSGPACK_INPUT);
+}
+
+static MULTI_JSON_INPUT: &[u8] = include_bytes!("multi.json");
+static MULTI_YAML_INPUT: &[u8] = include_bytes!("multi.yaml");
+static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
+
+// Tests multi-document transcoding.
+//
+// The current MessagePack auto detection logic imposes a restriction on these
+// inputs: the root of the first input in the stream must be a map or array.
+// Subsequent values may be of any supported type.
+//
+// TOML does not support multi-document transcoding.
+xt_test_all_combinations! {
+  multi;
+  (Json, MULTI_JSON_INPUT);
+  (Yaml, MULTI_YAML_INPUT);
+  (Msgpack, MULTI_MSGPACK_INPUT);
+}
+
+const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
+
+/// Tests the translation of YAML documents from various text encodings.
 ///
-/// The inputs for a given set of integration tests contain the same serialized
-/// content, as formatted by xt itself. Translating any input to any format
-/// (including the source format itself) should produce the test input for that
-/// format, regardless of whether the format is auto detected or specified
-/// explicitly. This may impose limitations on the structure and values that the
-/// test input can contain.
-type TestInput = (Format, &'static [u8]);
-
-/// Test inputs for single document transcoding.
-///
-/// TOML's limitations impose several restrictions on these inputs. First, no
-/// input can contain a null value. Second, the root of each input must be a
-/// map. Third, the values in the map must appear in an order that TOML can
-/// support (non-tables appear before tables at a given level of nesting).
-const SINGLE_INPUTS: [TestInput; 4] = [
-  (Format::Json, include_bytes!("single.json")),
-  (Format::Yaml, include_bytes!("single.yaml")),
-  (Format::Toml, include_bytes!("single.toml")),
-  (Format::Msgpack, include_bytes!("single.msgpack")),
-];
-
-#[test]
-fn test_single_document_buffer() {
-  for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
+/// YAML 1.2 requires support for the UTF-8, UTF-16, and UTF-32 character
+/// encodings. Because yaml-rust (and by extension serde_yaml) only supports
+/// UTF-8 as of this writing, xt takes care of re-encoding inputs where
+/// necessary. The test inputs cover a reasonable subset of the possible
+/// combinations of code unit size, type of endianness, and presence or lack of
+/// a BOM.
+macro_rules! xt_test_yaml_encodings {
+  ($($filename:ident),+ $(,)?) => {
+    paste! {
+      $(
+        #[test]
+        fn [<yaml_encoding_ $filename>]() {
+          static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
+          let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+          xt::translate(
+            InputHandle::from_buffer(INPUT),
+            Some(Format::Yaml),
+            Format::Json,
+            &mut output,
+          )
+          .unwrap();
+          assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+        }
+      )+
     }
-  }
+  };
 }
 
+xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf8bom, utf16bebom, utf32lebom];
+
+/// Tests that TOML output re-orders inputs as needed to meet TOML-specific
+/// requirements, in particular that all non-table values must appear before any
+/// tables at the same level.
 #[test]
-fn test_single_document_reader() {
-  for ((from, input), (to, expected)) in all_input_combinations(&SINGLE_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
-    }
-  }
-}
-
-/// Test inputs for multi document transcoding.
-///
-/// The current auto detection logic for MessagePack imposes a restriction on
-/// these inputs: the root of the first input in the stream must be a map or
-/// array. Subsequent values may be of any supported type.
-const MULTI_INPUTS: [TestInput; 3] = [
-  (Format::Json, include_bytes!("multi.json")),
-  (Format::Yaml, include_bytes!("multi.yaml")),
-  (Format::Msgpack, include_bytes!("multi.msgpack")),
-];
-
-#[test]
-fn test_multi_document_buffer() {
-  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_buffer(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
-    }
-  }
-}
-
-#[test]
-fn test_multi_document_reader() {
-  for ((from, input), (to, expected)) in all_input_combinations(&MULTI_INPUTS) {
-    for from in [None, Some(from)] {
-      let mut output = Vec::with_capacity(expected.len());
-      xt::translate(InputHandle::from_reader(input), from, to, &mut output).unwrap();
-      assert_eq!(&output, expected);
-    }
-  }
-}
-
-fn all_input_combinations(inputs: &[TestInput]) -> Vec<(TestInput, TestInput)> {
-  let mut result = Vec::with_capacity(inputs.len() * inputs.len());
-  for x in inputs {
-    for y in inputs {
-      result.push((*x, *y))
-    }
-  }
-  result
-}
-
-#[test]
-fn test_toml_reordering() {
+fn toml_reordering() {
   const INPUT: &[u8] = include_bytes!("single_reordered.json");
   const EXPECTED: &str = include_str!("single.toml");
   let mut output = Vec::with_capacity(EXPECTED.len());
@@ -103,38 +167,14 @@ fn test_toml_reordering() {
   assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
-const YAML_REENCODING_INPUTS: [&[u8]; 7] = [
-  include_bytes!("utf16be.yaml"),
-  include_bytes!("utf16le.yaml"),
-  include_bytes!("utf32be.yaml"),
-  include_bytes!("utf32le.yaml"),
-  include_bytes!("utf8bom.yaml"),
-  include_bytes!("utf16bebom.yaml"),
-  include_bytes!("utf32lebom.yaml"),
-];
-
+/// Tests that halting transcoding in the middle of a YAML input does not panic
+/// and crash.
+///
+/// The particular example involves translating a YAML input with a null key to
+/// JSON, which refuses to accept the non-string key. Past versions of xt's
+/// transcoder broke internal YAML deserializer variants when this happened.
 #[test]
-fn test_yaml_reencoding() {
-  const EXPECTED: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
-  for input in YAML_REENCODING_INPUTS {
-    let mut output = Vec::with_capacity(EXPECTED.len());
-    xt::translate(
-      InputHandle::from_buffer(input),
-      Some(Format::Yaml),
-      Format::Json,
-      &mut output,
-    )
-    .unwrap();
-    assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
-  }
-}
-
-#[test]
-fn test_halting_yaml_deserializer_without_panic() {
-  // Regression test to ensure that halting transcoding in the middle of a value
-  // doesn't panic and crash. The particular example is a YAML input with a null
-  // map key trying to transcode to JSON, where keys must be strings. If we're
-  // not careful, we can break invariants of the YAML deserializer.
+fn yaml_halting_without_panic() {
   const INPUT: &[u8] = include_bytes!("nullkey.yaml");
   let _ = xt::translate(
     InputHandle::from_buffer(INPUT),
@@ -144,13 +184,14 @@ fn test_halting_yaml_deserializer_without_panic() {
   );
 }
 
+/// Tests that MessagePack recursion depth limits behave consistently for both
+/// buffer and reader inputs.
+///
+/// Buffer inputs implement their own depth check on top of rmp_serde's when
+/// they determine the sizes of input values. It should behave consistently with
+/// rmp_serde, which performs the only depth check for reader inputs.
 #[test]
-fn test_msgpack_depth_limit() {
-  // Ensure that msgpack depth limits behave consistently for both buffer and
-  // reader inputs. Buffer inputs implement their own depth check on top of
-  // rmp_serde's when determining the size of the value, which should not bound
-  // the limit any lower than rmp_serde itself.
-
+fn msgpack_depth_limit() {
   // Magic private constant from msgpack.rs.
   const DEPTH_LIMIT: usize = 1024;
 
