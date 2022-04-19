@@ -1,11 +1,11 @@
 //! xt's integration test suite.
-//! 
+//!
 //! Most of xt's integration tests are based on the philosophy that xt should
 //! produce consistent output for a given input regardless of how it consumes
 //! that input. That is, xt should always work the same way whether it reads
 //! from a file or a stream, or whether it auto-detects the input format or
 //! knows it in advance.
-//! 
+//!
 //! The test suite looks at sets of documents containing the same serialized
 //! content as translated and output by xt itself, and exhaustively checks all
 //! possible xt invocations—yes, all O(n²) of them—for translating one of those
@@ -14,7 +14,7 @@
 //! values of the test inputs within a given set, and may cause some annoyance
 //! if the specific formatting of a given output ever changes. However, I'm not
 //! sure of another approach that would cover this much with this little effort.
-//! 
+//!
 //! "Little," that is, if you're ready for some fun with macros.
 
 use paste::paste;
@@ -82,9 +82,9 @@ static SINGLE_TOML_INPUT: &[u8] = include_bytes!("single.toml");
 static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
 
 // Tests single document transcoding.
-// 
+//
 // TOML's limitations impose several restrictions on these inputs:
-// 
+//
 // 1. No null values.
 // 2. The root of each input must be a map.
 // 3. The values in the map must appear in an order that TOML can support
@@ -118,7 +118,7 @@ xt_test_all_combinations! {
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 
 /// Tests the translation of YAML documents from various text encodings.
-/// 
+///
 /// YAML 1.2 requires support for the UTF-8, UTF-16, and UTF-32 character
 /// encodings. Because yaml-rust (and by extension serde_yaml) only supports
 /// UTF-8 as of this writing, xt takes care of re-encoding inputs where
@@ -147,15 +147,7 @@ macro_rules! xt_test_yaml_encodings {
   };
 }
 
-xt_test_yaml_encodings![ 
-  utf16be,
-  utf16le,
-  utf32be,
-  utf32le,
-  utf8bom,
-  utf16bebom,
-  utf32lebom,
- ];
+xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf8bom, utf16bebom, utf32lebom];
 
 /// Tests that TOML output re-orders inputs as needed to meet TOML-specific
 /// requirements, in particular that all non-table values must appear before any
@@ -177,7 +169,7 @@ fn toml_reordering() {
 
 /// Tests that halting transcoding in the middle of a YAML input does not panic
 /// and crash.
-/// 
+///
 /// The particular example involves translating a YAML input with a null key to
 /// JSON, which refuses to accept the non-string key. Past versions of xt's
 /// transcoder broke internal YAML deserializer variants when this happened.
@@ -194,7 +186,7 @@ fn yaml_halting_without_panic() {
 
 /// Tests that MessagePack recursion depth limits behave consistently for both
 /// buffer and reader inputs.
-/// 
+///
 /// Buffer inputs implement their own depth check on top of rmp_serde's when
 /// they determine the sizes of input values. It should behave consistently with
 /// rmp_serde, which performs the only depth check for reader inputs.
