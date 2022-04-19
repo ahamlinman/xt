@@ -46,43 +46,34 @@ macro_rules! xt_test_all_invocations {
   }
 }
 
-/// Tests that all possible xt invocations for the document on the left side
-/// produce the document on the right side, and vice versa.
-macro_rules! xt_test_reflection {
-  ($name:ident, $lf:ident, $lin:expr, $rf:ident, $rin:expr) => {
+/// Exhaustively tests all possible translations between a set of documents.
+macro_rules! xt_test_all_combinations {
+  // A: Select the first document as our left side and test it against the
+  //    remaining right sides, or recurse and select the next document as the
+  //    left side.
+  { $name:ident; ($lf:ident, $lin:expr); $($tail:tt)* } => {
+    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
+    xt_test_all_combinations!{ $name; $($tail)* }            // => A or D
+  };
+  // B: We have a left side and a right side. Test both possible translation
+  //    directions for that pair, then test the left side against the remaining
+  //    right sides.
+  { $name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($tail:tt)* } => {
     paste! {
       xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
       xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
     }
+    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
   };
-  ($name:ident, $lf:ident, $lin:expr) => {
+  // C: We have a left side, but we ran out of right sides. Test the left side
+  //    against itself.
+  { $name:ident; $lf:ident, $lin:expr; } => {
     paste! {
       xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
     }
   };
-}
-
-/// Exhaustively tests all possible translations between a set of documents.
-macro_rules! xt_test_all_combinations {
-  // A: Select the first document as our left side, or recurse and select the
-  //    next document as the left side.
-  ($name:ident; ($lf:ident, $lin:expr); $($rest:tt)*) => {
-    xt_test_all_combinations!{ $name; $lf, $lin; $($rest)* } // => B or C
-    xt_test_all_combinations!{ $name; $($rest)* }            // => A or D
-  };
-  // B: We have a left side and a right side. Test that combination, then test
-  //    the left side against the remaining right sides.
-  ($name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($rest:tt)*) => {
-    xt_test_reflection!($name, $lf, $lin, $rf, $rin);
-    xt_test_all_combinations!{ $name; $lf, $lin; $($rest)* } // => B or C
-  };
-  // C: We have a left side, but we ran out of right sides. Test the left side
-  //    against itself.
-  ($name:ident; $lf:ident, $lin:expr;) => {
-    xt_test_reflection!($name, $lf, $lin);
-  };
   // D: We ran out of possible left sides.
-  ($name:ident;) => {};
+  { $name:ident; } => {};
 }
 
 static SINGLE_JSON_INPUT: &[u8] = include_bytes!("single.json");
