@@ -21,33 +21,29 @@ pub(crate) fn detect_format(input: &mut InputHandle) -> io::Result<Option<Format
     return Ok(Some(Format::Json));
   }
 
+  // TOML comes next as it is less restrictive than JSON, but still more
+  // restrictive than YAML. In fact, TOML documents that don't start with a
+  // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
+  // string. Cargo.lock is a great example of this, if you're curious.
+  if crate::toml::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Toml));
+  }
+
+  // Finally, YAML is our traditional fallback format. Yes, we still get the
+  // giant string behavior described above for arbitrary text documents, but it
+  // is how xt has worked for a long time and it's not like the behavior is
+  // actively harmful. We do try to defer the YAML check for as long as we can,
+  // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
+  // might be expensive. In particular, we do it after the MessagePack check
+  // since some valid MessagePack values would be false matches under the YAML
+  // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
+  // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
+  // the byte patterns for UTF-16-LE YAML input.
+  if crate::yaml::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Yaml));
+  }
+
   Ok(None)
-
-  // // TOML comes next as it is less restrictive than JSON, but still more
-  // // restrictive than YAML. In fact, TOML documents that don't start with a
-  // // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
-  // // string. Cargo.lock is a great example of this, if you're curious.
-  // for from in [Format::Json, Format::Toml] {
-  //   if transcode_input(input.try_clone()?, from, Discard).is_ok() {
-  //     return Ok(Some(from));
-  //   }
-  // }
-
-  // // Finally, YAML is our traditional fallback format. Yes, we still get the
-  // // giant string behavior described above for arbitrary text documents, but it
-  // // is how xt has worked for a long time and it's not like the behavior is
-  // // actively harmful. We do try to defer the YAML check for as long as we can,
-  // // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
-  // // might be expensive. In particular, we do it after the MessagePack check
-  // // since some valid MessagePack values would be false matches under the YAML
-  // // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
-  // // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
-  // // the byte patterns for UTF-16-LE YAML input.
-  // if transcode_input(input, Format::Yaml, Discard).is_ok() {
-  //   return Ok(Some(Format::Yaml));
-  // }
-
-  // Ok(None)
 }
 
 /// Throws stuff away in a wide variety of fun and exciting ways. Truly the

@@ -1,12 +1,17 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
-use std::io::Write;
+use std::io::{self, Write};
 use std::str;
 
 use serde::Deserialize;
 
-use crate::InputHandle;
+use crate::{BorrowedInput, InputHandle};
+
+#[allow(dead_code)]
+pub(crate) fn input_matches(_input: BorrowedInput) -> io::Result<bool> {
+  Ok(false)
+}
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
