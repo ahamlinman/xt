@@ -10,6 +10,8 @@ use std::io::Write;
 
 mod detect;
 mod input;
+#[allow(dead_code)]
+mod input2;
 mod json;
 mod msgpack;
 mod toml;
