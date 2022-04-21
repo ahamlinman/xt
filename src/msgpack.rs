@@ -2,7 +2,9 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
-use crate::{transcode, Input, InputHandle};
+use serde::Deserialize;
+
+use crate::{transcode, BorrowedInput, Input, InputHandle};
 
 /// The maximum allowed nesting depth of MessagePack values.
 ///
@@ -10,6 +12,42 @@ use crate::{transcode, Input, InputHandle};
 /// seems to be enough to reliably prevent stack overflows on debug builds of
 /// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
+
+pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
+  use rmp::Marker::{self, *};
+  use rmp_serde::decode::Error::*;
+
+  let mut r = BufReader::new(input);
+
+  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
+  // That means any ASCII text input is effectively a valid multi-document
+  // MessagePack stream, where every "document" is practically meaningless. To
+  // prevent these kinds of weird matches, we only detect input as MessagePack
+  // when the first byte indicates that the next value will be a map or array.
+  // Arbitrary non-ASCII input that happens to match one of these markers (e.g.
+  // certain UTF-8 multibyte sequences) is extremely unlikely to be a valid
+  // sequence of MessagePack values.
+  let first_marker = r.fill_buf()?.get(0).map(|b| Marker::from_u8(*b));
+  if !matches!(
+    first_marker,
+    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
+  ) {
+    return Ok(false);
+  }
+
+  let mut de = rmp_serde::Deserializer::new(&mut r);
+  de.set_max_depth(DEPTH_LIMIT);
+  match serde::de::IgnoredAny::deserialize(&mut de) {
+    Ok(_) => Ok(true),
+    Err(err) => {
+      if let InvalidMarkerRead(ioerr) | InvalidDataRead(ioerr) = err {
+        Err(ioerr)
+      } else {
+        Ok(false)
+      }
+    }
+  }
+}
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where

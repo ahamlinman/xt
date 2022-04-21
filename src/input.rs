@@ -28,21 +28,33 @@ impl<'i> InputHandle<'i> {
   ///
   /// A borrowed reader will always produce the original input from the start,
   /// even across multiple calls to `borrow_mut`.
-  pub(crate) fn borrow_mut(&mut self) -> BorrowedSource<'i, '_> {
+  pub(crate) fn borrow_mut(&mut self) -> BorrowedInput<'i, '_> {
     match &mut self.0 {
-      Source::Buffer(buf) => BorrowedSource::Buffer(buf),
-      Source::Reader(r) => BorrowedSource::Reader(ReaderGuard(r)),
+      Source::Buffer(buf) => BorrowedInput::Buffer(buf),
+      Source::Reader(r) => BorrowedInput::Reader(ReaderGuard(r)),
     }
   }
 }
 
 /// A temporary reference to input held by an [`InputHandle`].
-pub(crate) enum BorrowedSource<'i, 'h>
+pub(crate) enum BorrowedInput<'i, 'h>
 where
   'i: 'h,
 {
   Buffer(&'h [u8]),
   Reader(ReaderGuard<'i, 'h>),
+}
+
+impl<'i, 'h> Read for BorrowedInput<'i, 'h>
+where
+  'i: 'h,
+{
+  fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    match self {
+      BorrowedInput::Buffer(b) => b.read(buf),
+      BorrowedInput::Reader(r) => r.read(buf),
+    }
+  }
 }
 
 /// A temporary reference to input from a reader.

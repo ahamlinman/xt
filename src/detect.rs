@@ -6,8 +6,16 @@ use serde::{de, ser, Deserialize, Serialize, Serializer};
 
 use crate::{Format, InputHandle, Output};
 
-pub(crate) fn detect_format(_input: InputHandle) -> io::Result<Option<Format>> {
-  todo!();
+pub(crate) fn detect_format(input: &mut InputHandle) -> io::Result<Option<Format>> {
+  // As a binary format, we generally expect MessagePack to be the most
+  // restrictive of the bunch. Note that we only detect MessagePack inputs that
+  // start with an array or map; see the comments in this function for details.
+  if crate::msgpack::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Msgpack));
+  }
+
+  Ok(None)
+
   // // JSON comes first as it is relatively restrictive compared to the other
   // // formats. For example, a "#" comment at the start of a doc could be TOML or
   // // YAML, but definitely not JSON, so we can abort parsing fairly early.
@@ -20,23 +28,6 @@ pub(crate) fn detect_format(_input: InputHandle) -> io::Result<Option<Format>> {
   //   if transcode_input(input.try_clone()?, from, Discard).is_ok() {
   //     return Ok(Some(from));
   //   }
-  // }
-
-  // // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
-  // // That means any ASCII text input is effectively a valid multi-document
-  // // MessagePack stream, where every "document" is practically meaningless. To
-  // // prevent these kinds of weird matches, we only attempt to auto-detect
-  // // MessagePack when the first byte of input indicates that the next value will
-  // // be a map or array. Arbitrary non-ASCII input that happens to match one of
-  // // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
-  // // unlikely to be a valid sequence of MessagePack values.
-  // use rmp::Marker::{self, *};
-  // if matches!(
-  //   input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
-  //   Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
-  // ) && transcode_input(input.try_clone()?, Format::Msgpack, Discard).is_ok()
-  // {
-  //   return Ok(Some(Format::Msgpack));
   // }
 
   // // Finally, YAML is our traditional fallback format. Yes, we still get the

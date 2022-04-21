@@ -18,7 +18,7 @@ mod toml;
 mod transcode;
 mod yaml;
 
-use input::Input;
+use input::{BorrowedInput, Input};
 
 pub use input::InputHandle;
 
@@ -27,7 +27,7 @@ pub use input::InputHandle;
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
 pub fn translate<W>(
-  input: InputHandle<'_>,
+  mut input: InputHandle<'_>,
   from: Option<Format>,
   to: Format,
   output: W,
@@ -37,7 +37,10 @@ where
 {
   let from = match from {
     Some(format) => format,
-    None => todo!(),
+    None => match detect::detect_format(&mut input)? {
+      Some(format) => format,
+      None => return Err("unable to detect input format".into()),
+    },
   };
 
   match to {
