@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::str;
 
 use serde::Deserialize;
@@ -9,8 +9,25 @@ use serde::Deserialize;
 use crate::{BorrowedInput, InputHandle};
 
 #[allow(dead_code)]
-pub(crate) fn input_matches(_input: BorrowedInput) -> io::Result<bool> {
-  Ok(false)
+pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
+  const MAX_DETECT_SIZE: u64 = 4 * 1024 * 1024;
+
+  // TODO: Optimize for buffered inputs.
+
+  let mut r = BufReader::new(input).take(MAX_DETECT_SIZE);
+  let mut buf = vec![];
+  r.read_to_end(&mut buf)?;
+  let mut r = r.into_inner();
+  if !r.fill_buf()?.is_empty() {
+    return Ok(false);
+  }
+
+  let input_str = match str::from_utf8(&buf) {
+    Ok(s) => s,
+    Err(_) => return Ok(false),
+  };
+  let mut de = ::toml::Deserializer::new(input_str);
+  Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>

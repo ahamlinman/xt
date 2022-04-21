@@ -1,11 +1,33 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
+
+use serde::Deserialize;
 
 use crate::{transcode, BorrowedInput, InputHandle};
 
 #[allow(dead_code)]
-pub(crate) fn input_matches(_input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
+  const MAX_DETECT_SIZE: u64 = 4 * 1024 * 1024;
+
+  // TODO: Optimize for buffered inputs.
+
+  let mut r = BufReader::new(input).take(MAX_DETECT_SIZE);
+  let mut buf = vec![];
+  r.read_to_end(&mut buf)?;
+  let mut r = r.into_inner();
+  if !r.fill_buf()?.is_empty() {
+    return Ok(false);
+  }
+
+  let input_str = match ensure_utf8(&buf) {
+    Ok(s) => s,
+    Err(_) => return Ok(false),
+  };
+  let input_str = input_str.strip_prefix('\u{FEFF}').unwrap_or(&input_str);
+  if let Some(de) = serde_yaml::Deserializer::from_str(input_str).next() {
+    return Ok(serde::de::IgnoredAny::deserialize(de).is_ok());
+  }
   Ok(false)
 }
 
