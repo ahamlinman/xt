@@ -37,16 +37,14 @@ pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
 
   let mut de = rmp_serde::Deserializer::new(&mut r);
   de.set_max_depth(DEPTH_LIMIT);
-  match serde::de::IgnoredAny::deserialize(&mut de) {
-    Ok(_) => Ok(true),
-    Err(err) => {
-      if let InvalidMarkerRead(ioerr) | InvalidDataRead(ioerr) = err {
-        Err(ioerr)
-      } else {
-        Ok(false)
-      }
-    }
+  if let Err(err) = serde::de::IgnoredAny::deserialize(&mut de) {
+    return if let InvalidMarkerRead(ioerr) | InvalidDataRead(ioerr) = err {
+      Err(ioerr)
+    } else {
+      Ok(false)
+    };
   }
+  Ok(true)
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>

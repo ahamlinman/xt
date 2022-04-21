@@ -1,7 +1,21 @@
 use std::error::Error;
-use std::io::{BufReader, Write};
+use std::io::{self, BufReader, Write};
 
-use crate::{transcode, Input, InputHandle};
+use serde::Deserialize;
+
+use crate::{transcode, BorrowedInput, Input, InputHandle};
+
+pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
+  let mut de = serde_json::Deserializer::from_reader(BufReader::new(input));
+  if let Err(err) = serde::de::IgnoredAny::deserialize(&mut de) {
+    return if err.is_io() {
+      Err(err.into())
+    } else {
+      Ok(false)
+    };
+  }
+  Ok(true)
+}
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where

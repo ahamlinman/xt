@@ -14,12 +14,15 @@ pub(crate) fn detect_format(input: &mut InputHandle) -> io::Result<Option<Format
     return Ok(Some(Format::Msgpack));
   }
 
+  // We expect JSON to be the most restrictive of the text-based formats. For
+  // example, a "#" comment at the start of a doc could be TOML or YAML, but
+  // definitely not JSON.
+  if crate::json::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Json));
+  }
+
   Ok(None)
 
-  // // JSON comes first as it is relatively restrictive compared to the other
-  // // formats. For example, a "#" comment at the start of a doc could be TOML or
-  // // YAML, but definitely not JSON, so we can abort parsing fairly early.
-  // //
   // // TOML comes next as it is less restrictive than JSON, but still more
   // // restrictive than YAML. In fact, TOML documents that don't start with a
   // // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
