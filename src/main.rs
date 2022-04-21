@@ -9,7 +9,7 @@ use clap::{
   Parser,
 };
 
-use xt::{Format, InputHandle};
+use xt::{input2, Format, InputHandle};
 
 fn main() {
   let args = match Cli::try_parse() {
@@ -44,6 +44,13 @@ fn main() {
   }
 
   let input = args.input().unwrap_or_else(|err| xt_fail!(err));
+
+  let mut input2 = args.input2().unwrap_or_else(|err| xt_fail!(err));
+  let _input_handle = match &mut input2 {
+    Input2::Stdin => input2::InputHandle::from_reader(io::stdin()),
+    Input2::File(file) => input2::InputHandle::from_reader(file),
+    Input2::Mmap(map) => input2::InputHandle::from_slice(map),
+  };
 
   let result = xt::translate(input, args.detect_from(), args.to, &mut output);
 
@@ -210,4 +217,34 @@ impl Cli {
       }
     }
   }
+
+  fn input2(&self) -> io::Result<Input2> {
+    match &self.input_filename {
+      None => Ok(Input2::Stdin),
+      Some(path) if path.to_str() == Some("-") => Ok(Input2::Stdin),
+      Some(path) => {
+        let file = File::open(path)?;
+        // "SAFETY": It is undefined behavior to modify a mapped file outside of
+        // the process... so we tell users not to do that in the help output.
+        // No, this is not a real solution and does not provide any actual
+        // safety guarantee. It's a risk intentionally taken in the name of
+        // performance, based on a pragmatic understanding of the failure modes
+        // most likely to appear when the requirement is violated.
+        match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
+          // Per memmap2 docs, it's safe to drop file once mmap succeeds.
+          Ok(map) => Ok(Input2::Mmap(map)),
+          // If mmap fails, we can always fall back to reading the file
+          // normally. Examples of where this can matter include (but are not
+          // limited to) process substitution and named pipes.
+          Err(_) => Ok(Input2::File(file)),
+        }
+      }
+    }
+  }
+}
+
+enum Input2 {
+  Stdin,
+  File(std::fs::File),
+  Mmap(memmap2::Mmap),
 }
