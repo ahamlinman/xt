@@ -1,14 +1,14 @@
 use std::error::Error;
 use std::io::{BufReader, Write};
 
-use crate::{input2, transcode, Input, InputHandle};
+use crate::{transcode, Input, InputHandle};
 
-pub(crate) fn transcode<O>(input: input2::InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
   match input.into() {
-    input2::Input::Buffer(buf) => {
+    Input::Buffer(buf) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
       // iteration if we allow it to deserialize into an actual value, so xt
@@ -19,7 +19,7 @@ where
         output.transcode_value(value?)?;
       }
     }
-    input2::Input::Reader(r) => {
+    Input::Reader(r) => {
       // In this case, direct transcoding performs better than deserializing
       // into a value. It looks like transcode::Value is forced to copy every
       // string from a &str reference, which probably explains the difference.

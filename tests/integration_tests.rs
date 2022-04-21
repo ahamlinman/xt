@@ -19,7 +19,7 @@
 
 use paste::paste;
 
-use xt::{input2::InputHandle, Format};
+use xt::{Format, InputHandle};
 
 /// Tests a single call to xt::translate against expected output.
 macro_rules! xt_single_test {

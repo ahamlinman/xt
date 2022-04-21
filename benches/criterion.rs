@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use xt::{input2::InputHandle, Format};
+use xt::{Format, InputHandle};
 
 criterion_main!(small, large);
 

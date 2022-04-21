@@ -2,12 +2,9 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::io::Write;
 
-use crate::{input2, transcode, InputHandle};
+use crate::{transcode, InputHandle};
 
-pub(crate) fn transcode<O>(
-  mut input: input2::InputHandle,
-  mut output: O,
-) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {

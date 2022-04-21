@@ -8,26 +8,28 @@ use std::error::Error;
 use std::fmt;
 use std::io::Write;
 
+#[allow(dead_code)]
 mod detect;
+#[allow(dead_code)]
 mod input;
 #[allow(dead_code)]
-pub mod input2;
+mod input2;
 mod json;
 mod msgpack;
 mod toml;
 mod transcode;
 mod yaml;
 
-use input::Input;
+use input2::Input;
 
-pub use input::InputHandle;
+pub use input2::InputHandle;
 
 /// Translates serialized input to serialized output in a different format.
 ///
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
 pub fn translate<W>(
-  mut input: input2::InputHandle<'_>,
+  input: InputHandle<'_>,
   from: Option<Format>,
   to: Format,
   output: W,
@@ -48,11 +50,7 @@ where
   }
 }
 
-fn transcode_input<O>(
-  input: input2::InputHandle,
-  from: Format,
-  output: O,
-) -> Result<(), Box<dyn Error>>
+fn transcode_input<O>(input: InputHandle, from: Format, output: O) -> Result<(), Box<dyn Error>>
 where
   O: Output,
 {

@@ -4,9 +4,9 @@ use std::io;
 
 use serde::{de, ser, Deserialize, Serialize, Serializer};
 
-use crate::{input2, transcode_input, Format, InputHandle, Output};
+use crate::{Format, InputHandle, Output};
 
-pub(crate) fn detect_format(mut input: input2::InputHandle) -> io::Result<Option<Format>> {
+pub(crate) fn detect_format(_input: InputHandle) -> io::Result<Option<Format>> {
   todo!();
   // // JSON comes first as it is relatively restrictive compared to the other
   // // formats. For example, a "#" comment at the start of a doc could be TOML or

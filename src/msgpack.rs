@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
-use crate::{input2, transcode, Input, InputHandle};
+use crate::{transcode, Input, InputHandle};
 
 /// The maximum allowed nesting depth of MessagePack values.
 ///
@@ -11,12 +11,12 @@ use crate::{input2, transcode, Input, InputHandle};
 /// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
 
-pub(crate) fn transcode<O>(input: input2::InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
   match input.into() {
-    input2::Input::Buffer(buf) => {
+    Input::Buffer(buf) => {
       let mut buf = &*buf;
       while !buf.is_empty() {
         let size = next_value_size(buf, DEPTH_LIMIT)?;
@@ -27,7 +27,7 @@ where
         buf = rest;
       }
     }
-    input2::Input::Reader(r) => {
+    Input::Reader(r) => {
       // Note that in reader mode, the MessagePack deserializer will eagerly
       // allocate zero-filled buffers for binary and string data based on the
       // length specified in the input. This is partly why the help output says

@@ -6,12 +6,9 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::{input2, InputHandle};
+use crate::InputHandle;
 
-pub(crate) fn transcode<O>(
-  mut input: input2::InputHandle,
-  mut output: O,
-) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
