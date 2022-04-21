@@ -11,8 +11,6 @@ use std::io::Write;
 #[allow(dead_code)]
 mod detect;
 #[allow(dead_code)]
-mod input;
-#[allow(dead_code)]
 mod input2;
 mod json;
 mod msgpack;
