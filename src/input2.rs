@@ -1,13 +1,78 @@
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
 
-pub(crate) struct InputHandle<'i>(Source<'i>);
+/// A handle for xt to obtain input data from a slice or reader.
+pub struct InputHandle<'i>(Source<'i>);
 
+/// A private container representing a buffer or reader input source.
 enum Source<'i> {
   Buffer(Cow<'i, [u8]>),
   Reader(RewindableReader<Box<dyn Read + 'i>>),
 }
 
+impl<'i> InputHandle<'i> {
+  /// Creates a handle for an input slice.
+  pub fn from_slice(source: &'i [u8]) -> InputHandle<'i> {
+    InputHandle(Source::Buffer(Cow::Borrowed(source)))
+  }
+
+  /// Creates a handle for an input reader.
+  pub fn from_reader<R>(source: R) -> InputHandle<'i>
+  where
+    R: Read + 'i,
+  {
+    InputHandle(Source::Reader(RewindableReader::new(Box::new(source))))
+  }
+
+  /// Returns temporary references to the handle's input.
+  ///
+  /// A borrowed reader will always produce the original input from the start,
+  /// even across multiple calls to `borrow_mut`.
+  pub(crate) fn borrow_mut(&mut self) -> BorrowedSource<'i, '_> {
+    match &mut self.0 {
+      Source::Buffer(buf) => BorrowedSource::Buffer(buf),
+      Source::Reader(r) => BorrowedSource::Reader(ReaderGuard(r)),
+    }
+  }
+}
+
+/// A temporary reference to input held by an [`InputHandle`].
+pub(crate) enum BorrowedSource<'i, 'h>
+where
+  'i: 'h,
+{
+  Buffer(&'h [u8]),
+  Reader(ReaderGuard<'i, 'h>),
+}
+
+/// A temporary reference to input from a reader.
+///
+/// A [`ReaderGuard`] automatically captures all bytes read from the original
+/// input. When dropped, it will rewind to the start of the captured input so
+/// that future consumers read the same bytes.
+pub(crate) struct ReaderGuard<'i, 'h>(&'h mut RewindableReader<Box<dyn Read + 'i>>)
+where
+  'i: 'h;
+
+impl<'i, 'h> Read for ReaderGuard<'i, 'h>
+where
+  'i: 'h,
+{
+  fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    self.0.read(buf)
+  }
+}
+
+impl<'i, 'h> Drop for ReaderGuard<'i, 'h>
+where
+  'i: 'h,
+{
+  fn drop(&mut self) {
+    self.0.rewind();
+  }
+}
+
+/// A direct reference to the original input held by an [`InputHandle`].
 pub(crate) enum Input<'i> {
   Buffer(Cow<'i, [u8]>),
   Reader(Box<dyn Read + 'i>),
