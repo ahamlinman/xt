@@ -46,13 +46,13 @@ fn main() {
   let input = args.input().unwrap_or_else(|err| xt_fail!(err));
 
   let mut input2 = args.input2().unwrap_or_else(|err| xt_fail!(err));
-  let _input_handle = match &mut input2 {
+  let input_handle = match &mut input2 {
     Input2::Stdin => input2::InputHandle::from_reader(io::stdin()),
     Input2::File(file) => input2::InputHandle::from_reader(file),
     Input2::Mmap(map) => input2::InputHandle::from_slice(map),
   };
 
-  let result = xt::translate(input, args.detect_from(), args.to, &mut output);
+  let result = xt::translate(input_handle, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a

@@ -72,6 +72,27 @@ where
   }
 }
 
+impl<'i> TryInto<Cow<'i, [u8]>> for InputHandle<'i> {
+  type Error = io::Error;
+
+  fn try_into(self) -> io::Result<Cow<'i, [u8]>> {
+    match self.0 {
+      Source::Buffer(buf) => Ok(buf),
+      Source::Reader(r) => {
+        if r.is_source_eof() {
+          let (cursor, _) = r.into_inner();
+          return Ok(Cow::Owned(cursor.into_inner()));
+        }
+
+        let (cursor, mut source) = r.into_inner();
+        let mut buf = cursor.into_inner();
+        source.read_to_end(&mut buf)?;
+        Ok(Cow::Owned(buf))
+      }
+    }
+  }
+}
+
 /// A direct reference to the original input held by an [`InputHandle`].
 pub(crate) enum Input<'i> {
   Buffer(Cow<'i, [u8]>),

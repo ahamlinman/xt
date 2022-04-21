@@ -2,9 +2,12 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::io::Write;
 
-use crate::{transcode, InputHandle};
+use crate::{input2, transcode, InputHandle};
 
-pub(crate) fn transcode<O>(mut input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(
+  mut input: input2::InputHandle,
+  mut output: O,
+) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
@@ -23,7 +26,8 @@ where
   // &[u8], this actually converts the slice to a &str internally. YAML has very
   // clear rules for encoding detection, so we re-encode the input ourselves if
   // necessary.
-  let input = ensure_utf8(input.try_as_buffer()?)?;
+  let input: Cow<'_, [u8]> = input.try_into()?;
+  let input = ensure_utf8(&input)?;
 
   // YAML 1.2 allows for a BOM at the start of the stream, as well as at the
   // beginning of every subsequent document in a stream (though all documents

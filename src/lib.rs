@@ -27,7 +27,7 @@ pub use input::InputHandle;
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
 pub fn translate<W>(
-  mut input: InputHandle<'_>,
+  mut input: input2::InputHandle<'_>,
   from: Option<Format>,
   to: Format,
   output: W,
@@ -37,10 +37,7 @@ where
 {
   let from = match from {
     Some(format) => format,
-    None => match detect::detect_format(input.try_clone()?)? {
-      Some(format) => format,
-      None => return Err("cannot parse input as any known format".into()),
-    },
+    None => todo!(),
   };
 
   match to {
@@ -51,7 +48,11 @@ where
   }
 }
 
-fn transcode_input<O>(input: InputHandle, from: Format, output: O) -> Result<(), Box<dyn Error>>
+fn transcode_input<O>(
+  input: input2::InputHandle,
+  from: Format,
+  output: O,
+) -> Result<(), Box<dyn Error>>
 where
   O: Output,
 {

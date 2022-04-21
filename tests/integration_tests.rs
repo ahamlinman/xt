@@ -19,7 +19,7 @@
 
 use paste::paste;
 
-use xt::{Format, InputHandle};
+use xt::{input2::InputHandle, Format};
 
 /// Tests a single call to xt::translate against expected output.
 macro_rules! xt_single_test {
@@ -38,9 +38,9 @@ macro_rules! xt_single_test {
 macro_rules! xt_test_all_invocations {
   ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
     paste! {
-      xt_single_test!([<$name _buffer_detected>], InputHandle::from_buffer($input), None, $to, $expected);
+      xt_single_test!([<$name _buffer_detected>], InputHandle::from_slice($input), None, $to, $expected);
       xt_single_test!([<$name _reader_detected>], InputHandle::from_reader($input), None, $to, $expected);
-      xt_single_test!([<$name _buffer_explicit>], InputHandle::from_buffer($input), Some($from), $to, $expected);
+      xt_single_test!([<$name _buffer_explicit>], InputHandle::from_slice($input), Some($from), $to, $expected);
       xt_single_test!([<$name _reader_explicit>], InputHandle::from_reader($input), Some($from), $to, $expected);
     }
   }
@@ -134,7 +134,7 @@ macro_rules! xt_test_yaml_encodings {
           static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
           let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
           xt::translate(
-            InputHandle::from_buffer(INPUT),
+            InputHandle::from_slice(INPUT),
             Some(Format::Yaml),
             Format::Json,
             &mut output,
@@ -158,7 +158,7 @@ fn toml_reordering() {
   const EXPECTED: &str = include_str!("single.toml");
   let mut output = Vec::with_capacity(EXPECTED.len());
   xt::translate(
-    InputHandle::from_buffer(INPUT),
+    InputHandle::from_slice(INPUT),
     Some(Format::Json),
     Format::Toml,
     &mut output,
@@ -177,7 +177,7 @@ fn toml_reordering() {
 fn yaml_halting_without_panic() {
   const INPUT: &[u8] = include_bytes!("nullkey.yaml");
   let _ = xt::translate(
-    InputHandle::from_buffer(INPUT),
+    InputHandle::from_slice(INPUT),
     Some(Format::Yaml),
     Format::Json,
     std::io::sink(),
@@ -217,7 +217,7 @@ fn msgpack_depth_limit() {
 
   stacker::grow(STACK_SIZE, || {
     xt::translate(
-      InputHandle::from_buffer(&input[..]),
+      InputHandle::from_slice(&input[..]),
       Some(Format::Msgpack),
       Format::Msgpack,
       std::io::sink(),

@@ -4,55 +4,56 @@ use std::io;
 
 use serde::{de, ser, Deserialize, Serialize, Serializer};
 
-use crate::{transcode_input, Format, InputHandle, Output};
+use crate::{input2, transcode_input, Format, InputHandle, Output};
 
-pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>> {
-  // JSON comes first as it is relatively restrictive compared to the other
-  // formats. For example, a "#" comment at the start of a doc could be TOML or
-  // YAML, but definitely not JSON, so we can abort parsing fairly early.
-  //
-  // TOML comes next as it is less restrictive than JSON, but still more
-  // restrictive than YAML. In fact, TOML documents that don't start with a
-  // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
-  // string. Cargo.lock is a great example of this, if you're curious.
-  for from in [Format::Json, Format::Toml] {
-    if transcode_input(input.try_clone()?, from, Discard).is_ok() {
-      return Ok(Some(from));
-    }
-  }
+pub(crate) fn detect_format(mut input: input2::InputHandle) -> io::Result<Option<Format>> {
+  todo!();
+  // // JSON comes first as it is relatively restrictive compared to the other
+  // // formats. For example, a "#" comment at the start of a doc could be TOML or
+  // // YAML, but definitely not JSON, so we can abort parsing fairly early.
+  // //
+  // // TOML comes next as it is less restrictive than JSON, but still more
+  // // restrictive than YAML. In fact, TOML documents that don't start with a
+  // // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
+  // // string. Cargo.lock is a great example of this, if you're curious.
+  // for from in [Format::Json, Format::Toml] {
+  //   if transcode_input(input.try_clone()?, from, Discard).is_ok() {
+  //     return Ok(Some(from));
+  //   }
+  // }
 
-  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
-  // That means any ASCII text input is effectively a valid multi-document
-  // MessagePack stream, where every "document" is practically meaningless. To
-  // prevent these kinds of weird matches, we only attempt to auto-detect
-  // MessagePack when the first byte of input indicates that the next value will
-  // be a map or array. Arbitrary non-ASCII input that happens to match one of
-  // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
-  // unlikely to be a valid sequence of MessagePack values.
-  use rmp::Marker::{self, *};
-  if matches!(
-    input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
-    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
-  ) && transcode_input(input.try_clone()?, Format::Msgpack, Discard).is_ok()
-  {
-    return Ok(Some(Format::Msgpack));
-  }
+  // // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
+  // // That means any ASCII text input is effectively a valid multi-document
+  // // MessagePack stream, where every "document" is practically meaningless. To
+  // // prevent these kinds of weird matches, we only attempt to auto-detect
+  // // MessagePack when the first byte of input indicates that the next value will
+  // // be a map or array. Arbitrary non-ASCII input that happens to match one of
+  // // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
+  // // unlikely to be a valid sequence of MessagePack values.
+  // use rmp::Marker::{self, *};
+  // if matches!(
+  //   input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
+  //   Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
+  // ) && transcode_input(input.try_clone()?, Format::Msgpack, Discard).is_ok()
+  // {
+  //   return Ok(Some(Format::Msgpack));
+  // }
 
-  // Finally, YAML is our traditional fallback format. Yes, we still get the
-  // giant string behavior described above for arbitrary text documents, but it
-  // is how xt has worked for a long time and it's not like the behavior is
-  // actively harmful. We do try to defer the YAML check for as long as we can,
-  // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
-  // might be expensive. In particular, we do it after the MessagePack check
-  // since some valid MessagePack values would be false matches under the YAML
-  // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
-  // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
-  // the byte patterns for UTF-16-LE YAML input.
-  if transcode_input(input, Format::Yaml, Discard).is_ok() {
-    return Ok(Some(Format::Yaml));
-  }
+  // // Finally, YAML is our traditional fallback format. Yes, we still get the
+  // // giant string behavior described above for arbitrary text documents, but it
+  // // is how xt has worked for a long time and it's not like the behavior is
+  // // actively harmful. We do try to defer the YAML check for as long as we can,
+  // // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
+  // // might be expensive. In particular, we do it after the MessagePack check
+  // // since some valid MessagePack values would be false matches under the YAML
+  // // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
+  // // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
+  // // the byte patterns for UTF-16-LE YAML input.
+  // if transcode_input(input, Format::Yaml, Discard).is_ok() {
+  //   return Ok(Some(Format::Yaml));
+  // }
 
-  Ok(None)
+  // Ok(None)
 }
 
 /// Throws stuff away in a wide variety of fun and exciting ways. Truly the

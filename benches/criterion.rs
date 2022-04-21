@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use xt::{Format, InputHandle};
+use xt::{input2::InputHandle, Format};
 
 criterion_main!(small, large);
 
@@ -54,7 +54,7 @@ macro_rules! xt_benchmark {
       group.finish();
     }
   };
-  (@input_handle buffer $input:expr) => { InputHandle::from_buffer($input) };
+  (@input_handle buffer $input:expr) => { InputHandle::from_slice($input) };
   (@input_handle reader $input:expr) => { InputHandle::from_reader($input) };
 }
 

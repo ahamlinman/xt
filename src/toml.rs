@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::io::Write;
@@ -5,9 +6,12 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::InputHandle;
+use crate::{input2, InputHandle};
 
-pub(crate) fn transcode<O>(mut input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(
+  mut input: input2::InputHandle,
+  mut output: O,
+) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
@@ -15,7 +19,8 @@ where
   // multiple documents in a single stream, the toml crate only takes input as a
   // &str. This is the only format where we have no choice but to slurp all
   // input into memory, but honestly that's fine.
-  let input_str = str::from_utf8(input.try_as_buffer()?)?;
+  let input: Cow<'_, [u8]> = input.try_into()?;
+  let input_str = str::from_utf8(&input)?;
   let mut de = ::toml::Deserializer::new(input_str);
   output.transcode_from(&mut de)
 }
