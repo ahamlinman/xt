@@ -43,8 +43,8 @@ fn main() {
     xt_fail!("refusing to output {} to a terminal", args.to);
   }
 
-  let mut input2 = args.input2().unwrap_or_else(|err| xt_fail!(err));
-  let input_handle = match &mut input2 {
+  let mut input = args.input().unwrap_or_else(|err| xt_fail!(err));
+  let input_handle = match &mut input {
     Input2::Stdin => InputHandle::from_reader(io::stdin()),
     Input2::File(file) => InputHandle::from_reader(file),
     Input2::Mmap(map) => InputHandle::from_slice(map),
@@ -200,7 +200,7 @@ enum Input2 {
 }
 
 impl Cli {
-  fn input2(&self) -> io::Result<Input2> {
+  fn input(&self) -> io::Result<Input2> {
     match &self.input_filename {
       None => Ok(Input2::Stdin),
       Some(path) if path.to_str() == Some("-") => Ok(Input2::Stdin),

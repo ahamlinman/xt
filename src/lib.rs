@@ -11,16 +11,16 @@ use std::io::Write;
 #[allow(dead_code)]
 mod detect;
 #[allow(dead_code)]
-mod input2;
+mod input;
 mod json;
 mod msgpack;
 mod toml;
 mod transcode;
 mod yaml;
 
-use input2::Input;
+use input::Input;
 
-pub use input2::InputHandle;
+pub use input::InputHandle;
 
 /// Translates serialized input to serialized output in a different format.
 ///
