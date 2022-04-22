@@ -83,16 +83,15 @@ where
   ///
   /// For buffer input, the prefix will simply be the full input.
   ///
-  /// For reader input, `capture_allowed` represents the maximum size of the
-  /// prefix that this call can generate by consuming the source reader. The
-  /// returned prefix may be longer than `capture_allowed` if more of the source
-  /// is already captured, or smaller if the source reaches EOF before producing
-  /// `capture_allowed` bytes.
-  pub(crate) fn prefix(&mut self, capture_allowed: usize) -> io::Result<&[u8]> {
+  /// For reader input, `want_size` represents the minimum size of the prefix
+  /// that the call should attempt to produce by capturing from the source. The
+  /// returned prefix may be smaller if the source reaches EOF before producing
+  /// `want_size` bytes.
+  pub(crate) fn prefix(&mut self, want_size: usize) -> io::Result<&[u8]> {
     match self {
       BorrowedInput::Buffer(b) => Ok(b),
       BorrowedInput::Reader(r) => {
-        r.0.capture_up_to(capture_allowed)?;
+        r.0.capture_at_least(want_size)?;
         Ok(r.0.captured())
       }
     }
@@ -207,17 +206,23 @@ where
     self.cursor.set_position(0);
   }
 
-  /// Ensures that the reader has captured all of the source's available input.
+  /// Ensures that the reader has captured all of the source's available input
+  /// without modifying the reader's position.
   fn capture_to_end(&mut self) -> io::Result<()> {
     self.source.read_to_end(self.cursor.get_mut())?;
     self.source_eof = true;
     Ok(())
   }
 
-  /// Ensures that the reader has captured all of the source's input up to the
-  /// first `size` bytes without modifying the reader's position.
-  fn capture_up_to(&mut self, size: usize) -> io::Result<()> {
-    let needed = size.saturating_sub(self.cursor.get_ref().len());
+  /// Ensures that the reader has captured at least the first `size` bytes of
+  /// the source without modifying the reader's position.
+  fn capture_at_least(&mut self, size: usize) -> io::Result<()> {
+    // This matches the privately defined default size of a BufReader for most
+    // platforms as of this writing. It seems like a reasonable enough lower
+    // bound to prevent us from spending a system call on, say, one byte.
+    const MIN_SIZE: usize = 8 * 1024;
+
+    let needed = std::cmp::max(size, MIN_SIZE).saturating_sub(self.cursor.get_ref().len());
     if needed == 0 {
       return Ok(());
     }
@@ -336,15 +341,22 @@ mod tests {
   }
 
   #[test]
+  fn rewindable_reader_capture_to_end() {
+    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+    assert!(matches!(r.capture_to_end(), Ok(_)));
+    assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
+    assert!(r.is_source_eof());
+  }
+
+  #[test]
   fn rewindable_reader_capture_up_to() {
     let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
 
     const HALF: usize = DATA.len() / 2;
-    assert!(matches!(r.capture_up_to(HALF), Ok(_)));
-    assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
-    assert!(!r.is_source_eof());
+    assert!(matches!(r.capture_at_least(HALF), Ok(_)));
 
-    assert!(matches!(r.capture_up_to(DATA.len() * 2), Ok(_)));
+    // We expect the reader to go all the way to its MIN_SIZE for such a small
+    // request.
     assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
     assert!(r.is_source_eof());
   }
