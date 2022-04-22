@@ -57,6 +57,30 @@ where
   }
 }
 
+impl<'i, 'h> BorrowedInput<'i, 'h>
+where
+  'i: 'h,
+{
+  /// Returns a prefix of the input.
+  ///
+  /// For buffer input, the prefix will simply be the full input.
+  ///
+  /// For reader input, `capture_allowed` represents the maximum size of the
+  /// prefix that this call can generate by consuming the source reader. The
+  /// returned prefix may be longer than `capture_allowed` if more of the source
+  /// is already captured, or smaller if the source reaches EOF before producing
+  /// `capture_allowed` bytes.
+  pub(crate) fn prefix(&mut self, capture_allowed: usize) -> io::Result<&[u8]> {
+    match self {
+      BorrowedInput::Buffer(b) => Ok(b),
+      BorrowedInput::Reader(r) => {
+        r.0.capture_up_to(capture_allowed)?;
+        Ok(r.0.captured())
+      }
+    }
+  }
+}
+
 /// A temporary reference to input from a reader.
 ///
 /// A [`ReaderGuard`] automatically captures all bytes read from the original
@@ -135,8 +159,8 @@ impl<'i> From<InputHandle<'i>> for Input<'i> {
 /// As a rewindable reader pulls bytes from its source, it captures them in an
 /// in-memory buffer. A call to [`rewind()`][RewindableReader::rewind] will
 /// cause the reader to produce the source's data from the beginning. After
-/// producing the captured data from previous reads, future reads will continue
-/// to extend the capture buffer from the original source.
+/// producing data captured from previous reads, future reads will continue to
+/// extend the capture buffer from the original source.
 pub(crate) struct RewindableReader<R>
 where
   R: Read,
@@ -165,6 +189,34 @@ where
     self.cursor.set_position(0);
   }
 
+  /// Ensures that the reader has captured all of the source's input up to the
+  /// first `size` bytes without modifying the reader's position.
+  fn capture_up_to(&mut self, size: usize) -> io::Result<()> {
+    let needed = size.saturating_sub(self.cursor.get_ref().len());
+    if needed == 0 {
+      return Ok(());
+    }
+
+    let mut take = (&mut self.source).take(needed as u64);
+    take.read_to_end(self.cursor.get_mut())?;
+    if take.limit() > 0 {
+      self.source_eof = true;
+    }
+    Ok(())
+  }
+
+  /// Returns a slice of all input captured by the reader so far.
+  fn captured(&self) -> &[u8] {
+    self.cursor.get_ref()
+  }
+
+  /// Returns the number of bytes remaining to be read from the captured prefix
+  /// before consuming more from the source.
+  fn captured_unread(&self) -> usize {
+    let offset = self.cursor.position() as usize;
+    self.cursor.get_ref().len() - offset
+  }
+
   /// Returns true if the latest read from the source indicated an "end of file"
   /// condition.
   fn is_source_eof(&self) -> bool {
@@ -183,11 +235,11 @@ where
   R: Read,
 {
   fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-    // First, copy as much data as we can from the unread portion of the Cursor
+    // First, copy as much data as we can from the unread portion of the cursor
     // into the buffer.
-    let prefix_size = std::cmp::min(buf.len(), self.cursor_unread());
+    let prefix_size = std::cmp::min(buf.len(), self.captured_unread());
     self.cursor.read_exact(&mut buf[..prefix_size])?;
-    if self.cursor_unread() > 0 || prefix_size == buf.len() {
+    if self.captured_unread() > 0 || prefix_size == buf.len() {
       return Ok(prefix_size);
     }
 
@@ -196,8 +248,8 @@ where
     //
     // The `read` documentation recommends against reading the contents of buf.
     // Reading between the lines, though, it seems the main goal is to prevent
-    // the accidental use of uninitialized memory, and not to handle exotic
-    // situations like "buf might point to memory mapped hardware that doesn't
+    // the accidental use of uninitialized memory, and not to handle ridiculous
+    // scenarios like "buf might point to memory mapped hardware that doesn't
     // act like RAM." As buf is &mut we can assume nobody else aliases it, and
     // we are only reading a slice of data we know we've written ourselves, so
     // uninitialized memory should not be a problem for our particular usage.
@@ -207,23 +259,13 @@ where
 
     // Finally, mark whether the source has reached EOF. Since we return early
     // when prefix_size == buf.len(), and prefix_size == 0 for buf.len() == 0
-    // (as prefix_size is a min of unsized values), we know that a source read
+    // (as prefix_size is a min of unsigned values), we know that a source read
     // of 0 bytes must indicate EOF rather than an empty buffer.
     if source_size == 0 {
       self.source_eof = true;
     }
 
     Ok(prefix_size + source_size)
-  }
-}
-
-impl<R> RewindableReader<R>
-where
-  R: Read,
-{
-  fn cursor_unread(&self) -> usize {
-    let offset = self.cursor.position() as usize;
-    self.cursor.get_ref().len() - offset
   }
 }
 
@@ -265,6 +307,20 @@ mod tests {
     let mut result = String::new();
     assert!(matches!(r.read_to_string(&mut result), Ok(len) if len == DATA.len()));
     assert_eq!(result, DATA);
+    assert!(r.is_source_eof());
+  }
+
+  #[test]
+  fn rewindable_reader_capture_up_to() {
+    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+
+    const HALF: usize = DATA.len() / 2;
+    assert!(matches!(r.capture_up_to(HALF), Ok(_)));
+    assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
+    assert!(!r.is_source_eof());
+
+    assert!(matches!(r.capture_up_to(DATA.len() * 2), Ok(_)));
+    assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
     assert!(r.is_source_eof());
   }
 }

@@ -1,29 +1,18 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, Write};
 use std::str;
 
 use serde::Deserialize;
 
+use crate::detect::MAX_CAPTURE_SIZE;
 use crate::{BorrowedInput, InputHandle};
 
 #[allow(dead_code)]
-pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
-  const MAX_DETECT_SIZE: u64 = 4 * 1024 * 1024;
-
-  // TODO: Optimize for buffered inputs.
-
-  let mut r = BufReader::new(input).take(MAX_DETECT_SIZE);
-  let mut buf = vec![];
-  r.read_to_end(&mut buf)?;
-  let mut r = r.into_inner();
-  if !r.fill_buf()?.is_empty() {
-    return Ok(false);
-  }
-
-  let input_str = match str::from_utf8(&buf) {
-    Ok(s) => s,
+pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+  let input_str = match str::from_utf8(input.prefix(MAX_CAPTURE_SIZE)?) {
+    Ok(input_str) => input_str,
     Err(_) => return Ok(false),
   };
   let mut de = ::toml::Deserializer::new(input_str);
