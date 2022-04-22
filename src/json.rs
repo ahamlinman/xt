@@ -1,20 +1,30 @@
 use std::error::Error;
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufReader, Read, Write};
 
 use serde::Deserialize;
 
 use crate::{transcode, BorrowedInput, Input, InputHandle};
 
-pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
-  let mut de = serde_json::Deserializer::from_reader(BufReader::new(input));
-  if let Err(err) = serde::de::IgnoredAny::deserialize(&mut de) {
-    return if err.is_io() {
-      Err(err.into())
-    } else {
-      Ok(false)
-    };
+pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+  let result = match &mut input {
+    BorrowedInput::Buffer(buf) => match_input_buffer(buf),
+    BorrowedInput::Reader(r) => match_input_reader(r),
+  };
+  match result {
+    Err(err) if err.is_io() => Err(err.into()),
+    Err(_) => Ok(false),
+    Ok(()) => Ok(true),
   }
-  Ok(true)
+}
+
+fn match_input_buffer(input: &[u8]) -> Result<(), serde_json::Error> {
+  let mut de = serde_json::Deserializer::from_slice(input);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+}
+
+fn match_input_reader<R: Read>(input: R) -> Result<(), serde_json::Error> {
+  let mut de = serde_json::Deserializer::from_reader(input);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>

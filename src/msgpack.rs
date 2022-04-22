@@ -13,11 +13,9 @@ use crate::{transcode, BorrowedInput, Input, InputHandle};
 /// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
 
-pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
   use rmp::Marker::{self, *};
   use rmp_serde::decode::Error::*;
-
-  let mut r = BufReader::new(input);
 
   // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
   // That means any ASCII text input is effectively a valid multi-document
@@ -27,7 +25,7 @@ pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
   // Arbitrary non-ASCII input that happens to match one of these markers (e.g.
   // certain UTF-8 multibyte sequences) is extremely unlikely to be a valid
   // sequence of MessagePack values.
-  let first_marker = r.fill_buf()?.get(0).map(|b| Marker::from_u8(*b));
+  let first_marker = input.prefix(1)?.get(0).map(|b| Marker::from_u8(*b));
   if !matches!(
     first_marker,
     Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
@@ -35,16 +33,27 @@ pub(crate) fn input_matches(input: BorrowedInput) -> io::Result<bool> {
     return Ok(false);
   }
 
-  let mut de = rmp_serde::Deserializer::new(&mut r);
-  de.set_max_depth(DEPTH_LIMIT);
-  if let Err(err) = serde::de::IgnoredAny::deserialize(&mut de) {
-    return if let InvalidMarkerRead(ioerr) | InvalidDataRead(ioerr) = err {
-      Err(ioerr)
-    } else {
-      Ok(false)
-    };
+  let result = match &mut input {
+    BorrowedInput::Buffer(buf) => match_input_buffer(buf),
+    BorrowedInput::Reader(r) => match_input_reader(r),
+  };
+  match result {
+    Err(InvalidMarkerRead(err) | InvalidDataRead(err)) => Err(err),
+    Err(_) => Ok(false),
+    Ok(()) => Ok(true),
   }
-  Ok(true)
+}
+
+fn match_input_buffer(input: &[u8]) -> Result<(), rmp_serde::decode::Error> {
+  let mut de = rmp_serde::Deserializer::from_read_ref(input);
+  de.set_max_depth(DEPTH_LIMIT);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+}
+
+fn match_input_reader<R: Read>(input: R) -> Result<(), rmp_serde::decode::Error> {
+  let mut de = rmp_serde::Deserializer::new(input);
+  de.set_max_depth(DEPTH_LIMIT);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
