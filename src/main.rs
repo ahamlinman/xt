@@ -45,9 +45,9 @@ fn main() {
 
   let mut input = args.input().unwrap_or_else(|err| xt_fail!(err));
   let input_handle = match &mut input {
-    Input2::Stdin => InputHandle::from_reader(io::stdin()),
-    Input2::File(file) => InputHandle::from_reader(file),
-    Input2::Mmap(map) => InputHandle::from_slice(map),
+    Input::Stdin => InputHandle::from_reader(io::stdin()),
+    Input::File(file) => InputHandle::from_reader(file),
+    Input::Mmap(map) => InputHandle::from_slice(map),
   };
 
   let result = xt::translate(input_handle, args.detect_from(), args.to, &mut output);
@@ -193,17 +193,17 @@ impl Cli {
   }
 }
 
-enum Input2 {
+enum Input {
   Stdin,
   File(std::fs::File),
   Mmap(memmap2::Mmap),
 }
 
 impl Cli {
-  fn input(&self) -> io::Result<Input2> {
+  fn input(&self) -> io::Result<Input> {
     match &self.input_filename {
-      None => Ok(Input2::Stdin),
-      Some(path) if path.to_str() == Some("-") => Ok(Input2::Stdin),
+      None => Ok(Input::Stdin),
+      Some(path) if path.to_str() == Some("-") => Ok(Input::Stdin),
       Some(path) => {
         let file = File::open(path)?;
         // "SAFETY": It is undefined behavior to modify a mapped file outside of
@@ -214,11 +214,11 @@ impl Cli {
         // most likely to appear when the requirement is violated.
         match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
           // Per memmap2 docs, it's safe to drop file once mmap succeeds.
-          Ok(map) => Ok(Input2::Mmap(map)),
+          Ok(map) => Ok(Input::Mmap(map)),
           // If mmap fails, we can always fall back to reading the file
           // normally. Examples of where this can matter include (but are not
           // limited to) process substitution and named pipes.
-          Err(_) => Ok(Input2::File(file)),
+          Err(_) => Ok(Input::File(file)),
         }
       }
     }
