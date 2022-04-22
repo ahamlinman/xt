@@ -16,7 +16,19 @@ pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
     Err(_) => return Ok(false),
   };
   let mut de = ::toml::Deserializer::new(input_str);
-  Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
+  match serde::de::IgnoredAny::deserialize(&mut de) {
+    Ok(_) => Ok(true),
+    Err(err) => {
+      // TODO: String-based error inspection is not reliable, but I'm not sure
+      // what other options I have at the moment.
+      let err = err.to_string();
+      Ok(
+        err.contains("found eof")
+          || err.contains("unexpected eof")
+          || err.contains("unterminated string"),
+      )
+    }
+  }
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>

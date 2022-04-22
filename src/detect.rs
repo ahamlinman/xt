@@ -8,7 +8,7 @@ use crate::{Format, InputHandle, Output};
 
 /// The maximum size of input to test from reader sources for formats that
 /// require buffered input.
-pub(crate) const MAX_CAPTURE_SIZE: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_CAPTURE_SIZE: usize = 8 * 1024;
 
 pub(crate) fn detect_format(input: &mut InputHandle) -> io::Result<Option<Format>> {
   // As a binary format, we generally expect MessagePack to be the most
