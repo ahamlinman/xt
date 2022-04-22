@@ -8,9 +8,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Write;
 
-#[allow(dead_code)]
 mod detect;
-#[allow(dead_code)]
 mod input;
 mod json;
 mod msgpack;

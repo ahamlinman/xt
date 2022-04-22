@@ -4,29 +4,17 @@ use std::io::{self, Write};
 
 use serde::Deserialize;
 
-use crate::detect::MAX_CAPTURE_SIZE;
 use crate::{transcode, BorrowedInput, InputHandle};
 
-#[allow(dead_code)]
 pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
-  let input_str = match ensure_utf8(input.prefix(MAX_CAPTURE_SIZE)?) {
+  let input_str = match ensure_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),
   };
   let input_str = input_str.strip_prefix('\u{FEFF}').unwrap_or(&input_str);
 
   if let Some(de) = serde_yaml::Deserializer::from_str(input_str).next() {
-    return match serde::de::IgnoredAny::deserialize(de) {
-      Ok(_) => Ok(true),
-      Err(err) => {
-        // TODO: This is arguably better than failing on every single error, but
-        // is still unreliable. It's not just the string-based error inspection,
-        // it's also that the end of the slice could happen to hit on something
-        // that makes it look more like a "normal" syntax error.
-        let err = err.to_string();
-        Ok(err.contains("unexpected end of stream"))
-      }
-    };
+    return Ok(serde::de::IgnoredAny::deserialize(de).is_ok());
   }
   Ok(false)
 }

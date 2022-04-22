@@ -67,6 +67,18 @@ impl<'i, 'h> BorrowedInput<'i, 'h>
 where
   'i: 'h,
 {
+  /// Returns the full input as a slice, buffering an entire reader input in
+  /// memory if necessary.
+  pub(crate) fn slice(&mut self) -> io::Result<&[u8]> {
+    match self {
+      BorrowedInput::Buffer(b) => Ok(b),
+      BorrowedInput::Reader(r) => {
+        r.0.capture_to_end()?;
+        Ok(r.0.captured())
+      }
+    }
+  }
+
   /// Returns a prefix of the input.
   ///
   /// For buffer input, the prefix will simply be the full input.
@@ -193,6 +205,13 @@ where
   /// from the beginning.
   fn rewind(&mut self) {
     self.cursor.set_position(0);
+  }
+
+  /// Ensures that the reader has captured all of the source's available input.
+  fn capture_to_end(&mut self) -> io::Result<()> {
+    self.source.read_to_end(self.cursor.get_mut())?;
+    self.source_eof = true;
+    Ok(())
   }
 
   /// Ensures that the reader has captured all of the source's input up to the

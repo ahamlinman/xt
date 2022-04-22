@@ -6,29 +6,15 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::detect::MAX_CAPTURE_SIZE;
 use crate::{BorrowedInput, InputHandle};
 
-#[allow(dead_code)]
 pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
-  let input_str = match str::from_utf8(input.prefix(MAX_CAPTURE_SIZE)?) {
+  let input_str = match str::from_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),
   };
   let mut de = ::toml::Deserializer::new(input_str);
-  match serde::de::IgnoredAny::deserialize(&mut de) {
-    Ok(_) => Ok(true),
-    Err(err) => {
-      // TODO: String-based error inspection is not reliable, but I'm not sure
-      // what other options I have at the moment.
-      let err = err.to_string();
-      Ok(
-        err.contains("found eof")
-          || err.contains("unexpected eof")
-          || err.contains("unterminated string"),
-      )
-    }
-  }
+  Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
 pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
