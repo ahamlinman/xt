@@ -6,14 +6,14 @@ pub struct InputHandle<'i>(Source<'i>);
 
 /// A private container representing a buffer or reader input source.
 enum Source<'i> {
-  Buffer(Cow<'i, [u8]>),
+  Buffer(&'i [u8]),
   Reader(RewindableReader<Box<dyn Read + 'i>>),
 }
 
 impl<'i> InputHandle<'i> {
   /// Creates a handle for an input slice.
   pub fn from_slice(source: &'i [u8]) -> InputHandle<'i> {
-    InputHandle(Source::Buffer(Cow::Borrowed(source)))
+    InputHandle(Source::Buffer(source))
   }
 
   /// Creates a handle for an input reader.
@@ -41,7 +41,7 @@ pub(crate) enum BorrowedInput<'i, 'h>
 where
   'i: 'h,
 {
-  Buffer(&'h [u8]),
+  Buffer(&'i [u8]),
   Reader(ReaderGuard<'i, 'h>),
 }
 
@@ -113,7 +113,7 @@ impl<'i> TryInto<Cow<'i, [u8]>> for InputHandle<'i> {
 
   fn try_into(self) -> io::Result<Cow<'i, [u8]>> {
     match self.0 {
-      Source::Buffer(buf) => Ok(buf),
+      Source::Buffer(buf) => Ok(Cow::Borrowed(buf)),
       Source::Reader(r) => {
         if r.is_source_eof() {
           let (cursor, _) = r.into_inner();
@@ -138,7 +138,7 @@ pub(crate) enum Input<'i> {
 impl<'i> From<InputHandle<'i>> for Input<'i> {
   fn from(handle: InputHandle<'i>) -> Self {
     match handle.0 {
-      Source::Buffer(buf) => Input::Buffer(buf),
+      Source::Buffer(buf) => Input::Buffer(Cow::Borrowed(buf)),
       Source::Reader(r) => {
         let source_eof = r.is_source_eof();
         let (cursor, source) = r.into_inner();
