@@ -31,7 +31,13 @@ impl<'i> InputHandle<'i> {
   pub(crate) fn borrow_mut(&mut self) -> BorrowedInput<'i, '_> {
     match &mut self.0 {
       Source::Buffer(buf) => BorrowedInput::Buffer(buf),
-      Source::Reader(r) => BorrowedInput::Reader(ReaderGuard(r)),
+      Source::Reader(r) => {
+        if r.is_source_eof() {
+          BorrowedInput::Buffer(r.captured())
+        } else {
+          BorrowedInput::Reader(ReaderGuard(r))
+        }
+      }
     }
   }
 }
@@ -41,7 +47,7 @@ pub(crate) enum BorrowedInput<'i, 'h>
 where
   'i: 'h,
 {
-  Buffer(&'i [u8]),
+  Buffer(&'h [u8]),
   Reader(ReaderGuard<'i, 'h>),
 }
 
@@ -129,7 +135,7 @@ impl<'i> TryInto<Cow<'i, [u8]>> for InputHandle<'i> {
   }
 }
 
-/// A direct reference to the original input held by an [`InputHandle`].
+/// An owned container for the original input held by an [`InputHandle`].
 pub(crate) enum Input<'i> {
   Buffer(Cow<'i, [u8]>),
   Reader(Box<dyn Read + 'i>),
