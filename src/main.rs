@@ -175,6 +175,12 @@ fn try_parse_format(s: &str) -> Result<Format, String> {
   }
 }
 
+enum Input {
+  Stdin,
+  File(std::fs::File),
+  Mmap(memmap2::Mmap),
+}
+
 impl Cli {
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
@@ -191,15 +197,7 @@ impl Cli {
       },
     }
   }
-}
 
-enum Input {
-  Stdin,
-  File(std::fs::File),
-  Mmap(memmap2::Mmap),
-}
-
-impl Cli {
   fn input(&self) -> io::Result<Input> {
     match &self.input_filename {
       None => Ok(Input::Stdin),
