@@ -112,13 +112,14 @@ Use --help for full usage information and available formats.";
 ///   msgpack  Multi-document as values are naturally self-delineating. Default
 ///            format for .msgpack files. Supports streaming input.
 ///
-/// Some multi-document input formats can translate a stream of documents
-/// without buffering all input into memory first. The input format must be
-/// known in advance to enable streaming, usually with an explicit -f.
+/// Input formats that support streaming can translate individual documents in
+/// an unbounded stream as they appear. Formats that do not support streaming
+/// must load all input into memory before translating any of it.
 ///
-/// When the input format is not known in advance with an explicit -f or file
-/// extension, xt will attempt to auto-detect it by buffering all input into
-/// memory and running an unspecified algorithm that is subject to change.
+/// When xt does not know the input format from a file extension or explicit -f,
+/// it will attempt to detect the format using an unspecified algorithm that is
+/// subject to change. If an unbounded stream does not match a format that
+/// supports streaming, the detector will load the entire stream into memory.
 ///
 /// xt does not guarantee that every translation is possible, or lossless, or
 /// reversible. xt's behavior is undefined if an input file is modified while

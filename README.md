@@ -21,7 +21,7 @@ $ xt -t yaml config.json > config.yaml
 Or store a stream of JSON events as MessagePack to save space:
 
 ```sh
-$ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -fj -tm > events.msgpack
+$ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpack
 ```
 
 ## Installation
@@ -54,8 +54,7 @@ input format's parser directly to an output format's writer.
 ### Automatic Format Detection
 
 When the input format is not specified with the `-f` flag, xt will detect it
-automatically via file extension, or in the worst case by slurping all input
-into memory and trying different parsers until one works.
+automatically via file extension, or by trying different parsers on the input.
 
 ### Multi-Document Support and Streaming
 
@@ -65,8 +64,7 @@ a set of YAML documents separated by `---` markers translates to a stream of
 newline-delimited JSON documents.
 
 xt can translate unbounded JSON and MessagePack inputs without slurping all
-input into memory as long as auto-detection is disabled with an explicit `-f`
-flag.
+input into memory, even when automatic format detection is enabled.
 
 [jq]: https://stedolan.github.io/jq/
 [serde]: https://serde.rs/
