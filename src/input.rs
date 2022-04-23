@@ -305,6 +305,7 @@ mod tests {
   use std::io::{Cursor, Read};
 
   const DATA: &str = "abcdefghij";
+  const HALF: usize = DATA.len() / 2;
 
   #[test]
   fn rewindable_reader_straight_read() {
@@ -326,7 +327,6 @@ mod tests {
   fn rewinding_rewindable_reader() {
     let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
 
-    const HALF: usize = DATA.len() / 2;
     let mut tmp = [0; HALF];
     assert!(matches!(r.read_exact(&mut tmp), Ok(())));
     assert_eq!(std::str::from_utf8(&tmp), Ok(&DATA[..HALF]));
@@ -352,7 +352,6 @@ mod tests {
   fn rewindable_reader_capture_up_to() {
     let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
 
-    const HALF: usize = DATA.len() / 2;
     assert!(matches!(r.capture_at_least(HALF), Ok(_)));
 
     // We expect the reader to go all the way to its MIN_SIZE for such a small
