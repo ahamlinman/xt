@@ -11,6 +11,12 @@
   detect the stream as JSON or MessagePack, and that MessagePack detection in
   particular does not cover all possible MessagePack inputs.
 
+### Fixed
+
+- **Case sensitivity in file extension matching.** xt now correctly detects
+  file extensions containing capital ASCII characters, rather than falling back
+  to parser-based format detection.
+
 ### Changed
 
 - The parser-based format detection algorithm has changed to account for the

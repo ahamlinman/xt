@@ -189,7 +189,12 @@ impl Cli {
     }
     match &self.input_filename {
       None => None,
-      Some(path) => match path.extension().and_then(|ext| ext.to_str()) {
+      Some(path) => match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+      {
         Some("json") => Some(Format::Json),
         Some("yaml" | "yml") => Some(Format::Yaml),
         Some("toml") => Some(Format::Toml),
