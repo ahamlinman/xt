@@ -139,6 +139,10 @@ impl<W: Write> crate::Output for Output<W> {
 /// without panicking, even if the input is not well-formed. For example, a
 /// MessagePack str or bin value with a reported length larger than the
 /// remainder of the input slice will produce an error.
+///
+/// TODO: A [`ReadRefReader`][rmp_serde::decode::ReadRefReader] could directly
+/// tell us how much of its input slice is remaining if we could access it from
+/// a `Deserializer`. That would remove the need for this custom logic.
 fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeError> {
   if depth_limit == 0 {
     return Err(ReadSizeError::DepthLimitExceeded);
