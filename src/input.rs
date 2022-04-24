@@ -400,6 +400,7 @@ mod tests {
     let mut tmp = [0; HALF];
     assert!(matches!(r.read_exact(&mut tmp), Ok(())));
     assert_eq!(std::str::from_utf8(&tmp), Ok(&DATA[..HALF]));
+    assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
     assert!(!r.is_source_eof());
 
     r.rewind();
@@ -407,6 +408,7 @@ mod tests {
     let mut result = String::new();
     assert!(matches!(r.read_to_string(&mut result), Ok(len) if len == DATA.len()));
     assert_eq!(result, DATA);
+    assert_eq!(r.captured(), DATA.as_bytes());
     assert!(r.is_source_eof());
   }
 
@@ -421,7 +423,6 @@ mod tests {
   #[test]
   fn rewindable_reader_capture_up_to() {
     let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
-
     assert!(matches!(r.capture_to_size(HALF), Ok(_)));
 
     // We expect the reader to go all the way to its MIN_SIZE for such a small
