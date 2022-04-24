@@ -35,7 +35,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   }
 
   let result = match &mut input {
-    input::Ref::Slice(buf) => match_input_buffer(buf),
+    input::Ref::Slice(b) => match_input_buffer(b),
     input::Ref::Reader(r) => match_input_reader(r),
   };
   match result {
@@ -62,8 +62,8 @@ where
   O: crate::Output,
 {
   match input.into() {
-    Input::Slice(buf) => {
-      let mut buf = &*buf;
+    Input::Slice(b) => {
+      let mut buf = &*b;
       while !buf.is_empty() {
         let size = next_value_size(buf, DEPTH_LIMIT)?;
         let (next, rest) = buf.split_at(size);

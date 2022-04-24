@@ -8,7 +8,7 @@ use crate::transcode;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   let result = match &mut input {
-    input::Ref::Slice(buf) => match_input_buffer(buf),
+    input::Ref::Slice(b) => match_input_buffer(b),
     input::Ref::Reader(r) => match_input_reader(r),
   };
   match result {
@@ -33,13 +33,13 @@ where
   O: crate::Output,
 {
   match input.into() {
-    Input::Slice(buf) => {
+    Input::Slice(b) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
       // iteration if we allow it to deserialize into an actual value, so xt
       // implements a value type that can borrow strings from the input slice
       // (one of serde's major features).
-      let de = serde_json::Deserializer::from_slice(&buf);
+      let de = serde_json::Deserializer::from_slice(&b);
       for value in de.into_iter::<transcode::Value>() {
         output.transcode_value(value?)?;
       }
