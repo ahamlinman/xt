@@ -1,3 +1,10 @@
+#![deny(
+  clippy::cast_lossless,
+  clippy::cast_possible_truncation,
+  clippy::enum_glob_use,
+  clippy::semicolon_if_nothing_returned
+)]
+
 //! The main entrypoint for the xt serialized data translation tool.
 //!
 //! **This interface is not stable!** To convert between serialized data formats

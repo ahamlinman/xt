@@ -64,7 +64,7 @@ impl<W: Write> crate::Output for Output<W> {
     let value = ::toml::Value::deserialize(de)?;
 
     // There are a couple more small details, see output_value for details.
-    self.output_value(value)
+    self.output_value(&value)
   }
 
   fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
@@ -74,12 +74,12 @@ impl<W: Write> crate::Output for Output<W> {
     // Of course, all of the above comments apply here as well.
     self.ensure_one_use()?;
     let value = ::toml::Value::try_from(value)?;
-    self.output_value(value)
+    self.output_value(&value)
   }
 }
 
 impl<W: Write> Output<W> {
-  fn output_value(&mut self, value: ::toml::Value) -> Result<(), Box<dyn Error>> {
+  fn output_value(&mut self, value: &::toml::Value) -> Result<(), Box<dyn Error>> {
     // From the spec: "TOML is designed to map unambiguously to a hash table."
     // xt's other input formats can produce something like a boolean or array
     // at the top level, which we would dump into an invalid TOML document if

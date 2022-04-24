@@ -572,27 +572,26 @@ impl Serialize for Value<'_> {
   where
     S: Serializer,
   {
-    use Value::*;
     match self {
-      Unit => s.serialize_unit(),
-      Bool(b) => s.serialize_bool(*b),
-      I8(n) => s.serialize_i8(*n),
-      I16(n) => s.serialize_i16(*n),
-      I32(n) => s.serialize_i32(*n),
-      I64(n) => s.serialize_i64(*n),
-      I128(n) => s.serialize_i128(*n),
-      U8(n) => s.serialize_u8(*n),
-      U16(n) => s.serialize_u16(*n),
-      U32(n) => s.serialize_u32(*n),
-      U64(n) => s.serialize_u64(*n),
-      U128(n) => s.serialize_u128(*n),
-      F32(f) => s.serialize_f32(*f),
-      F64(f) => s.serialize_f64(*f),
-      Char(c) => s.serialize_char(*c),
-      String(v) => v.serialize(s),
-      Bytes(v) => v.serialize(s),
-      Seq(v) => v.serialize(s),
-      Map(m) => {
+      Value::Unit => s.serialize_unit(),
+      Value::Bool(b) => s.serialize_bool(*b),
+      Value::I8(n) => s.serialize_i8(*n),
+      Value::I16(n) => s.serialize_i16(*n),
+      Value::I32(n) => s.serialize_i32(*n),
+      Value::I64(n) => s.serialize_i64(*n),
+      Value::I128(n) => s.serialize_i128(*n),
+      Value::U8(n) => s.serialize_u8(*n),
+      Value::U16(n) => s.serialize_u16(*n),
+      Value::U32(n) => s.serialize_u32(*n),
+      Value::U64(n) => s.serialize_u64(*n),
+      Value::U128(n) => s.serialize_u128(*n),
+      Value::F32(f) => s.serialize_f32(*f),
+      Value::F64(f) => s.serialize_f64(*f),
+      Value::Char(c) => s.serialize_char(*c),
+      Value::String(v) => v.serialize(s),
+      Value::Bytes(v) => v.serialize(s),
+      Value::Seq(v) => v.serialize(s),
+      Value::Map(m) => {
         let mut map = s.serialize_map(Some(m.len()))?;
         for (k, v) in m {
           map.serialize_entry(k, v)?;
@@ -665,7 +664,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       fn visit_seq<A: de::SeqAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
         let mut vec = Vec::with_capacity(v.size_hint().unwrap_or(0));
         while let Some(e) = v.next_element()? {
-          vec.push(e)
+          vec.push(e);
         }
         Ok(Value::Seq(vec))
       }
@@ -673,7 +672,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
       fn visit_map<A: de::MapAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {
         let mut vec = Vec::with_capacity(v.size_hint().unwrap_or(0));
         while let Some(entry) = v.next_entry()? {
-          vec.push(entry)
+          vec.push(entry);
         }
         Ok(Value::Map(vec))
       }

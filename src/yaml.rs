@@ -96,7 +96,7 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
     // shorter to write than with Option<u8> variants.
     let mut result: [i16; 4] = Default::default();
     let mut iter = buf.iter();
-    result.fill_with(|| iter.next().map(|x| *x as i16).unwrap_or(-1));
+    result.fill_with(|| iter.next().map(|x| i16::from(*x)).unwrap_or(-1));
     result
   };
 
@@ -136,7 +136,7 @@ where
     result.push(match char::from_u32(unit) {
       Some(chr) => chr,
       None => return Err(format!("invalid utf-32: {:x}", unit)),
-    })
+    });
   }
   Ok(result)
 }
@@ -156,7 +156,7 @@ where
     result.push(match chr {
       Ok(chr) => chr,
       Err(err) => return Err(format!("invalid utf-16: {}", err)),
-    })
+    });
   }
   Ok(result)
 }

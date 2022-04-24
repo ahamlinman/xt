@@ -2,6 +2,8 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
+use rmp::Marker;
+use rmp_serde::decode::Error::{InvalidDataRead, InvalidMarkerRead};
 use serde::Deserialize;
 
 use crate::input::{self, Input};
@@ -15,9 +17,6 @@ use crate::transcode;
 const DEPTH_LIMIT: usize = 1024;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-  use rmp::Marker::{self, *};
-  use rmp_serde::decode::Error::*;
-
   // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
   // That means any ASCII text input is effectively a valid multi-document
   // MessagePack stream, where every "document" is practically meaningless. To
@@ -29,7 +28,14 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   let first_marker = input.prefix(1)?.get(0).map(|b| Marker::from_u8(*b));
   if !matches!(
     first_marker,
-    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
+    Some(
+      Marker::FixArray(_)
+        | Marker::Array16
+        | Marker::Array32
+        | Marker::FixMap(_)
+        | Marker::Map16
+        | Marker::Map32
+    )
   ) {
     return Ok(false);
   }
@@ -147,8 +153,6 @@ impl<W: Write> crate::Output for Output<W> {
 /// MessagePack str or bin value with a reported length larger than the
 /// remainder of the input slice will produce an error.
 fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeError> {
-  use rmp::Marker::*;
-
   if depth_limit == 0 {
     return Err(ReadSizeError::DepthLimitExceeded);
   }
@@ -158,44 +162,44 @@ fn next_value_size(input: &[u8], depth_limit: usize) -> Result<usize, ReadSizeEr
 
   let marker = rmp::Marker::from_u8(input[0]);
   let total_size = match marker {
-    Reserved => return Err(ReadSizeError::InvalidMarker),
+    Marker::Reserved => return Err(ReadSizeError::InvalidMarker),
 
-    Null | True | False | FixPos(_) | FixNeg(_) => 1,
+    Marker::Null | Marker::True | Marker::False | Marker::FixPos(_) | Marker::FixNeg(_) => 1,
 
-    U8 | I8 => 2,
-    U16 | I16 => 3,
-    U32 | I32 | F32 => 5,
-    U64 | I64 | F64 => 9,
+    Marker::U8 | Marker::I8 => 2,
+    Marker::U16 | Marker::I16 => 3,
+    Marker::U32 | Marker::I32 | Marker::F32 => 5,
+    Marker::U64 | Marker::I64 | Marker::F64 => 9,
 
-    FixExt1 => 3,
-    FixExt2 => 4,
-    FixExt4 => 6,
-    FixExt8 => 10,
-    FixExt16 => 18,
-    Ext8 => 3 + try_read_length_8(input)? as usize,
-    Ext16 => 4 + try_read_length_16(input)? as usize,
-    Ext32 => 6 + try_read_length_32(input)? as usize,
+    Marker::FixExt1 => 3,
+    Marker::FixExt2 => 4,
+    Marker::FixExt4 => 6,
+    Marker::FixExt8 => 10,
+    Marker::FixExt16 => 18,
+    Marker::Ext8 => 3 + try_read_length_8(input)? as usize,
+    Marker::Ext16 => 4 + try_read_length_16(input)? as usize,
+    Marker::Ext32 => 6 + try_read_length_32(input)? as usize,
 
-    FixStr(n) => 1 + n as usize,
-    Str8 | Bin8 => 2 + try_read_length_8(input)? as usize,
-    Str16 | Bin16 => 3 + try_read_length_16(input)? as usize,
-    Str32 | Bin32 => 5 + try_read_length_32(input)? as usize,
+    Marker::FixStr(n) => 1 + n as usize,
+    Marker::Str8 | Marker::Bin8 => 2 + try_read_length_8(input)? as usize,
+    Marker::Str16 | Marker::Bin16 => 3 + try_read_length_16(input)? as usize,
+    Marker::Str32 | Marker::Bin32 => 5 + try_read_length_32(input)? as usize,
 
-    FixArray(count) => 1 + total_seq_size(&input[1..], count, depth_limit)?,
-    FixMap(pairs) => 1 + total_map_size(&input[1..], pairs, depth_limit)?,
-    Array16 => {
+    Marker::FixArray(count) => 1 + total_seq_size(&input[1..], count, depth_limit)?,
+    Marker::FixMap(pairs) => 1 + total_map_size(&input[1..], pairs, depth_limit)?,
+    Marker::Array16 => {
       let count = try_read_length_16(input)?;
       3 + total_seq_size(&input[3..], count, depth_limit)?
     }
-    Map16 => {
+    Marker::Map16 => {
       let pairs = try_read_length_16(input)?;
       3 + total_map_size(&input[3..], pairs, depth_limit)?
     }
-    Array32 => {
+    Marker::Array32 => {
       let count = try_read_length_32(input)?;
       5 + total_seq_size(&input[5..], count, depth_limit)?
     }
-    Map32 => {
+    Marker::Map32 => {
       let pairs = try_read_length_32(input)?;
       5 + total_map_size(&input[5..], pairs, depth_limit)?
     }
@@ -255,7 +259,7 @@ where
 {
   Ok(convert(
     input
-      .get(1..N + 1)
+      .get(1..=N)
       .ok_or(ReadSizeError::Truncated)?
       .try_into()
       .unwrap(),
@@ -277,11 +281,10 @@ impl Error for ReadSizeError {}
 
 impl Display for ReadSizeError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    use ReadSizeError::*;
     match self {
-      Truncated => f.write_str("unexpected end of MessagePack input"),
-      InvalidMarker => f.write_str("invalid MessagePack marker in input"),
-      DepthLimitExceeded => f.write_str("depth limit exceeded"), // same message as rmp_serde
+      ReadSizeError::Truncated => f.write_str("unexpected end of MessagePack input"),
+      ReadSizeError::InvalidMarker => f.write_str("invalid MessagePack marker in input"),
+      ReadSizeError::DepthLimitExceeded => f.write_str("depth limit exceeded"), // same message as rmp_serde
     }
   }
 }
@@ -289,7 +292,6 @@ impl Display for ReadSizeError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use ReadSizeError::*;
 
   use hex_literal::hex;
 
@@ -371,7 +373,10 @@ mod tests {
   fn test_truncated_valid_inputs() {
     for input in VALID_INPUTS.iter().filter(|i| i.len() > 1) {
       for len in 1..(input.len() - 1) {
-        assert_eq!(next_value_size(&input[..len], DEPTH_LIMIT), Err(Truncated))
+        assert_eq!(
+          next_value_size(&input[..len], DEPTH_LIMIT),
+          Err(ReadSizeError::Truncated)
+        );
       }
     }
   }
@@ -381,7 +386,7 @@ mod tests {
     // The string "xt," but with a reported length of 2^32-1 bytes.
     assert_eq!(
       next_value_size(&hex!("db ff ff ff ff 78 74"), DEPTH_LIMIT),
-      Err(Truncated)
+      Err(ReadSizeError::Truncated)
     );
   }
 
@@ -392,7 +397,7 @@ mod tests {
     // [[[true]]]
     assert_eq!(
       next_value_size(&hex!("91 91 91 c3"), 3),
-      Err(DepthLimitExceeded)
+      Err(ReadSizeError::DepthLimitExceeded)
     );
   }
 
@@ -401,17 +406,17 @@ mod tests {
     // <invalid>
     assert_eq!(
       next_value_size(&hex!("c1"), DEPTH_LIMIT),
-      Err(InvalidMarker)
+      Err(ReadSizeError::InvalidMarker)
     );
     // ["xt", <invalid>]
     assert_eq!(
       next_value_size(&hex!("92 a2 78 74 c1"), DEPTH_LIMIT),
-      Err(InvalidMarker)
+      Err(ReadSizeError::InvalidMarker)
     );
     // {"xt": true, "good": <invalid>}
     assert_eq!(
       next_value_size(&hex!("82 a2 78 74 c3 a4 67 6f 6f 64 c1"), DEPTH_LIMIT),
-      Err(InvalidMarker)
+      Err(ReadSizeError::InvalidMarker)
     );
   }
 
