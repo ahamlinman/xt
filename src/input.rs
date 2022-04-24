@@ -22,7 +22,7 @@
 //! - Not all input formats can translate from a reader, and must consume their
 //!   input from an in-memory slice no matter what.
 //!
-//! [`Handle`] is the main container that allows format detection logic to
+//! [`Handle`] is the main container that allows the format detection logic to
 //! borrow temporary copies of the input, and then allows the selected input
 //! format to take full ownership of the input for translation.
 //!
@@ -35,8 +35,8 @@
 //! any time the format detection process consumes an entire reader, either by
 //! coincidence or by trying to detect a format that requires slice input, all
 //! future use of the input will become slice-based. Alternatively, if format
-//! detection is skipped, the input format will simply take the original reader
-//! without even allocating a capture buffer.
+//! detection is skipped, the selected input format will simply take the
+//! original reader without even allocating a capture buffer.
 
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
@@ -131,9 +131,9 @@ impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
 /// A container for owned input obtained by consuming a [`Handle`].
 ///
 /// The kind of `Input` produced from a `Handle` may not correspond directly to
-/// the original `Source`. If a reader input was fully buffered through normal
-/// use of the `Handle`, the `Input` will provide ownership of the buffer, and
-/// the conversion from `Handle` will drop the reader.
+/// the original `Source`. If a reader input was fully buffered through use of
+/// the `Handle`, the `Input` will provide ownership of the buffer, and the
+/// conversion from `Handle` will drop the reader.
 pub(crate) enum Input<'i> {
   Slice(Cow<'i, [u8]>),
   Reader(Box<dyn Read + 'i>),
@@ -356,7 +356,8 @@ where
     // consumer drive the number and size of reads against the source, making
     // our presence more transparent to both sides. As the smallest consolation,
     // it's worth noting that we only read bytes we know were freshly written,
-    // and do not rely on the original contents of `buf` in any way.
+    // and do not rely on the original contents of `buf` in any way (unless, of
+    // course, the source is broken and lies about how many bytes it read).
     let buf = &mut buf[prefix_size..];
     let source_size = self.source.read(buf)?;
     self.prefix.write_all(&buf[..source_size])?;
