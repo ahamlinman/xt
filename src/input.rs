@@ -270,6 +270,18 @@ where
     }
   }
 
+  /// Returns a slice of all input captured by the reader so far.
+  fn captured(&self) -> &[u8] {
+    self.prefix.get_ref()
+  }
+
+  /// Returns the number of bytes remaining to read from the captured prefix
+  /// before consuming more from the source.
+  fn captured_unread(&self) -> usize {
+    let offset = self.prefix.position() as usize;
+    self.prefix.get_ref().len() - offset
+  }
+
   /// Rewinds the reader so that subsequent reads will produce the source's
   /// bytes from the beginning.
   fn rewind(&mut self) {
@@ -306,18 +318,6 @@ where
       self.source_eof = true;
     }
     Ok(())
-  }
-
-  /// Returns a slice of all input captured by the reader so far.
-  fn captured(&self) -> &[u8] {
-    self.prefix.get_ref()
-  }
-
-  /// Returns the number of bytes remaining to read from the captured prefix
-  /// before consuming more from the source.
-  fn captured_unread(&self) -> usize {
-    let offset = self.prefix.position() as usize;
-    self.prefix.get_ref().len() - offset
   }
 
   /// Returns true if the latest read from the source indicated an EOF.
