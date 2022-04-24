@@ -1,3 +1,22 @@
+## Unreleased
+
+### Added
+
+- **Format detection for streaming input.** For the subset of input formats
+  that support streaming, xt can now perform automatic format detection without
+  buffering the full input stream in memory first. This means that for many
+  unbounded JSON and MessagePack inputs, xt no longer requires an explicit `-f`
+  to prevent holding up pipelines or consuming unreasonable amounts of memory.
+  Note that xt will fall back to buffering the full input stream when it cannot
+  detect the stream as JSON or MessagePack, and that MessagePack detection in
+  particular does not cover all possible MessagePack inputs.
+
+### Changed
+
+- The parser-based format detection algorithm has changed to account for the
+  new streaming input support. Note that this algorithm is unstable and
+  provides best-effort results only.
+
 ## v0.8.1 (2022-04-15)
 
 ### Fixed
