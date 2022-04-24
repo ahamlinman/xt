@@ -54,6 +54,17 @@ where
   }
 }
 
+/// Translates serialized input to a known output format.
+///
+/// The compiler will monomorphize a copy of this function for each supported
+/// output format, giving us n² individually optimized code paths for each
+/// possible translation. Unsurprisingly, this is far more performant than a
+/// dynamic dispatch approach using [`erased_serde`][erased_serde]. Perhaps more
+/// surprisingly, past experiments show that it also generates *smaller* code
+/// than the dynamic dispatch approach, especially with link-time optimization
+/// enabled. This could change if xt gains support for a larger set of formats.
+///
+/// [erased_serde]: https://github.com/dtolnay/erased-serde
 fn transcode_input<O>(input: Handle, from: Format, output: O) -> Result<(), Box<dyn Error>>
 where
   O: Output,
@@ -66,6 +77,7 @@ where
   }
 }
 
+/// A trait for output formats to receive their translatable input.
 trait Output {
   fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
   where

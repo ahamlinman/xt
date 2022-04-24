@@ -1,3 +1,5 @@
+//! Automatic detection of data formats based on parser trials.
+
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -7,25 +9,34 @@ use serde::{de, ser, Deserialize, Serialize, Serializer};
 use crate::input;
 use crate::{Format, Output};
 
+/// Detects the input format by trying each known format and selecting the first
+/// one that works.
 pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Format>> {
-  // As a binary format, we generally expect MessagePack to be the most
-  // restrictive of the bunch. Note that we only detect MessagePack inputs that
-  // start with an array or map; see the comments in this function for details.
+  // We begin with the formats that support streaming input, so that we can try
+  // to detect the format for reader input without consuming it entirely.
+
+  // As a binary format, we generally expect MessagePack to be more restrictive
+  // than any text format. Note that we only detect MessagePack inputs that
+  // start with an array or map; see [`msgpack::input_matches`] for details.
   if crate::msgpack::input_matches(input.borrow_mut())? {
     return Ok(Some(Format::Msgpack));
   }
 
-  // We expect JSON to be the most restrictive of the text-based formats. For
-  // example, a "#" comment at the start of a doc could be TOML or YAML, but
-  // definitely not JSON.
+  // In addition to being the only text format that supports streaming, we
+  // expect JSON to be more restrictive than the two other text formats. For
+  // example, a "#" comment at the start of a document could be TOML or YAML,
+  // but definitely not JSON.
   if crate::json::input_matches(input.borrow_mut())? {
     return Ok(Some(Format::Json));
   }
 
-  // TOML comes next as it is less restrictive than JSON, but still more
-  // restrictive than YAML. In fact, TOML documents that don't start with a
-  // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
-  // string. Cargo.lock is a great example of this, if you're curious.
+  // At this point, we can move on to the formats that require full buffering.
+
+  // Of the text formats that require buffering, TOML is more restrictive than
+  // YAML. In fact, if we don't try TOML first, the YAML parser may accept the
+  // input by parsing it as a single plain style flow scalar, i.e. as a giant
+  // string. This generally works for any TOML document that doesn't start with
+  // a table. `Cargo.lock` is a great example, if you're curious.
   if crate::toml::input_matches(input.borrow_mut())? {
     return Ok(Some(Format::Toml));
   }
@@ -47,8 +58,8 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
   Ok(None)
 }
 
-/// Throws stuff away in a wide variety of fun and exciting ways. Truly the
-/// crown jewel of the auto-detection logic.
+/// The crown jewel of the auto-detection logic: a type that comprehensively
+/// throws things away.
 struct Discard;
 
 impl Output for Discard {
@@ -70,8 +81,10 @@ impl Output for Discard {
   }
 }
 
-/// Implements [`Serializer`] methods for [`Discard`], using terms that combine
-/// a function signature (sans return type) with a well defined action.
+/// Implements [`Serializer`] methods for [`Discard`] using a custom syntax.
+///
+/// The syntax combines a function signature (sans return type) in curly braces
+/// with a well defined action:
 ///
 /// - `does nothing`: Returns `Ok(())` to ignore primitive values.
 /// - `discards $expr`: Serializes `$expr` with the `Discard` serializer to
@@ -155,7 +168,7 @@ impl Serializer for Discard {
   }
 }
 
-/// Implements additional [`Serializer`] traits on [`Discard`] using
+/// Implements additional [`Serializer`] traits for [`Discard`] using
 /// [`xt_detect_impl_discard_methods`] syntax.
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
@@ -209,9 +222,10 @@ xt_detect_impl_discard_traits! {
   }
 }
 
-/// An error type for the [`Discard`] type's mostly infallible implementation of
-/// [`serde::Serializer`]. It can only be constructed when the value being
-/// serialized invokes the `custom` function.
+/// An error produced by discarding a serializable value.
+///
+/// This can only be constructed when a value serialized with [`Discard`]
+/// invokes [`ser::Error::custom`].
 #[derive(Debug)]
 struct DiscardError(String);
 

@@ -1,3 +1,5 @@
+//! The JSON data format.
+
 use std::error::Error;
 use std::io::{self, BufReader, Read, Write};
 

@@ -1,3 +1,5 @@
+//! The YAML data format.
+
 use std::borrow::Cow;
 use std::error::Error;
 use std::io::{self, Write};
@@ -7,6 +9,9 @@ use serde::Deserialize;
 use crate::{input, transcode};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+  // TODO: Can we avoid throwing away the result of a valid UTF-8 check?
+  // TODO: Can we avoid throwing away the result of a conversion? (Probably much
+  // harder than the above.)
   let input_str = match ensure_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),
@@ -85,11 +90,14 @@ impl<W: Write> crate::Output for Output<W> {
 
 /// Ensures that YAML input is UTF-8 by validating or converting it.
 ///
-/// This function detects UTF-16 and UTF-32 input based on section 5.2 of the
-/// YAML v1.2.2 specification; detection behavior for non-YAML inputs is not
-/// well defined. Conversions are optimized for simplicity and size, rather than
-/// performance. Input that is invalid in the detected encoding, or whose size
-/// does not evenly divide the detected code unit size, will return an error.
+/// This function detects UTF-16 and UTF-32 input based on [section 5.2 of the
+/// YAML v1.2.2 specification][spec]; detection behavior for non-YAML inputs is
+/// not well defined. Conversions are optimized for simplicity and size, rather
+/// than performance. Input that is invalid in the detected encoding, or whose
+/// size does not evenly divide the detected code unit size, will return an
+/// error.
+///
+/// [spec]: https://yaml.org/spec/1.2.2/#52-character-encodings
 fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
   let prefix = {
     // We use -1 as a sentinel for truncated input so the match patterns are

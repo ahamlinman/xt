@@ -1,3 +1,5 @@
+//! The TOML data format.
+
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
@@ -9,6 +11,7 @@ use serde::Deserialize;
 use crate::input;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+  // TODO: Can we avoid throwing away the result of the UTF-8 check?
   let input_str = match str::from_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),

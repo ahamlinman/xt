@@ -1,3 +1,5 @@
+//! The MessagePack data format.
+
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
