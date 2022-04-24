@@ -246,7 +246,7 @@ where
 {
   Ok(convert(
     input
-      .get(1..=N)
+      .get(1..1 + N)
       .ok_or(ReadSizeError::Truncated)?
       .try_into()
       .unwrap(),
