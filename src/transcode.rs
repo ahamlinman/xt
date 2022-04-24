@@ -1,4 +1,4 @@
-//! Functions and types to support translation between Serde data formats.
+//! Translation between Serde data formats.
 //!
 //! xt's transcoder is somewhat inspired by the [`serde_transcode`] crate
 //! advertised in the Serde documentation. However, its implementation has

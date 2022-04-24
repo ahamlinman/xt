@@ -1,20 +1,45 @@
 use std::error::Error;
-use std::io::{BufReader, Write};
+use std::io::{self, BufReader, Read, Write};
 
-use crate::{transcode, Input, InputHandle};
+use serde::Deserialize;
 
-pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+use crate::input::{self, Input};
+use crate::transcode;
+
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+  let result = match &mut input {
+    input::Ref::Slice(b) => match_input_buffer(b),
+    input::Ref::Reader(r) => match_input_reader(r),
+  };
+  match result {
+    Err(err) if err.is_io() => Err(err.into()),
+    Err(_) => Ok(false),
+    Ok(()) => Ok(true),
+  }
+}
+
+fn match_input_buffer(input: &[u8]) -> Result<(), serde_json::Error> {
+  let mut de = serde_json::Deserializer::from_slice(input);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+}
+
+fn match_input_reader<R: Read>(input: R) -> Result<(), serde_json::Error> {
+  let mut de = serde_json::Deserializer::from_reader(input);
+  serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+}
+
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
   match input.into() {
-    Input::Buffer(buf) => {
+    Input::Slice(b) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
       // iteration if we allow it to deserialize into an actual value, so xt
       // implements a value type that can borrow strings from the input slice
       // (one of serde's major features).
-      let de = serde_json::Deserializer::from_slice(&buf);
+      let de = serde_json::Deserializer::from_slice(&b);
       for value in de.into_iter::<transcode::Value>() {
         output.transcode_value(value?)?;
       }

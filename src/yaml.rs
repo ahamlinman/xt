@@ -1,10 +1,25 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::io::Write;
+use std::io::{self, Write};
 
-use crate::{transcode, InputHandle};
+use serde::Deserialize;
 
-pub(crate) fn transcode<O>(mut input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+use crate::{input, transcode};
+
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+  let input_str = match ensure_utf8(input.slice()?) {
+    Ok(input_str) => input_str,
+    Err(_) => return Ok(false),
+  };
+  let input_str = input_str.strip_prefix('\u{FEFF}').unwrap_or(&input_str);
+
+  if let Some(de) = serde_yaml::Deserializer::from_str(input_str).next() {
+    return Ok(serde::de::IgnoredAny::deserialize(de).is_ok());
+  }
+  Ok(false)
+}
+
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
@@ -23,7 +38,8 @@ where
   // &[u8], this actually converts the slice to a &str internally. YAML has very
   // clear rules for encoding detection, so we re-encode the input ourselves if
   // necessary.
-  let input = ensure_utf8(input.try_as_buffer()?)?;
+  let input: Cow<'_, [u8]> = input.try_into()?;
+  let input = ensure_utf8(&input)?;
 
   // YAML 1.2 allows for a BOM at the start of the stream, as well as at the
   // beginning of every subsequent document in a stream (though all documents

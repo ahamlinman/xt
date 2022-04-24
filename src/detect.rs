@@ -4,38 +4,30 @@ use std::io;
 
 use serde::{de, ser, Deserialize, Serialize, Serializer};
 
-use crate::{transcode_input, Format, InputHandle, Output};
+use crate::input;
+use crate::{Format, Output};
 
-pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>> {
-  // JSON comes first as it is relatively restrictive compared to the other
-  // formats. For example, a "#" comment at the start of a doc could be TOML or
-  // YAML, but definitely not JSON, so we can abort parsing fairly early.
-  //
+pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Format>> {
+  // As a binary format, we generally expect MessagePack to be the most
+  // restrictive of the bunch. Note that we only detect MessagePack inputs that
+  // start with an array or map; see the comments in this function for details.
+  if crate::msgpack::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Msgpack));
+  }
+
+  // We expect JSON to be the most restrictive of the text-based formats. For
+  // example, a "#" comment at the start of a doc could be TOML or YAML, but
+  // definitely not JSON.
+  if crate::json::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Json));
+  }
+
   // TOML comes next as it is less restrictive than JSON, but still more
   // restrictive than YAML. In fact, TOML documents that don't start with a
   // table can be parsed as a plain style flow scalar in YAML, i.e. as a giant
   // string. Cargo.lock is a great example of this, if you're curious.
-  for from in [Format::Json, Format::Toml] {
-    if transcode_input(input.try_clone()?, from, Discard).is_ok() {
-      return Ok(Some(from));
-    }
-  }
-
-  // In MessagePack, any byte below 0x80 represents a literal unsigned integer.
-  // That means any ASCII text input is effectively a valid multi-document
-  // MessagePack stream, where every "document" is practically meaningless. To
-  // prevent these kinds of weird matches, we only attempt to auto-detect
-  // MessagePack when the first byte of input indicates that the next value will
-  // be a map or array. Arbitrary non-ASCII input that happens to match one of
-  // these markers (e.g. certain UTF-8 multibyte sequences) is extremely
-  // unlikely to be a valid sequence of MessagePack values.
-  use rmp::Marker::{self, *};
-  if matches!(
-    input.try_as_buffer()?.get(0).map(|b| Marker::from_u8(*b)),
-    Some(FixArray(_) | Array16 | Array32 | FixMap(_) | Map16 | Map32)
-  ) && transcode_input(input.try_clone()?, Format::Msgpack, Discard).is_ok()
-  {
-    return Ok(Some(Format::Msgpack));
+  if crate::toml::input_matches(input.borrow_mut())? {
+    return Ok(Some(Format::Toml));
   }
 
   // Finally, YAML is our traditional fallback format. Yes, we still get the
@@ -48,7 +40,7 @@ pub(crate) fn detect_format(mut input: InputHandle) -> io::Result<Option<Format>
   // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
   // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
   // the byte patterns for UTF-16-LE YAML input.
-  if transcode_input(input, Format::Yaml, Discard).is_ok() {
+  if crate::yaml::input_matches(input.borrow_mut())? {
     return Ok(Some(Format::Yaml));
   }
 

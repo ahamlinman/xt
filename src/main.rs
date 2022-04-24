@@ -9,7 +9,7 @@ use clap::{
   Parser,
 };
 
-use xt::{Format, InputHandle};
+use xt::Format;
 
 fn main() {
   let args = match Cli::try_parse() {
@@ -43,9 +43,14 @@ fn main() {
     xt_fail!("refusing to output {} to a terminal", args.to);
   }
 
-  let input = args.input().unwrap_or_else(|err| xt_fail!(err));
+  let mut input = args.input().unwrap_or_else(|err| xt_fail!(err));
+  let handle = match &mut input {
+    Input::Stdin => xt::Handle::from_reader(io::stdin()),
+    Input::File(file) => xt::Handle::from_reader(file),
+    Input::Mmap(map) => xt::Handle::from_slice(map),
+  };
 
-  let result = xt::translate(input, args.detect_from(), args.to, &mut output);
+  let result = xt::translate(handle, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a
@@ -107,13 +112,14 @@ Use --help for full usage information and available formats.";
 ///   msgpack  Multi-document as values are naturally self-delineating. Default
 ///            format for .msgpack files. Supports streaming input.
 ///
-/// Some multi-document input formats can translate a stream of documents
-/// without buffering all input into memory first. The input format must be
-/// known in advance to enable streaming, usually with an explicit -f.
+/// Input formats that support streaming can translate individual documents in
+/// an unbounded stream as they appear. Formats that do not support streaming
+/// must load all input into memory before translating any of it.
 ///
-/// When the input format is not known in advance with an explicit -f or file
-/// extension, xt will attempt to auto-detect it by buffering all input into
-/// memory and running an unspecified algorithm that is subject to change.
+/// When xt does not know the input format from a file extension or explicit -f,
+/// it will attempt to detect the format using an unspecified algorithm that is
+/// subject to change. If an unbounded stream does not match a format that
+/// supports streaming, the detector will load the entire stream into memory.
 ///
 /// xt does not guarantee that every translation is possible, or lossless, or
 /// reversible. xt's behavior is undefined if an input file is modified while
@@ -170,6 +176,12 @@ fn try_parse_format(s: &str) -> Result<Format, String> {
   }
 }
 
+enum Input {
+  Stdin,
+  File(std::fs::File),
+  Mmap(memmap2::Mmap),
+}
+
 impl Cli {
   fn detect_from(&self) -> Option<Format> {
     if self.from.is_some() {
@@ -187,10 +199,10 @@ impl Cli {
     }
   }
 
-  fn input(&self) -> io::Result<InputHandle> {
+  fn input(&self) -> io::Result<Input> {
     match &self.input_filename {
-      None => Ok(InputHandle::from_reader(io::stdin())),
-      Some(path) if path.to_str() == Some("-") => Ok(InputHandle::from_reader(io::stdin())),
+      None => Ok(Input::Stdin),
+      Some(path) if path.to_str() == Some("-") => Ok(Input::Stdin),
       Some(path) => {
         let file = File::open(path)?;
         // "SAFETY": It is undefined behavior to modify a mapped file outside of
@@ -201,11 +213,11 @@ impl Cli {
         // most likely to appear when the requirement is violated.
         match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
           // Per memmap2 docs, it's safe to drop file once mmap succeeds.
-          Ok(map) => Ok(InputHandle::from_buffer(map)),
+          Ok(map) => Ok(Input::Mmap(map)),
           // If mmap fails, we can always fall back to reading the file
           // normally. Examples of where this can matter include (but are not
           // limited to) process substitution and named pipes.
-          Err(_) => Ok(InputHandle::from_reader(file)),
+          Err(_) => Ok(Input::File(file)),
         }
       }
     }

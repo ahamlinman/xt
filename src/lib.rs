@@ -16,16 +16,14 @@ mod toml;
 mod transcode;
 mod yaml;
 
-use input::Input;
-
-pub use input::InputHandle;
+pub use input::Handle;
 
 /// Translates serialized input to serialized output in a different format.
 ///
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
 pub fn translate<W>(
-  mut input: InputHandle<'_>,
+  mut input: Handle<'_>,
   from: Option<Format>,
   to: Format,
   output: W,
@@ -35,9 +33,9 @@ where
 {
   let from = match from {
     Some(format) => format,
-    None => match detect::detect_format(input.try_clone()?)? {
+    None => match detect::detect_format(&mut input)? {
       Some(format) => format,
-      None => return Err("cannot parse input as any known format".into()),
+      None => return Err("unable to detect input format".into()),
     },
   };
 
@@ -49,7 +47,7 @@ where
   }
 }
 
-fn transcode_input<O>(input: InputHandle, from: Format, output: O) -> Result<(), Box<dyn Error>>
+fn transcode_input<O>(input: Handle, from: Format, output: O) -> Result<(), Box<dyn Error>>
 where
   O: Output,
 {
