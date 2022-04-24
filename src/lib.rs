@@ -71,11 +71,56 @@ trait Output {
 }
 
 /// The set of input and output formats supported by xt.
+///
+/// The feature sets of the supported formats vary along two key dimensions.
+///
+/// Formats supporting **multi-document translation** can represent multiple
+/// independent "documents" within a single input stream. For example, xt can
+/// translate a single YAML file with documents separated by `---` markers into
+/// a stream of newline delimited JSON values. In contrast, single document
+/// formats may only represent one logical "document" per input stream. When
+/// translating an input with more than one document to a single document output
+/// format, xt will return an error as it starts to translate the second
+/// document in the stream.
+///
+/// Formats supporting **streaming input** can translate a multi-document input
+/// stream without first buffering the entire stream into memory. This enables
+/// translation of unbounded input sources, such as an upstream program emitting
+/// an event stream to xt through a pipe. Formats that do not support streaming
+/// must buffer the entire input stream into memory before translating the first
+/// document.
+///
+/// Support for each data format comes largely from external Rust crates, with
+/// only minor additional preprocessing from xt for select formats. Note that
+/// the crate selection for each format is **not stable**, and is documented for
+/// informational purposes only.
 #[derive(Copy, Clone)]
 pub enum Format {
+  /// The [JSON][json] format as interpreted by [`serde_json`].
+  ///
+  /// This format supports multi-document translation and streaming input.
+  ///
+  /// [json]: https://datatracker.ietf.org/doc/html/rfc8259
   Json,
+  /// The [YAML 1.2][yaml] format as interpreted by [`serde_yaml`].
+  ///
+  /// This format supports multi-document translation, but does not support
+  /// streaming input.
+  ///
+  /// [yaml]: https://yaml.org/spec/1.2.2/
   Yaml,
+  /// The [TOML][toml] format as interpreted by [`toml`][::toml].
+  ///
+  /// This format supports single-document translation only, and does not
+  /// support streaming input.
+  ///
+  /// [toml]: https://github.com/toml-lang/toml
   Toml,
+  /// The [MessagePack][msgpack] format as interpreted by [`rmp_serde`].
+  ///
+  /// This format supports multi-document translation and streaming input.
+  ///
+  /// [msgpack]: https://msgpack.org/
   Msgpack,
 }
 
