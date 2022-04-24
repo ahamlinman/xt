@@ -1,7 +1,47 @@
+//! Generic support for input from both slice and reader sources.
+//!
+//! This module provides the abstractions that enable xt to dynamically select
+//! the most functional and efficient translation strategy for any given input
+//! regardless of how the tool is invoked. Several factors have influenced its
+//! design:
+//!
+//! - To translate unbounded streams of input documents, we must be able to
+//!   provide a reader to the input format's deserializer.
+//!
+//! - To support format detection based on parser trials without sacrificing
+//!   general reader support, we must be able to "rewind" a potentially
+//!   non-seekable input.
+//!
+//! - However, the ability to rewind a reader should not impose any extra cost
+//!   in cases where format detection is unnecessary.
+//!   
+//! - Even for input formats that support readers, it is almost always faster to
+//!   translate from an in-memory slice of the full input when one is readily
+//!   available.
+//!
+//! - Not all input formats can translate from a reader, and must consume their
+//!   input from an in-memory slice no matter what.
+//!
+//! [`Handle`] is the main container that allows format detection logic to
+//! borrow temporary copies of the input, and then allows the selected input
+//! format to take full ownership of the input for translation.
+//!
+//! When input originally comes from a slice, for example by mapping a file into
+//! memory, `Handle` enables input formats to borrow that slice directly for the
+//! greatest efficiency.
+//!
+//! When input comes from a reader, the [`Ref`] provided to format detectors
+//! will transparently capture input for future reads to consume again. If at
+//! any time the format detection process consumes an entire reader, either by
+//! coincidence or by trying to detect a format that requires slice input, all
+//! future use of the input will become slice-based. Alternatively, if format
+//! detection is skipped, the input format will simply take the original reader
+//! without even allocating a capture buffer.
+
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
 
-/// A container for input to [`xt::translate`](crate::translate).
+/// A container for input to [`xt::translate`][crate::translate].
 ///
 /// xt accepts input from both slices and readers, and will produce consistent
 /// output for a given input regardless of its source. However, xt may optimize
@@ -88,7 +128,7 @@ impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
   }
 }
 
-/// A container for owned input, created by consuming a [`Handle`].
+/// A container for owned input obtained by consuming a [`Handle`].
 ///
 /// The kind of `Input` produced from a `Handle` may not correspond directly to
 /// the original `Source`. If a reader input was fully buffered through normal
