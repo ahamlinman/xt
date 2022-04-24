@@ -9,6 +9,7 @@ edition = "2021"
 rust-version = "1.56"
 categories = ["command-line-utilities"]
 keywords = ["cli"]
+exclude = ["benches/**"]
 
 [dependencies]
 atty = "0.2"

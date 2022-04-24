@@ -1,3 +1,11 @@
+## Unreleased
+
+### Fixed
+
+- **Crate size on crates.io.** The v0.9.0 release on crates.io unintentionally
+  included large binary files used for benchmarking. This version should take
+  things back down to a reasonable size.
+
 ## v0.9.0 (2022-04-24)
 
 ### Added
