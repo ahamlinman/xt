@@ -3,12 +3,13 @@ use std::io::{self, BufReader, Read, Write};
 
 use serde::Deserialize;
 
-use crate::{transcode, BorrowedInput, Input, InputHandle};
+use crate::input::{self, Input};
+use crate::transcode;
 
-pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   let result = match &mut input {
-    BorrowedInput::Buffer(buf) => match_input_buffer(buf),
-    BorrowedInput::Reader(r) => match_input_reader(r),
+    input::Ref::Slice(buf) => match_input_buffer(buf),
+    input::Ref::Reader(r) => match_input_reader(r),
   };
   match result {
     Err(err) if err.is_io() => Err(err.into()),
@@ -27,12 +28,12 @@ fn match_input_reader<R: Read>(input: R) -> Result<(), serde_json::Error> {
   serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
-pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
   match input.into() {
-    Input::Buffer(buf) => {
+    Input::Slice(buf) => {
       // Direct transcoding here would be nice, however the .end() method that
       // we rely on is extremely slow in slice mode. serde_json only supports
       // iteration if we allow it to deserialize into an actual value, so xt

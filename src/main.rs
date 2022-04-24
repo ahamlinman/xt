@@ -9,7 +9,7 @@ use clap::{
   Parser,
 };
 
-use xt::{Format, InputHandle};
+use xt::Format;
 
 fn main() {
   let args = match Cli::try_parse() {
@@ -44,13 +44,13 @@ fn main() {
   }
 
   let mut input = args.input().unwrap_or_else(|err| xt_fail!(err));
-  let input_handle = match &mut input {
-    Input::Stdin => InputHandle::from_reader(io::stdin()),
-    Input::File(file) => InputHandle::from_reader(file),
-    Input::Mmap(map) => InputHandle::from_slice(map),
+  let handle = match &mut input {
+    Input::Stdin => xt::Handle::from_reader(io::stdin()),
+    Input::File(file) => xt::Handle::from_reader(file),
+    Input::Mmap(map) => xt::Handle::from_slice(map),
   };
 
-  let result = xt::translate(input_handle, args.detect_from(), args.to, &mut output);
+  let result = xt::translate(handle, args.detect_from(), args.to, &mut output);
 
   // Some serializers, including the one for YAML, don't expose broken pipe
   // errors in the error chain produced during transcoding. This check does a

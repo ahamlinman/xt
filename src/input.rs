@@ -1,78 +1,146 @@
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
 
-/// A handle for xt to obtain input data from a slice or reader.
-pub struct InputHandle<'i>(Source<'i>);
+/// A container for input to [`xt::translate`](crate::translate).
+///
+/// xt accepts input from both slices and readers, and will produce consistent
+/// output for a given input regardless of its source. However, xt may optimize
+/// its behavior or provide features depending on the kind of source used. See
+/// [`Handle::from_slice`] and [`Handle::from_reader`] for details.
+pub struct Handle<'i>(Source<'i>);
 
-/// A private container representing a buffer or reader input source.
+/// The private container for the original input a [`Handle`] was created from.
 enum Source<'i> {
-  Buffer(&'i [u8]),
-  Reader(RewindableReader<Box<dyn Read + 'i>>),
+  Slice(&'i [u8]),
+  Reader(CaptureReader<Box<dyn Read + 'i>>),
 }
 
-impl<'i> InputHandle<'i> {
+impl<'i> Handle<'i> {
   /// Creates a handle for an input slice.
-  pub fn from_slice(source: &'i [u8]) -> InputHandle<'i> {
-    InputHandle(Source::Buffer(source))
+  ///
+  /// Slice inputs are typically more efficient to translate than reader inputs,
+  /// but require all input to be loaded into memory in advance. This may be
+  /// inappropriate for an unbounded stream of documents in a format that
+  /// supports streaming translation.
+  pub fn from_slice(source: &'i [u8]) -> Handle<'i> {
+    Handle(Source::Slice(source))
   }
 
   /// Creates a handle for an input reader.
-  pub fn from_reader<R>(source: R) -> InputHandle<'i>
+  ///
+  /// Reader inputs enable streaming translation for select input formats,
+  /// allowing xt to translate documents as they appear in the stream without
+  /// buffering more than one document in memory at a time. When translating
+  /// from a format that does not support streaming, xt will buffer the entire
+  /// contents of the reader into memory before starting translation.
+  pub fn from_reader<R>(source: R) -> Handle<'i>
   where
     R: Read + 'i,
   {
-    InputHandle(Source::Reader(RewindableReader::new(Box::new(source))))
+    Handle(Source::Reader(CaptureReader::new(Box::new(source))))
   }
 
-  /// Returns temporary references to the handle's input.
+  /// Borrows a temporary reference to the input.
   ///
-  /// A borrowed reader will always produce the original input from the start,
-  /// even across multiple calls to `borrow_mut`.
-  pub(crate) fn borrow_mut(&mut self) -> BorrowedInput<'i, '_> {
+  /// For slice inputs, this provides access to the original slice.
+  ///
+  /// For reader inputs that are fully buffered from previous use of the handle,
+  /// this provides access to the reader's full contents as a slice.
+  ///
+  /// For reader inputs not yet fully buffered, this provides access to the
+  /// reader through a wrapper that captures its output. In subsequent calls to
+  /// `borrow_mut`, the wrapper will produce the captured bytes before producing
+  /// more bytes from the original reader.
+  pub(crate) fn borrow_mut(&mut self) -> Ref<'i, '_> {
     match &mut self.0 {
-      Source::Buffer(buf) => BorrowedInput::Buffer(buf),
+      Source::Slice(b) => Ref::Slice(b),
       Source::Reader(r) => {
         if r.is_source_eof() {
-          BorrowedInput::Buffer(r.captured())
+          Ref::Slice(r.captured())
         } else {
-          BorrowedInput::Reader(ReaderGuard(r))
+          Ref::Reader(ReaderGuard(r))
         }
       }
     }
   }
 }
 
-/// A temporary reference to input held by an [`InputHandle`].
-pub(crate) enum BorrowedInput<'i, 'h>
-where
-  'i: 'h,
-{
-  Buffer(&'h [u8]),
-  Reader(ReaderGuard<'i, 'h>),
-}
+/// Produces the original input as a slice, either by passing through the
+/// original slice or fully reading the original reader into a buffer.
+impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
+  type Error = io::Error;
 
-impl<'i, 'h> Read for BorrowedInput<'i, 'h>
-where
-  'i: 'h,
-{
-  fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-    match self {
-      BorrowedInput::Buffer(b) => b.read(buf),
-      BorrowedInput::Reader(r) => r.read(buf),
+  fn try_into(self) -> io::Result<Cow<'i, [u8]>> {
+    match self.0 {
+      Source::Slice(b) => Ok(Cow::Borrowed(b)),
+      Source::Reader(r) => {
+        if r.is_source_eof() {
+          let (cursor, _) = r.into_inner();
+          return Ok(Cow::Owned(cursor.into_inner()));
+        }
+
+        let (cursor, mut source) = r.into_inner();
+        let mut buf = cursor.into_inner();
+        source.read_to_end(&mut buf)?;
+        Ok(Cow::Owned(buf))
+      }
     }
   }
 }
 
-impl<'i, 'h> BorrowedInput<'i, 'h>
+/// A container for owned input, created by consuming a [`Handle`].
+///
+/// The kind of `Input` produced from a `Handle` may not correspond directly to
+/// the original `Source`. If a reader input was fully buffered through normal
+/// use of the `Handle`, the `Input` will provide ownership of the buffer, and
+/// the conversion from `Handle` will drop the reader.
+pub(crate) enum Input<'i> {
+  Slice(Cow<'i, [u8]>),
+  Reader(Box<dyn Read + 'i>),
+}
+
+impl<'i> From<Handle<'i>> for Input<'i> {
+  fn from(handle: Handle<'i>) -> Self {
+    match handle.0 {
+      Source::Slice(b) => Input::Slice(Cow::Borrowed(b)),
+      Source::Reader(r) => {
+        let source_eof = r.is_source_eof();
+        let (cursor, source) = r.into_inner();
+        if source_eof {
+          Input::Slice(Cow::Owned(cursor.into_inner()))
+        } else if cursor.get_ref().is_empty() {
+          Input::Reader(source)
+        } else {
+          Input::Reader(Box::new(cursor.chain(source)))
+        }
+      }
+    }
+  }
+}
+
+/// A temporary reference to input from a [`Handle`].
+///
+/// See [`Handle::borrow_mut`] for more.
+pub(crate) enum Ref<'i, 'h>
 where
   'i: 'h,
 {
-  /// Returns the full input as a slice, buffering an entire reader input in
-  /// memory if necessary.
+  Slice(&'h [u8]),
+  Reader(ReaderGuard<'i, 'h>),
+}
+
+impl<'i, 'h> Ref<'i, 'h>
+where
+  'i: 'h,
+{
+  /// Returns the full input as a slice.
+  ///
+  /// For reader inputs not yet fully buffered, this will immediately consume
+  /// all remaining bytes from the reader into memory.
   pub(crate) fn slice(&mut self) -> io::Result<&[u8]> {
     match self {
-      BorrowedInput::Buffer(b) => Ok(b),
-      BorrowedInput::Reader(r) => {
+      Ref::Slice(b) => Ok(b),
+      Ref::Reader(r) => {
         r.0.capture_to_end()?;
         Ok(r.0.captured())
       }
@@ -81,29 +149,30 @@ where
 
   /// Returns a prefix of the input.
   ///
-  /// For buffer input, the prefix will simply be the full input.
+  /// For slice inputs and fully buffered reader inputs, this simply returns the
+  /// full input.
   ///
-  /// For reader input, `want_size` represents the minimum size of the prefix
-  /// that the call should attempt to produce by capturing from the source. The
-  /// returned prefix may be smaller if the source reaches EOF before producing
-  /// `want_size` bytes.
+  /// For reader inputs not yet fully buffered, `want_size` represents the
+  /// minimum size of the prefix that the call should attempt to produce by
+  /// capturing new bytes from the source. The returned prefix may be smaller or
+  /// larger than `want_size` if the reader reaches EOF, more input has already
+  /// been captured, or a larger read is made from the source for efficiency.
   pub(crate) fn prefix(&mut self, want_size: usize) -> io::Result<&[u8]> {
     match self {
-      BorrowedInput::Buffer(b) => Ok(b),
-      BorrowedInput::Reader(r) => {
-        r.0.capture_at_least(want_size)?;
+      Ref::Slice(b) => Ok(b),
+      Ref::Reader(r) => {
+        r.0.capture_to_size(want_size)?;
         Ok(r.0.captured())
       }
     }
   }
 }
 
-/// A temporary reference to input from a reader.
+/// Wraps a [`CaptureReader`] to rewind its position to the start when dropped.
 ///
-/// A [`ReaderGuard`] automatically captures all bytes read from the original
-/// input. When dropped, it will rewind to the start of the captured input so
-/// that future consumers read the same bytes.
-pub(crate) struct ReaderGuard<'i, 'h>(&'h mut RewindableReader<Box<dyn Read + 'i>>)
+/// This enables multiple calls to [`Handle::borrow_mut`] to access reader input
+/// without fully consuming it.
+pub(crate) struct ReaderGuard<'i, 'h>(&'h mut CaptureReader<Box<dyn Read + 'i>>)
 where
   'i: 'h;
 
@@ -125,110 +194,74 @@ where
   }
 }
 
-impl<'i> TryInto<Cow<'i, [u8]>> for InputHandle<'i> {
-  type Error = io::Error;
-
-  fn try_into(self) -> io::Result<Cow<'i, [u8]>> {
-    match self.0 {
-      Source::Buffer(buf) => Ok(Cow::Borrowed(buf)),
-      Source::Reader(r) => {
-        if r.is_source_eof() {
-          let (cursor, _) = r.into_inner();
-          return Ok(Cow::Owned(cursor.into_inner()));
-        }
-
-        let (cursor, mut source) = r.into_inner();
-        let mut buf = cursor.into_inner();
-        source.read_to_end(&mut buf)?;
-        Ok(Cow::Owned(buf))
-      }
-    }
-  }
-}
-
-/// An owned container for the original input held by an [`InputHandle`].
-pub(crate) enum Input<'i> {
-  Buffer(Cow<'i, [u8]>),
-  Reader(Box<dyn Read + 'i>),
-}
-
-impl<'i> From<InputHandle<'i>> for Input<'i> {
-  fn from(handle: InputHandle<'i>) -> Self {
-    match handle.0 {
-      Source::Buffer(buf) => Input::Buffer(Cow::Borrowed(buf)),
-      Source::Reader(r) => {
-        let source_eof = r.is_source_eof();
-        let (cursor, source) = r.into_inner();
-        if source_eof {
-          Input::Buffer(Cow::Owned(cursor.into_inner()))
-        } else if cursor.get_ref().is_empty() {
-          Input::Reader(source)
-        } else {
-          Input::Reader(Box::new(cursor.chain(source)))
-        }
-      }
-    }
-  }
-}
-
-/// A reader that adds backwards-only seeking to a non-seekable source.
+/// A wrapper that captures the output of a reader into a buffer as it is read.
 ///
-/// As a rewindable reader pulls bytes from its source, it captures them in an
-/// in-memory buffer. A call to [`rewind()`][RewindableReader::rewind] will
-/// cause the reader to produce the source's data from the beginning. After
-/// producing data captured from previous reads, future reads will continue to
-/// extend the capture buffer from the original source.
-pub(crate) struct RewindableReader<R>
+/// A `CaptureReader` provides limited seeking capabilities for a non-seekable
+/// reader by storing a copy of the bytes it produces for each `read` call.
+/// After calling [`rewind`][CaptureReader::rewind], the `CaptureReader` will
+/// produce the stored bytes for new `read` calls before consuming more of the
+/// source, as if [`Seek::rewind`][std::io::Seek::rewind] had been used on the
+/// source (except that rewinding a `CaptureReader` is infallible).
+///
+/// A `CaptureReader` also tracks when the source reports an "end of file"
+/// condition, indicating that the source is fully buffered as if
+/// [`read_to_end`][Read::read_to_end] had been used. Consuming the
+/// `CaptureReader` with [`into_inner`][CaptureReader::into_inner] permits
+/// access to the buffered bytes without additional copies.
+pub(crate) struct CaptureReader<R>
 where
   R: Read,
 {
-  cursor: Cursor<Vec<u8>>,
+  prefix: Cursor<Vec<u8>>,
   source: R,
   source_eof: bool,
 }
 
-impl<R> RewindableReader<R>
+impl<R> CaptureReader<R>
 where
   R: Read,
 {
-  /// Returns a new rewindable reader wrapping the provided source reader.
+  /// Creates a new reader that captures the bytes produced by `source`.
   fn new(source: R) -> Self {
     Self {
-      cursor: Cursor::new(vec![]),
+      prefix: Cursor::new(vec![]),
       source,
       source_eof: false,
     }
   }
 
-  /// Rewinds the reader so that subsequent reads will produce the source's data
-  /// from the beginning.
+  /// Rewinds the reader so that subsequent reads will produce the source's
+  /// bytes from the beginning.
   fn rewind(&mut self) {
-    self.cursor.set_position(0);
+    self.prefix.set_position(0);
   }
 
-  /// Ensures that the reader has captured all of the source's available input
-  /// without modifying the reader's position.
+  /// Captures all of the source's remaining input without modifying the
+  /// reader's position.
   fn capture_to_end(&mut self) -> io::Result<()> {
-    self.source.read_to_end(self.cursor.get_mut())?;
+    self.source.read_to_end(self.prefix.get_mut())?;
     self.source_eof = true;
     Ok(())
   }
 
-  /// Ensures that the reader has captured at least the first `size` bytes of
-  /// the source without modifying the reader's position.
-  fn capture_at_least(&mut self, size: usize) -> io::Result<()> {
+  /// Ensures that at least `size` bytes have been captured from the source
+  /// without modifying the reader's position.
+  ///
+  /// The actual number of captured bytes may be less than `size` if the source
+  /// reaches EOF before producing `size` bytes.
+  fn capture_to_size(&mut self, size: usize) -> io::Result<()> {
     // This matches the privately defined default size of a BufReader for most
     // platforms as of this writing. It seems like a reasonable enough lower
     // bound to prevent us from spending a system call on, say, one byte.
     const MIN_SIZE: usize = 8 * 1024;
 
-    let needed = std::cmp::max(size, MIN_SIZE).saturating_sub(self.cursor.get_ref().len());
+    let needed = std::cmp::max(size, MIN_SIZE).saturating_sub(self.prefix.get_ref().len());
     if needed == 0 {
       return Ok(());
     }
 
     let mut take = (&mut self.source).take(needed as u64);
-    take.read_to_end(self.cursor.get_mut())?;
+    take.read_to_end(self.prefix.get_mut())?;
     if take.limit() > 0 {
       self.source_eof = true;
     }
@@ -237,30 +270,28 @@ where
 
   /// Returns a slice of all input captured by the reader so far.
   fn captured(&self) -> &[u8] {
-    self.cursor.get_ref()
+    self.prefix.get_ref()
   }
 
-  /// Returns the number of bytes remaining to be read from the captured prefix
+  /// Returns the number of bytes remaining to read from the captured prefix
   /// before consuming more from the source.
   fn captured_unread(&self) -> usize {
-    let offset = self.cursor.position() as usize;
-    self.cursor.get_ref().len() - offset
+    let offset = self.prefix.position() as usize;
+    self.prefix.get_ref().len() - offset
   }
 
-  /// Returns true if the latest read from the source indicated an "end of file"
-  /// condition.
+  /// Returns true if the latest read from the source indicated an EOF.
   fn is_source_eof(&self) -> bool {
     self.source_eof
   }
 
-  /// Consumes the reader, returning any captured prefix as well as the source
-  /// reader.
+  /// Consumes the reader, returning any captured prefix as well as the source.
   fn into_inner(self) -> (Cursor<Vec<u8>>, R) {
-    (self.cursor, self.source)
+    (self.prefix, self.source)
   }
 }
 
-impl<R> Read for RewindableReader<R>
+impl<R> Read for CaptureReader<R>
 where
   R: Read,
 {
@@ -268,7 +299,7 @@ where
     // First, copy as much data as we can from the unread portion of the cursor
     // into the buffer.
     let prefix_size = std::cmp::min(buf.len(), self.captured_unread());
-    self.cursor.read_exact(&mut buf[..prefix_size])?;
+    self.prefix.read_exact(&mut buf[..prefix_size])?;
     if self.captured_unread() > 0 || prefix_size == buf.len() {
       return Ok(prefix_size);
     }
@@ -276,21 +307,20 @@ where
     // Second, fill the rest of the buffer with data from the source, and
     // capture it for ourselves as well.
     //
-    // The `read` documentation recommends against reading the contents of buf.
-    // Reading between the lines, though, it seems the main goal is to prevent
-    // the accidental use of uninitialized memory, and not to handle ridiculous
-    // scenarios like "buf might point to memory mapped hardware that doesn't
-    // act like RAM." As buf is &mut we can assume nobody else aliases it, and
-    // we are only reading a slice of data we know we've written ourselves, so
-    // uninitialized memory should not be a problem for our particular usage.
+    // The `read` documentation recommends against us reading from `buf`, but
+    // does not prevent it, and does require callers of `read` to assume we
+    // might do this. As morally questionable as it is, this approach lets our
+    // consumer drive the number and size of reads against the source, making
+    // our presence more transparent to both sides. As the smallest consolation,
+    // it's worth noting that we only read bytes we know were freshly written,
+    // and do not rely on the original contents of `buf` in any way.
     let buf = &mut buf[prefix_size..];
     let source_size = self.source.read(buf)?;
-    self.cursor.write_all(&buf[..source_size])?;
+    self.prefix.write_all(&buf[..source_size])?;
 
-    // Finally, mark whether the source has reached EOF. Since we return early
-    // when prefix_size == buf.len(), and prefix_size == 0 for buf.len() == 0
-    // (as prefix_size is a min of unsigned values), we know that a source read
-    // of 0 bytes must indicate EOF rather than an empty buffer.
+    // Finally, mark whether the source has reached EOF. We know that our new
+    // `buf` can't be empty as we return early when `prefix_size == buf.len()`,
+    // so a 0 byte read can only indicate EOF.
     if source_size == 0 {
       self.source_eof = true;
     }
@@ -301,7 +331,7 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::RewindableReader;
+  use super::CaptureReader;
   use std::io::{Cursor, Read};
 
   const DATA: &str = "abcdefghij";
@@ -309,7 +339,7 @@ mod tests {
 
   #[test]
   fn rewindable_reader_straight_read() {
-    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+    let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
     let mut result = String::new();
     assert!(matches!(
@@ -325,7 +355,7 @@ mod tests {
 
   #[test]
   fn rewinding_rewindable_reader() {
-    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+    let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
     let mut tmp = [0; HALF];
     assert!(matches!(r.read_exact(&mut tmp), Ok(())));
@@ -342,7 +372,7 @@ mod tests {
 
   #[test]
   fn rewindable_reader_capture_to_end() {
-    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+    let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
     assert!(matches!(r.capture_to_end(), Ok(_)));
     assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
     assert!(r.is_source_eof());
@@ -350,9 +380,9 @@ mod tests {
 
   #[test]
   fn rewindable_reader_capture_up_to() {
-    let mut r = RewindableReader::new(Cursor::new(String::from(DATA)));
+    let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
-    assert!(matches!(r.capture_at_least(HALF), Ok(_)));
+    assert!(matches!(r.capture_to_size(HALF), Ok(_)));
 
     // We expect the reader to go all the way to its MIN_SIZE for such a small
     // request.

@@ -6,9 +6,9 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::{BorrowedInput, InputHandle};
+use crate::input;
 
-pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   let input_str = match str::from_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),
@@ -17,7 +17,7 @@ pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
   Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
-pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {

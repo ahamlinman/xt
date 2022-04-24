@@ -4,9 +4,9 @@ use std::io::{self, Write};
 
 use serde::Deserialize;
 
-use crate::{transcode, BorrowedInput, InputHandle};
+use crate::{input, transcode};
 
-pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   let input_str = match ensure_utf8(input.slice()?) {
     Ok(input_str) => input_str,
     Err(_) => return Ok(false),
@@ -19,7 +19,7 @@ pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
   Ok(false)
 }
 
-pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {

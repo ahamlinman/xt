@@ -4,9 +4,10 @@ use std::io;
 
 use serde::{de, ser, Deserialize, Serialize, Serializer};
 
-use crate::{Format, InputHandle, Output};
+use crate::input;
+use crate::{Format, Output};
 
-pub(crate) fn detect_format(input: &mut InputHandle) -> io::Result<Option<Format>> {
+pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Format>> {
   // As a binary format, we generally expect MessagePack to be the most
   // restrictive of the bunch. Note that we only detect MessagePack inputs that
   // start with an array or map; see the comments in this function for details.

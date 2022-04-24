@@ -4,7 +4,8 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 
 use serde::Deserialize;
 
-use crate::{transcode, BorrowedInput, Input, InputHandle};
+use crate::input::{self, Input};
+use crate::transcode;
 
 /// The maximum allowed nesting depth of MessagePack values.
 ///
@@ -13,7 +14,7 @@ use crate::{transcode, BorrowedInput, Input, InputHandle};
 /// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
 
-pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
   use rmp::Marker::{self, *};
   use rmp_serde::decode::Error::*;
 
@@ -34,8 +35,8 @@ pub(crate) fn input_matches(mut input: BorrowedInput) -> io::Result<bool> {
   }
 
   let result = match &mut input {
-    BorrowedInput::Buffer(buf) => match_input_buffer(buf),
-    BorrowedInput::Reader(r) => match_input_reader(r),
+    input::Ref::Slice(buf) => match_input_buffer(buf),
+    input::Ref::Reader(r) => match_input_reader(r),
   };
   match result {
     Err(InvalidMarkerRead(err) | InvalidDataRead(err)) => Err(err),
@@ -56,12 +57,12 @@ fn match_input_reader<R: Read>(input: R) -> Result<(), rmp_serde::decode::Error>
   serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
-pub(crate) fn transcode<O>(input: InputHandle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
 where
   O: crate::Output,
 {
   match input.into() {
-    Input::Buffer(buf) => {
+    Input::Slice(buf) => {
       let mut buf = &*buf;
       while !buf.is_empty() {
         let size = next_value_size(buf, DEPTH_LIMIT)?;
