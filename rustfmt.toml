@@ -1,1 +1,3 @@
+# This single non-default setting is an unfortunate historical accident, but is
+# maintained to avoid a major style migration in the repository history.
 tab_spaces = 2
