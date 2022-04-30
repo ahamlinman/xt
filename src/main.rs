@@ -93,8 +93,6 @@ const SHORT_HELP: &str = "Translate between serialized data formats
 
 Use --help for full usage information and available formats.";
 
-#[derive(Parser)]
-#[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 /// Translate between serialized data formats
 ///
 /// This version of xt supports the following formats, each of which may be
@@ -124,6 +122,8 @@ Use --help for full usage information and available formats.";
 /// xt does not guarantee that every translation is possible, or lossless, or
 /// reversible. xt's behavior is undefined if an input file is modified while
 /// running. xt is not designed for use with untrusted input.
+#[derive(Parser)]
+#[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 struct Cli {
   #[clap(
     name = "file",
