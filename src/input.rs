@@ -349,11 +349,36 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::CaptureReader;
+  use super::{CaptureReader, Handle, Ref};
   use std::io::{Cursor, Read};
 
   const DATA: &str = "abcdefghij";
   const HALF: usize = DATA.len() / 2;
+
+  #[test]
+  fn input_borrow_mut_rewind() {
+    let mut handle = Handle::from_reader(DATA.as_bytes());
+    let mut buf = vec![];
+
+    let mut input_ref = handle.borrow_mut();
+    match input_ref {
+      Ref::Slice(_) => unreachable!(),
+      Ref::Reader(ref mut r) => r.take(HALF as u64).read_to_end(&mut buf).unwrap(),
+    };
+    assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
+    buf.clear();
+
+    // Forgetting the `Ref` must not break the behavior of `borrow_mut`. Yes, I
+    // implemented rewinding based on `Drop` the first time around, which is
+    // obviously wrong. This must not be allowed to break again.
+    std::mem::forget(input_ref);
+
+    match handle.borrow_mut() {
+      Ref::Slice(_) => unreachable!(),
+      Ref::Reader(r) => r.take(HALF as u64).read_to_end(&mut buf).unwrap(),
+    };
+    assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
+  }
 
   #[test]
   fn rewindable_reader_straight_read() {
