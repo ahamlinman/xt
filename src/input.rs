@@ -337,12 +337,11 @@ where
     let source_size = self.source.read(buf)?;
     self.prefix.write_all(&buf[..source_size])?;
 
-    // Finally, mark whether the source has reached EOF. We know that our new
+    // Finally, mark whether the source is at EOF (keeping in mind that it can,
+    // in theory, return more data after an earlier EOF). We know that our new
     // `buf` can't be empty as we return early when `prefix_size == buf.len()`,
     // so a 0 byte read can only indicate EOF.
-    if source_size == 0 {
-      self.source_eof = true;
-    }
+    self.source_eof = source_size == 0;
 
     Ok(prefix_size + source_size)
   }
