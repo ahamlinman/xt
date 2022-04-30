@@ -98,7 +98,8 @@ impl<'i> Handle<'i> {
         if r.is_source_eof() {
           Ref::Slice(r.captured())
         } else {
-          Ref::Reader(ReaderGuard(r))
+          r.rewind();
+          Ref::Reader(r)
         }
       }
     }
@@ -166,7 +167,7 @@ where
   'i: 'h,
 {
   Slice(&'h [u8]),
-  Reader(ReaderGuard<'i, 'h>),
+  Reader(&'h mut CaptureReader<Box<dyn Read + 'i>>),
 }
 
 impl<'i, 'h> Ref<'i, 'h>
@@ -181,8 +182,8 @@ where
     match self {
       Ref::Slice(b) => Ok(b),
       Ref::Reader(r) => {
-        r.0.capture_to_end()?;
-        Ok(r.0.captured())
+        r.capture_to_end()?;
+        Ok(r.captured())
       }
     }
   }
@@ -201,36 +202,10 @@ where
     match self {
       Ref::Slice(b) => Ok(b),
       Ref::Reader(r) => {
-        r.0.capture_to_size(want_size)?;
-        Ok(r.0.captured())
+        r.capture_to_size(want_size)?;
+        Ok(r.captured())
       }
     }
-  }
-}
-
-/// Wraps a [`CaptureReader`] to rewind its position to the start when dropped.
-///
-/// This enables multiple calls to [`Handle::borrow_mut`] to access reader input
-/// without fully consuming it.
-pub(crate) struct ReaderGuard<'i, 'h>(&'h mut CaptureReader<Box<dyn Read + 'i>>)
-where
-  'i: 'h;
-
-impl<'i, 'h> Read for ReaderGuard<'i, 'h>
-where
-  'i: 'h,
-{
-  fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-    self.0.read(buf)
-  }
-}
-
-impl<'i, 'h> Drop for ReaderGuard<'i, 'h>
-where
-  'i: 'h,
-{
-  fn drop(&mut self) {
-    self.0.rewind();
   }
 }
 
