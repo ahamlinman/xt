@@ -41,6 +41,7 @@ features = ["html_reports"]
 
 [[bench]]
 name = "criterion"
+path = "benches/criterion.rs"
 harness = false
 
 [profile.dev]
