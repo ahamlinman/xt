@@ -199,8 +199,8 @@ where
   /// For reader inputs not yet fully buffered, `want_size` represents the
   /// minimum size of the prefix that the call should attempt to produce by
   /// capturing new bytes from the source. The returned prefix may be smaller or
-  /// larger than `want_size` if the reader reaches EOF, more input has already
-  /// been captured, or a larger read is made from the source for efficiency.
+  /// larger than `want_size` if the reader reaches EOF or more input is already
+  /// captured.
   pub(crate) fn prefix(&mut self, want_size: usize) -> io::Result<&[u8]> {
     match self {
       Ref::Slice(b) => Ok(b),
@@ -313,12 +313,7 @@ where
   /// The actual number of captured bytes may be less than `size` if the source
   /// reaches EOF before producing `size` bytes.
   fn capture_to_size(&mut self, size: usize) -> io::Result<()> {
-    // This matches the privately defined default size of a BufReader for most
-    // platforms as of this writing. It seems like a reasonable enough lower
-    // bound to prevent us from spending a system call on, say, one byte.
-    const MIN_SIZE: usize = 8 * 1024;
-
-    let needed = std::cmp::max(size, MIN_SIZE).saturating_sub(self.prefix.get_ref().len());
+    let needed = size.saturating_sub(self.prefix.get_ref().len());
     if needed == 0 {
       return Ok(());
     }
@@ -488,10 +483,7 @@ mod tests {
   fn rewindable_reader_capture_up_to() {
     let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
     assert!(matches!(r.capture_to_size(HALF), Ok(_)));
-
-    // We expect the reader to go all the way to its MIN_SIZE for such a small
-    // request.
-    assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
-    assert!(r.is_source_eof());
+    assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
+    assert!(!r.is_source_eof());
   }
 }
