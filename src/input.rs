@@ -146,12 +146,13 @@ impl<'i> From<Handle<'i>> for Input<'i> {
       Source::Slice(b) => Input::Slice(Cow::Borrowed(b)),
       Source::Reader(r) => {
         let source_eof = r.is_source_eof();
-        let (cursor, source) = r.into_inner();
+        let (mut cursor, source) = r.into_inner();
         if source_eof {
           Input::Slice(Cow::Owned(cursor.into_inner()))
         } else if cursor.get_ref().is_empty() {
           Input::Reader(source)
         } else {
+          cursor.set_position(0);
           Input::Reader(Box::new(cursor.chain(source)))
         }
       }
@@ -349,8 +350,9 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::{CaptureReader, Handle, Ref};
-  use std::io::{Cursor, Read};
+  use super::{CaptureReader, Handle, Input, Ref};
+  use std::borrow::Cow;
+  use std::io::{self, Cursor, Read};
 
   const DATA: &str = "abcdefghij";
   const HALF: usize = DATA.len() / 2;
@@ -370,7 +372,7 @@ mod tests {
 
     // Forgetting the `Ref` must not break the behavior of `borrow_mut`. Yes, I
     // implemented rewinding based on `Drop` the first time around, which is
-    // obviously wrong. This must not be allowed to break again.
+    // obviously wrong.
     std::mem::forget(input_ref);
 
     match handle.borrow_mut() {
@@ -378,6 +380,33 @@ mod tests {
       Ref::Reader(r) => r.take(HALF as u64).read_to_end(&mut buf).unwrap(),
     };
     assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
+    buf.clear();
+
+    // If we only consume part of a borrowed reader, we need to reset the reader
+    // before giving ownership away. I made this mistake in my first attempt to
+    // eliminate the `Drop`-based rewind.
+    let mut r = match handle.into() {
+      Input::Slice(_) => unreachable!(),
+      Input::Reader(r) => r,
+    };
+    assert!(matches!(r.read_to_end(&mut buf), Ok(len) if len == DATA.len()));
+    assert_eq!(std::str::from_utf8(&buf), Ok(DATA));
+  }
+
+  #[test]
+  fn input_into_cow() {
+    let mut handle = Handle::from_reader(DATA.as_bytes());
+
+    match handle.borrow_mut() {
+      Ref::Slice(_) => unreachable!(),
+      Ref::Reader(r) => io::copy(&mut r.take(HALF as u64), &mut io::sink()).unwrap(),
+    };
+
+    // Similar to above (though not a mistake I actually made). If we only
+    // consume part of a borrowed reader, turning the input into a slice should
+    // still produce the full input.
+    let buf: Cow<'_, [u8]> = handle.try_into().unwrap();
+    assert_eq!(std::str::from_utf8(&buf), Ok(DATA));
   }
 
   #[test]
