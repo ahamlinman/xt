@@ -52,7 +52,7 @@ pub struct Handle<'i>(Source<'i>);
 /// The private container for the original input a [`Handle`] was created from.
 enum Source<'i> {
   Slice(&'i [u8]),
-  Reader(CaptureReader<Box<dyn Read + 'i>>),
+  Reader(RewindGuard<Box<dyn Read + 'i>>),
 }
 
 impl<'i> Handle<'i> {
@@ -62,8 +62,8 @@ impl<'i> Handle<'i> {
   /// but require all input to be loaded into memory in advance. This may be
   /// inappropriate for an unbounded stream of documents in a format that
   /// supports streaming translation.
-  pub fn from_slice(source: &'i [u8]) -> Handle<'i> {
-    Handle(Source::Slice(source))
+  pub fn from_slice(b: &'i [u8]) -> Handle<'i> {
+    Handle(Source::Slice(b))
   }
 
   /// Creates a handle for an input reader.
@@ -73,11 +73,11 @@ impl<'i> Handle<'i> {
   /// buffering more than one document in memory at a time. When translating
   /// from a format that does not support streaming, xt will buffer the entire
   /// contents of the reader into memory before starting translation.
-  pub fn from_reader<R>(source: R) -> Handle<'i>
+  pub fn from_reader<R>(r: R) -> Handle<'i>
   where
     R: Read + 'i,
   {
-    Handle(Source::Reader(CaptureReader::new(Box::new(source))))
+    Handle(Source::Reader(RewindGuard::new(Box::new(r))))
   }
 
   /// Borrows a temporary reference to the input.
@@ -95,10 +95,10 @@ impl<'i> Handle<'i> {
     match &mut self.0 {
       Source::Slice(b) => Ref::Slice(b),
       Source::Reader(r) => {
+        let r = r.rewind_and_borrow_mut();
         if r.is_source_eof() {
           Ref::Slice(r.captured())
         } else {
-          r.rewind();
           Ref::Reader(r)
         }
       }
@@ -115,6 +115,8 @@ impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
     match self.0 {
       Source::Slice(b) => Ok(Cow::Borrowed(b)),
       Source::Reader(r) => {
+        let r = r.rewind_and_take();
+
         if r.is_source_eof() {
           let (cursor, _) = r.into_inner();
           return Ok(Cow::Owned(cursor.into_inner()));
@@ -145,14 +147,14 @@ impl<'i> From<Handle<'i>> for Input<'i> {
     match handle.0 {
       Source::Slice(b) => Input::Slice(Cow::Borrowed(b)),
       Source::Reader(r) => {
+        let r = r.rewind_and_take();
         let source_eof = r.is_source_eof();
-        let (mut cursor, source) = r.into_inner();
+        let (cursor, source) = r.into_inner();
         if source_eof {
           Input::Slice(Cow::Owned(cursor.into_inner()))
         } else if cursor.get_ref().is_empty() {
           Input::Reader(source)
         } else {
-          cursor.set_position(0);
           Input::Reader(Box::new(cursor.chain(source)))
         }
       }
@@ -207,6 +209,36 @@ where
         Ok(r.captured())
       }
     }
+  }
+}
+
+/// A wrapper that forces a [`CaptureReader`] to be rewound prior to use.
+///
+/// This is designed to statically prevent bugs that would result from
+/// forgetting to rewind the reader before exposing its contents to consumers.
+struct RewindGuard<R>(CaptureReader<R>)
+where
+  R: Read;
+
+impl<R> RewindGuard<R>
+where
+  R: Read,
+{
+  /// Returns a new `RewindGuard` containing a new `CaptureReader`.
+  fn new(r: R) -> Self {
+    Self(CaptureReader::new(r))
+  }
+
+  /// Rewinds the `CaptureReader`, then returns a mutable reference.
+  fn rewind_and_borrow_mut(&mut self) -> &mut CaptureReader<R> {
+    self.0.rewind();
+    &mut self.0
+  }
+
+  /// Rewinds the `CaptureReader`, then returns it.
+  fn rewind_and_take(mut self) -> CaptureReader<R> {
+    self.0.rewind();
+    self.0
   }
 }
 
