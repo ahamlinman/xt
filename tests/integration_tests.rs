@@ -23,14 +23,14 @@ use xt::{Format, Handle};
 
 /// Tests a single call to xt::translate against expected output.
 macro_rules! xt_single_test {
-  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-    #[test]
-    fn $name() {
-      let mut output = Vec::with_capacity($expected.len());
-      xt::translate($input, $from, $to, &mut output).unwrap();
-      assert_eq!(&output, $expected);
-    }
-  };
+    ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+        #[test]
+        fn $name() {
+            let mut output = Vec::with_capacity($expected.len());
+            xt::translate($input, $from, $to, &mut output).unwrap();
+            assert_eq!(&output, $expected);
+        }
+    };
 }
 
 /// Tests that xt produces equivalent translations for all possible invocations
@@ -154,17 +154,17 @@ xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf8bom, utf16bebom,
 /// tables at the same level.
 #[test]
 fn toml_reordering() {
-  const INPUT: &[u8] = include_bytes!("single_reordered.json");
-  const EXPECTED: &str = include_str!("single.toml");
-  let mut output = Vec::with_capacity(EXPECTED.len());
-  xt::translate(
-    Handle::from_slice(INPUT),
-    Some(Format::Json),
-    Format::Toml,
-    &mut output,
-  )
-  .unwrap();
-  assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+    const INPUT: &[u8] = include_bytes!("single_reordered.json");
+    const EXPECTED: &str = include_str!("single.toml");
+    let mut output = Vec::with_capacity(EXPECTED.len());
+    xt::translate(
+        Handle::from_slice(INPUT),
+        Some(Format::Json),
+        Format::Toml,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
 /// Tests that halting transcoding in the middle of a YAML input does not panic
@@ -175,13 +175,13 @@ fn toml_reordering() {
 /// transcoder broke internal YAML deserializer variants when this happened.
 #[test]
 fn yaml_halting_without_panic() {
-  const INPUT: &[u8] = include_bytes!("nullkey.yaml");
-  let _ = xt::translate(
-    Handle::from_slice(INPUT),
-    Some(Format::Yaml),
-    Format::Json,
-    std::io::sink(),
-  );
+    const INPUT: &[u8] = include_bytes!("nullkey.yaml");
+    let _ = xt::translate(
+        Handle::from_slice(INPUT),
+        Some(Format::Yaml),
+        Format::Json,
+        std::io::sink(),
+    );
 }
 
 /// Tests that MessagePack recursion depth limits behave consistently for both
@@ -192,36 +192,36 @@ fn yaml_halting_without_panic() {
 /// rmp_serde, which performs the only depth check for reader inputs.
 #[test]
 fn msgpack_depth_limit() {
-  // Magic private constant from msgpack.rs.
-  const DEPTH_LIMIT: usize = 1024;
+    // Magic private constant from msgpack.rs.
+    const DEPTH_LIMIT: usize = 1024;
 
-  // Nested arrays enclosing a null.
-  let mut input = [0x91_u8; DEPTH_LIMIT];
-  *input.last_mut().unwrap() = 0xc0;
+    // Nested arrays enclosing a null.
+    let mut input = [0x91_u8; DEPTH_LIMIT];
+    *input.last_mut().unwrap() = 0xc0;
 
-  // See https://stackoverflow.com/a/42960702. Cargo runs tests on secondary
-  // threads, which by default have 2 MiB stacks (per current std::thread docs).
-  // This is apparently too small to properly test our normal depth limit, so we
-  // run these cases with stacks that better approximate a typical main thread.
-  const STACK_SIZE: usize = 8 * 1024 * 1024;
+    // See https://stackoverflow.com/a/42960702. Cargo runs tests on secondary
+    // threads, which by default have 2 MiB stacks (per current std::thread docs).
+    // This is apparently too small to properly test our normal depth limit, so we
+    // run these cases with stacks that better approximate a typical main thread.
+    const STACK_SIZE: usize = 8 * 1024 * 1024;
 
-  stacker::grow(STACK_SIZE, || {
-    xt::translate(
-      Handle::from_reader(&input[..]),
-      Some(Format::Msgpack),
-      Format::Msgpack,
-      std::io::sink(),
-    )
-    .expect("reader should have been translated")
-  });
+    stacker::grow(STACK_SIZE, || {
+        xt::translate(
+            Handle::from_reader(&input[..]),
+            Some(Format::Msgpack),
+            Format::Msgpack,
+            std::io::sink(),
+        )
+        .expect("reader should have been translated")
+    });
 
-  stacker::grow(STACK_SIZE, || {
-    xt::translate(
-      Handle::from_slice(&input[..]),
-      Some(Format::Msgpack),
-      Format::Msgpack,
-      std::io::sink(),
-    )
-    .expect("buffer should have been translated")
-  });
+    stacker::grow(STACK_SIZE, || {
+        xt::translate(
+            Handle::from_slice(&input[..]),
+            Some(Format::Msgpack),
+            Format::Msgpack,
+            std::io::sink(),
+        )
+        .expect("buffer should have been translated")
+    });
 }

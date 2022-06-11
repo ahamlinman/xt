@@ -12,50 +12,50 @@ use crate::{Format, Output};
 /// Detects the input format by trying each known format and selecting the first
 /// one that works.
 pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Format>> {
-  // We begin with the formats that support streaming input, so that we can try
-  // to detect the format for reader input without consuming it entirely.
+    // We begin with the formats that support streaming input, so that we can try
+    // to detect the format for reader input without consuming it entirely.
 
-  // As a binary format, we generally expect MessagePack to be more restrictive
-  // than any text format. Note that we only detect MessagePack inputs that
-  // start with an array or map; see [`msgpack::input_matches`] for details.
-  if crate::msgpack::input_matches(input.borrow_mut())? {
-    return Ok(Some(Format::Msgpack));
-  }
+    // As a binary format, we generally expect MessagePack to be more restrictive
+    // than any text format. Note that we only detect MessagePack inputs that
+    // start with an array or map; see [`msgpack::input_matches`] for details.
+    if crate::msgpack::input_matches(input.borrow_mut())? {
+        return Ok(Some(Format::Msgpack));
+    }
 
-  // In addition to being the only text format that supports streaming, we
-  // expect JSON to be more restrictive than the two other text formats. For
-  // example, a "#" comment at the start of a document could be TOML or YAML,
-  // but definitely not JSON.
-  if crate::json::input_matches(input.borrow_mut())? {
-    return Ok(Some(Format::Json));
-  }
+    // In addition to being the only text format that supports streaming, we
+    // expect JSON to be more restrictive than the two other text formats. For
+    // example, a "#" comment at the start of a document could be TOML or YAML,
+    // but definitely not JSON.
+    if crate::json::input_matches(input.borrow_mut())? {
+        return Ok(Some(Format::Json));
+    }
 
-  // At this point, we can move on to the formats that require full buffering.
+    // At this point, we can move on to the formats that require full buffering.
 
-  // Of the text formats that require buffering, TOML is more restrictive than
-  // YAML. In fact, if we don't try TOML first, the YAML parser may accept the
-  // input by parsing it as a single plain style flow scalar, i.e. as a giant
-  // string. This generally works for any TOML document that doesn't start with
-  // a table. `Cargo.lock` is a great example, if you're curious.
-  if crate::toml::input_matches(input.borrow_mut())? {
-    return Ok(Some(Format::Toml));
-  }
+    // Of the text formats that require buffering, TOML is more restrictive than
+    // YAML. In fact, if we don't try TOML first, the YAML parser may accept the
+    // input by parsing it as a single plain style flow scalar, i.e. as a giant
+    // string. This generally works for any TOML document that doesn't start with
+    // a table. `Cargo.lock` is a great example, if you're curious.
+    if crate::toml::input_matches(input.borrow_mut())? {
+        return Ok(Some(Format::Toml));
+    }
 
-  // Finally, YAML is our traditional fallback format. Yes, we still get the
-  // giant string behavior described above for arbitrary text documents, but it
-  // is how xt has worked for a long time and it's not like the behavior is
-  // actively harmful. We do try to defer the YAML check for as long as we can,
-  // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
-  // might be expensive. In particular, we do it after the MessagePack check
-  // since some valid MessagePack values would be false matches under the YAML
-  // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
-  // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
-  // the byte patterns for UTF-16-LE YAML input.
-  if crate::yaml::input_matches(input.borrow_mut())? {
-    return Ok(Some(Format::Yaml));
-  }
+    // Finally, YAML is our traditional fallback format. Yes, we still get the
+    // giant string behavior described above for arbitrary text documents, but it
+    // is how xt has worked for a long time and it's not like the behavior is
+    // actively harmful. We do try to defer the YAML check for as long as we can,
+    // since it will try to detect and re-encode UTF-16 and UTF-32 input, which
+    // might be expensive. In particular, we do it after the MessagePack check
+    // since some valid MessagePack values would be false matches under the YAML
+    // 1.2 encoding detection algorithm. For example, a MessagePack fixarray with
+    // the integer 0 as its first value encodes as 0x9_ 0x00, which matches one of
+    // the byte patterns for UTF-16-LE YAML input.
+    if crate::yaml::input_matches(input.borrow_mut())? {
+        return Ok(Some(Format::Yaml));
+    }
 
-  Ok(None)
+    Ok(None)
 }
 
 /// The crown jewel of the auto-detection logic: a type that comprehensively
@@ -63,22 +63,22 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 struct Discard;
 
 impl Output for Discard {
-  fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
-  where
-    D: de::Deserializer<'de, Error = E>,
-    E: de::Error + 'static,
-  {
-    de::IgnoredAny::deserialize(de)?;
-    Ok(())
-  }
+    fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+    where
+        D: de::Deserializer<'de, Error = E>,
+        E: de::Error + 'static,
+    {
+        de::IgnoredAny::deserialize(de)?;
+        Ok(())
+    }
 
-  fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
-  where
-    S: Serialize,
-  {
-    value.serialize(Discard)?;
-    Ok(())
-  }
+    fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+    where
+        S: Serialize,
+    {
+        value.serialize(Discard)?;
+        Ok(())
+    }
 }
 
 /// Implements [`Serializer`] methods for [`Discard`] using a custom syntax.
@@ -121,51 +121,51 @@ macro_rules! xt_detect_impl_discard_methods {
 }
 
 impl Serializer for Discard {
-  type Ok = ();
-  type Error = DiscardError;
+    type Ok = ();
+    type Error = DiscardError;
 
-  type SerializeSeq = Discard;
-  type SerializeTuple = Discard;
-  type SerializeTupleStruct = Discard;
-  type SerializeTupleVariant = Discard;
-  type SerializeMap = Discard;
-  type SerializeStruct = Discard;
-  type SerializeStructVariant = Discard;
+    type SerializeSeq = Discard;
+    type SerializeTuple = Discard;
+    type SerializeTupleStruct = Discard;
+    type SerializeTupleVariant = Discard;
+    type SerializeMap = Discard;
+    type SerializeStruct = Discard;
+    type SerializeStructVariant = Discard;
 
-  xt_detect_impl_discard_methods! {
-    { serialize_unit(self) } does nothing;
-    { serialize_bool(self, _: bool) } does nothing;
-    { serialize_i8(self, _: i8) } does nothing;
-    { serialize_i16(self, _: i16) } does nothing;
-    { serialize_i32(self, _: i32) } does nothing;
-    { serialize_i64(self, _: i64) } does nothing;
-    { serialize_i128(self, _: i128) } does nothing;
-    { serialize_u8(self, _: u8) } does nothing;
-    { serialize_u16(self, _: u16) } does nothing;
-    { serialize_u32(self, _: u32) } does nothing;
-    { serialize_u64(self, _: u64) } does nothing;
-    { serialize_u128(self, _: u128) } does nothing;
-    { serialize_f32(self, _: f32) } does nothing;
-    { serialize_f64(self, _: f64) } does nothing;
-    { serialize_char(self, _: char) } does nothing;
-    { serialize_str(self, _: &str) } does nothing;
-    { serialize_bytes(self, _: &[u8]) } does nothing;
-    { serialize_none(self) } does nothing;
-    { serialize_unit_struct(self, _: &'static str) } does nothing;
-    { serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str) } does nothing;
+    xt_detect_impl_discard_methods! {
+      { serialize_unit(self) } does nothing;
+      { serialize_bool(self, _: bool) } does nothing;
+      { serialize_i8(self, _: i8) } does nothing;
+      { serialize_i16(self, _: i16) } does nothing;
+      { serialize_i32(self, _: i32) } does nothing;
+      { serialize_i64(self, _: i64) } does nothing;
+      { serialize_i128(self, _: i128) } does nothing;
+      { serialize_u8(self, _: u8) } does nothing;
+      { serialize_u16(self, _: u16) } does nothing;
+      { serialize_u32(self, _: u32) } does nothing;
+      { serialize_u64(self, _: u64) } does nothing;
+      { serialize_u128(self, _: u128) } does nothing;
+      { serialize_f32(self, _: f32) } does nothing;
+      { serialize_f64(self, _: f64) } does nothing;
+      { serialize_char(self, _: char) } does nothing;
+      { serialize_str(self, _: &str) } does nothing;
+      { serialize_bytes(self, _: &[u8]) } does nothing;
+      { serialize_none(self) } does nothing;
+      { serialize_unit_struct(self, _: &'static str) } does nothing;
+      { serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str) } does nothing;
 
-    { serialize_some<T: ?Sized + Serialize>(self, value: &T) } discards value;
-    { serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, value: &T) } discards value;
-    { serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, value: &T) } discards value;
+      { serialize_some<T: ?Sized + Serialize>(self, value: &T) } discards value;
+      { serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, value: &T) } discards value;
+      { serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, value: &T) } discards value;
 
-    { serialize_seq(self, _: Option<usize>) } returns Discard;
-    { serialize_tuple(self, _: usize) } returns Discard;
-    { serialize_tuple_struct(self, _: &'static str, _: usize) } returns Discard;
-    { serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
-    { serialize_map(self, _: Option<usize>) } returns Discard;
-    { serialize_struct(self, _: &'static str, _: usize) } returns Discard;
-    { serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
-  }
+      { serialize_seq(self, _: Option<usize>) } returns Discard;
+      { serialize_tuple(self, _: usize) } returns Discard;
+      { serialize_tuple_struct(self, _: &'static str, _: usize) } returns Discard;
+      { serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
+      { serialize_map(self, _: Option<usize>) } returns Discard;
+      { serialize_struct(self, _: &'static str, _: usize) } returns Discard;
+      { serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) } returns Discard;
+    }
 }
 
 /// Implements additional [`Serializer`] traits for [`Discard`] using
@@ -230,15 +230,15 @@ xt_detect_impl_discard_traits! {
 struct DiscardError(String);
 
 impl fmt::Display for DiscardError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    fmt::Display::fmt(&self.0, f)
-  }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl Error for DiscardError {}
 
 impl ser::Error for DiscardError {
-  fn custom<T: fmt::Display>(msg: T) -> Self {
-    DiscardError(msg.to_string())
-  }
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        DiscardError(msg.to_string())
+    }
 }
