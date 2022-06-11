@@ -37,43 +37,43 @@ macro_rules! xt_single_test {
 /// that translate a given input to a given output format.
 macro_rules! xt_test_all_invocations {
   ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-    paste! {
-      xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
-      xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
-      xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
-      xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
-    }
+      paste! {
+          xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
+          xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
+          xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
+          xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
+      }
   }
 }
 
 /// Exhaustively tests all possible translations between a set of documents.
 macro_rules! xt_test_all_combinations {
-  // A: Select the first document as our left side and test it against the
-  //    remaining right sides, or recurse and select the next document as the
-  //    left side.
-  { $name:ident; ($lf:ident, $lin:expr); $($tail:tt)* } => {
-    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
-    xt_test_all_combinations!{ $name; $($tail)* }            // => A or D
-  };
-  // B: We have a left side and a right side. Test both possible translation
-  //    directions for that pair, then test the left side against the remaining
-  //    right sides.
-  { $name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($tail:tt)* } => {
-    paste! {
-      xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
-      xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
-    }
-    xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
-  };
-  // C: We have a left side, but we ran out of right sides. Test the left side
-  //    against itself.
-  { $name:ident; $lf:ident, $lin:expr; } => {
-    paste! {
-      xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
-    }
-  };
-  // D: We ran out of possible left sides.
-  { $name:ident; } => {};
+    // A: Select the first document as our left side and test it against the
+    //    remaining right sides, or recurse and select the next document as the
+    //    left side.
+    { $name:ident; ($lf:ident, $lin:expr); $($tail:tt)* } => {
+        xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
+        xt_test_all_combinations!{ $name; $($tail)* }            // => A or D
+    };
+    // B: We have a left side and a right side. Test both possible translation
+    //    directions for that pair, then test the left side against the remaining
+    //    right sides.
+    { $name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($tail:tt)* } => {
+        paste! {
+            xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
+            xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
+        }
+        xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
+    };
+    // C: We have a left side, but we ran out of right sides. Test the left side
+    //    against itself.
+    { $name:ident; $lf:ident, $lin:expr; } => {
+        paste! {
+            xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
+        }
+    };
+    // D: We ran out of possible left sides.
+    { $name:ident; } => {};
 }
 
 static SINGLE_JSON_INPUT: &[u8] = include_bytes!("single.json");
@@ -90,11 +90,11 @@ static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
 // 3. The values in the map must appear in an order that TOML can support
 //    (non-tables before tables at a given level of nesting).
 xt_test_all_combinations! {
-  single;
-  (Json, SINGLE_JSON_INPUT);
-  (Yaml, SINGLE_YAML_INPUT);
-  (Toml, SINGLE_TOML_INPUT);
-  (Msgpack, SINGLE_MSGPACK_INPUT);
+    single;
+    (Json, SINGLE_JSON_INPUT);
+    (Yaml, SINGLE_YAML_INPUT);
+    (Toml, SINGLE_TOML_INPUT);
+    (Msgpack, SINGLE_MSGPACK_INPUT);
 }
 
 static MULTI_JSON_INPUT: &[u8] = include_bytes!("multi.json");
@@ -109,10 +109,10 @@ static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
 //
 // TOML does not support multi-document transcoding.
 xt_test_all_combinations! {
-  multi;
-  (Json, MULTI_JSON_INPUT);
-  (Yaml, MULTI_YAML_INPUT);
-  (Msgpack, MULTI_MSGPACK_INPUT);
+    multi;
+    (Json, MULTI_JSON_INPUT);
+    (Yaml, MULTI_YAML_INPUT);
+    (Msgpack, MULTI_MSGPACK_INPUT);
 }
 
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
@@ -127,24 +127,24 @@ const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 /// a BOM.
 macro_rules! xt_test_yaml_encodings {
   ($($filename:ident),+ $(,)?) => {
-    paste! {
-      $(
-        #[test]
-        fn [<yaml_encoding_ $filename>]() {
-          static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
-          let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
-          xt::translate(
-            Handle::from_slice(INPUT),
-            Some(Format::Yaml),
-            Format::Json,
-            &mut output,
-          )
-          .unwrap();
-          assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
-        }
-      )+
-    }
-  };
+      paste! {
+          $(
+              #[test]
+              fn [<yaml_encoding_ $filename>]() {
+                  static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
+                  let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+                  xt::translate(
+                      Handle::from_slice(INPUT),
+                      Some(Format::Yaml),
+                      Format::Json,
+                      &mut output,
+                  )
+                  .unwrap();
+                  assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+              }
+          )+
+      }
+    };
 }
 
 xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf8bom, utf16bebom, utf32lebom];

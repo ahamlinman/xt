@@ -7,118 +7,118 @@ use xt::{Format, Handle};
 criterion_main!(small, large);
 
 criterion_group! {
-  name = small;
-  config = Criterion::default();
-  targets = small_json,
-            small_yaml,
-            small_toml,
-            small_msgpack,
+    name = small;
+    config = Criterion::default();
+    targets = small_json,
+              small_yaml,
+              small_toml,
+              small_msgpack,
 }
 
 criterion_group! {
-  name = large;
-  config = Criterion::default().measurement_time(Duration::from_secs(30));
-  targets = large_json,
-            large_yaml,
-            large_toml,
-            large_msgpack,
+    name = large;
+    config = Criterion::default().measurement_time(Duration::from_secs(30));
+    targets = large_json,
+              large_yaml,
+              large_toml,
+              large_msgpack,
 }
 
 macro_rules! xt_benchmark {
-  (
-    name        = $name:ident;
-    sources     = $($source:ident),+;
-    loader      = $loader:path;
-    translation = $from:path => $to:path;
-    $(group_config { $($setting_name:ident = $setting_value:expr;)* })?
-  ) => {
-    fn $name(c: &mut Criterion) {
-      let mut group = c.benchmark_group(stringify!($name));
-      let input = $loader($from);
+    (
+        name        = $name:ident;
+        sources     = $($source:ident),+;
+        loader      = $loader:path;
+        translation = $from:path => $to:path;
+        $(group_config { $($setting_name:ident = $setting_value:expr;)* })?
+    ) => {
+        fn $name(c: &mut Criterion) {
+            let mut group = c.benchmark_group(stringify!($name));
+            let input = $loader($from);
 
-      $($(group.$setting_name($setting_value);)*)?
+            $($(group.$setting_name($setting_value);)*)?
 
-      $(
-        group.bench_function(stringify!($source), |b| {
-          b.iter(|| {
-            xt::translate(
-              xt_benchmark!(@input_handle $source &*input),
-              black_box(Some($from)),
-              black_box($to),
-              std::io::sink(),
-            )
-          })
-        });
-      )+
+            $(
+                group.bench_function(stringify!($source), |b| {
+                    b.iter(|| {
+                        xt::translate(
+                            xt_benchmark!(@input_handle $source &*input),
+                            black_box(Some($from)),
+                            black_box($to),
+                            std::io::sink(),
+                        )
+                    })
+                });
+            )+
 
-      group.finish();
+            group.finish();
+        }
+    };
+    (@input_handle buffer $input:expr) => { Handle::from_slice($input) };
+    (@input_handle reader $input:expr) => { Handle::from_reader($input) };
+}
+
+xt_benchmark! {
+    name        = small_json;
+    sources     = buffer, reader;
+    loader      = load_small_data;
+    translation = Format::Json => Format::Msgpack;
+}
+
+xt_benchmark! {
+    name        = small_yaml;
+    sources     = buffer;
+    loader      = load_small_data;
+    translation = Format::Yaml => Format::Json;
+}
+
+xt_benchmark! {
+    name        = small_toml;
+    sources     = buffer;
+    loader      = load_small_data;
+    translation = Format::Toml => Format::Json;
+}
+
+xt_benchmark! {
+    name        = small_msgpack;
+    sources     = buffer, reader;
+    loader      = load_small_data;
+    translation = Format::Msgpack => Format::Json;
+}
+
+xt_benchmark! {
+    name        = large_json;
+    sources     = buffer, reader;
+    loader      = load_large_data;
+    translation = Format::Json => Format::Msgpack;
+}
+
+xt_benchmark! {
+    name        = large_yaml;
+    sources     = buffer;
+    loader      = load_large_data;
+    translation = Format::Yaml => Format::Json;
+    group_config {
+        sample_size = 50;
     }
-  };
-  (@input_handle buffer $input:expr) => { Handle::from_slice($input) };
-  (@input_handle reader $input:expr) => { Handle::from_reader($input) };
 }
 
 xt_benchmark! {
-  name        = small_json;
-  sources     = buffer, reader;
-  loader      = load_small_data;
-  translation = Format::Json => Format::Msgpack;
+    name        = large_toml;
+    sources     = buffer;
+    loader      = load_large_data;
+    translation = Format::Toml => Format::Json;
+    group_config {
+        measurement_time = Duration::from_secs(60);
+        sample_size      = 20;
+    }
 }
 
 xt_benchmark! {
-  name        = small_yaml;
-  sources     = buffer;
-  loader      = load_small_data;
-  translation = Format::Yaml => Format::Json;
-}
-
-xt_benchmark! {
-  name        = small_toml;
-  sources     = buffer;
-  loader      = load_small_data;
-  translation = Format::Toml => Format::Json;
-}
-
-xt_benchmark! {
-  name        = small_msgpack;
-  sources     = buffer, reader;
-  loader      = load_small_data;
-  translation = Format::Msgpack => Format::Json;
-}
-
-xt_benchmark! {
-  name        = large_json;
-  sources     = buffer, reader;
-  loader      = load_large_data;
-  translation = Format::Json => Format::Msgpack;
-}
-
-xt_benchmark! {
-  name        = large_yaml;
-  sources     = buffer;
-  loader      = load_large_data;
-  translation = Format::Yaml => Format::Json;
-  group_config {
-    sample_size = 50;
-  }
-}
-
-xt_benchmark! {
-  name        = large_toml;
-  sources     = buffer;
-  loader      = load_large_data;
-  translation = Format::Toml => Format::Json;
-  group_config {
-    measurement_time = Duration::from_secs(60);
-    sample_size      = 20;
-  }
-}
-
-xt_benchmark! {
-  name        = large_msgpack;
-  sources     = buffer, reader;
-  loader      = load_large_data;
-  translation = Format::Msgpack => Format::Json;
+    name        = large_msgpack;
+    sources     = buffer, reader;
+    loader      = load_large_data;
+    translation = Format::Msgpack => Format::Json;
 }
 
 fn load_small_data(format: Format) -> Vec<u8> {

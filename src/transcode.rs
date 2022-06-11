@@ -609,9 +609,9 @@ impl Serialize for Value<'_> {
 macro_rules! xt_transcode_impl_value_visitors {
   ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
     $(
-      fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
-        Ok($result)
-      }
+        fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
+            Ok($result)
+        }
     )*
   };
 }
@@ -631,34 +631,34 @@ impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {
             }
 
             xt_transcode_impl_value_visitors! {
-              visit_unit() => Value::Unit;
+                visit_unit() => Value::Unit;
 
-              visit_bool(v: bool) => Value::Bool(v);
+                visit_bool(v: bool) => Value::Bool(v);
 
-              visit_i8(v: i8) => Value::I8(v);
-              visit_i16(v: i16) => Value::I16(v);
-              visit_i32(v: i32) => Value::I32(v);
-              visit_i64(v: i64) => Value::I64(v);
-              visit_i128(v: i128) => Value::I128(v);
+                visit_i8(v: i8) => Value::I8(v);
+                visit_i16(v: i16) => Value::I16(v);
+                visit_i32(v: i32) => Value::I32(v);
+                visit_i64(v: i64) => Value::I64(v);
+                visit_i128(v: i128) => Value::I128(v);
 
-              visit_u8(v: u8) => Value::U8(v);
-              visit_u16(v: u16) => Value::U16(v);
-              visit_u32(v: u32) => Value::U32(v);
-              visit_u64(v: u64) => Value::U64(v);
-              visit_u128(v: u128) => Value::U128(v);
+                visit_u8(v: u8) => Value::U8(v);
+                visit_u16(v: u16) => Value::U16(v);
+                visit_u32(v: u32) => Value::U32(v);
+                visit_u64(v: u64) => Value::U64(v);
+                visit_u128(v: u128) => Value::U128(v);
 
-              visit_f32(v: f32) => Value::F32(v);
-              visit_f64(v: f64) => Value::F64(v);
+                visit_f32(v: f32) => Value::F32(v);
+                visit_f64(v: f64) => Value::F64(v);
 
-              visit_char(v: char) => Value::Char(v);
+                visit_char(v: char) => Value::Char(v);
 
-              visit_borrowed_str(v: &'a str) => Value::String(Cow::Borrowed(v));
-              visit_str(v: &str) => Value::String(Cow::Owned(v.to_owned()));
-              visit_string(v: String) => Value::String(Cow::Owned(v));
+                visit_borrowed_str(v: &'a str) => Value::String(Cow::Borrowed(v));
+                visit_str(v: &str) => Value::String(Cow::Owned(v.to_owned()));
+                visit_string(v: String) => Value::String(Cow::Owned(v));
 
-              visit_borrowed_bytes(v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
-              visit_bytes(v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
-              visit_byte_buf(v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
+                visit_borrowed_bytes(v: &'a [u8]) => Value::Bytes(Cow::Borrowed(v));
+                visit_bytes(v: &[u8]) => Value::Bytes(Cow::Owned(v.to_owned()));
+                visit_byte_buf(v: Vec<u8>) => Value::Bytes(Cow::Owned(v));
             }
 
             fn visit_seq<A: de::SeqAccess<'a>>(self, mut v: A) -> Result<Self::Value, A::Error> {

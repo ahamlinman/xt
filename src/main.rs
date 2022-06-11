@@ -30,11 +30,11 @@ fn main() {
 
     macro_rules! xt_fail {
     ($fmt:literal, $($x:expr),*) => {{
-      eprintln!(concat!("xt error: ", $fmt), $($x),*);
-      process::exit(1);
+        eprintln!(concat!("xt error: ", $fmt), $($x),*);
+        process::exit(1);
     }};
     ($x:expr) => {
-      xt_fail!("{}", $x)
+        xt_fail!("{}", $x)
     };
   }
 
