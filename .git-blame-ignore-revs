@@ -1,3 +1,5 @@
 # .git-blame-ignore-revs
 # Migrate from 2-space to 4-space (rustfmt default) indentation
 36ea80a66f78c38d59c3435ed5136a9938de3a1b
+# Migrate additional cases of 2-space indentation not handled by rustfmt
+91515102604a1824ba6873108ff3115f797ed23b
