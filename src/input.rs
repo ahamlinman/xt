@@ -116,12 +116,10 @@ impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
             Source::Slice(b) => Ok(Cow::Borrowed(b)),
             Source::Reader(r) => {
                 let r = r.rewind_and_take();
-
                 if r.is_source_eof() {
                     let (cursor, _) = r.into_inner();
                     return Ok(Cow::Owned(cursor.into_inner()));
                 }
-
                 let (cursor, mut source) = r.into_inner();
                 let mut buf = cursor.into_inner();
                 source.read_to_end(&mut buf)?;
@@ -397,9 +395,7 @@ mod tests {
         assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
         buf.clear();
 
-        // Forgetting the `Ref` must not break the behavior of `borrow_mut`. Yes, I
-        // implemented rewinding based on `Drop` the first time around, which is
-        // obviously wrong.
+        // `Ref`s are designed to be forgettable without breaking behavior.
         std::mem::forget(input_ref);
 
         match handle.borrow_mut() {
@@ -410,8 +406,7 @@ mod tests {
         buf.clear();
 
         // If we only consume part of a borrowed reader, we need to reset the reader
-        // before giving ownership away. I made this mistake in my first attempt to
-        // eliminate the `Drop`-based rewind.
+        // before giving ownership away.
         let mut r = match handle.into() {
             Input::Slice(_) => unreachable!(),
             Input::Reader(r) => r,
@@ -429,9 +424,8 @@ mod tests {
             Ref::Reader(r) => io::copy(&mut r.take(HALF as u64), &mut io::sink()).unwrap(),
         };
 
-        // Similar to above (though not a mistake I actually made). If we only
-        // consume part of a borrowed reader, turning the input into a slice should
-        // still produce the full input.
+        // If we only consume part of a borrowed reader, turning the input into a
+        // slice should still produce the full input.
         let buf: Cow<'_, [u8]> = handle.try_into().unwrap();
         assert_eq!(std::str::from_utf8(&buf), Ok(DATA));
     }
@@ -441,10 +435,7 @@ mod tests {
         let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
         let mut result = String::new();
-        assert!(matches!(
-          r.read_to_string(&mut result),
-          Ok(len) if len == DATA.len(),
-        ));
+        assert!(matches!(r.read_to_string(&mut result), Ok(len) if len == DATA.len()));
         assert_eq!(result, DATA);
         assert!(r.is_source_eof());
 
