@@ -607,13 +607,13 @@ impl Serialize for Value<'_> {
 ///
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! xt_transcode_impl_value_visitors {
-  ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
-    $(
-        fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
-            Ok($result)
-        }
-    )*
-  };
+    ($($name:ident($($arg:ident: $ty:ty)?) => $result:expr;)*) => {
+        $(
+            fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
+                Ok($result)
+            }
+        )*
+    };
 }
 
 impl<'de: 'a, 'a> Deserialize<'de> for Value<'a> {

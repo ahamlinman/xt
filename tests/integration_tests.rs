@@ -36,14 +36,14 @@ macro_rules! xt_single_test {
 /// Tests that xt produces equivalent translations for all possible invocations
 /// that translate a given input to a given output format.
 macro_rules! xt_test_all_invocations {
-  ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-      paste! {
-          xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
-          xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
-          xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
-          xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
-      }
-  }
+    ($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
+        paste! {
+            xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
+            xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
+            xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
+            xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
+        }
+    }
 }
 
 /// Exhaustively tests all possible translations between a set of documents.
@@ -126,24 +126,24 @@ const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 /// combinations of code unit size, type of endianness, and presence or lack of
 /// a BOM.
 macro_rules! xt_test_yaml_encodings {
-  ($($filename:ident),+ $(,)?) => {
-      paste! {
-          $(
-              #[test]
-              fn [<yaml_encoding_ $filename>]() {
-                  static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
-                  let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
-                  xt::translate(
-                      Handle::from_slice(INPUT),
-                      Some(Format::Yaml),
-                      Format::Json,
-                      &mut output,
-                  )
-                  .unwrap();
-                  assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
-              }
-          )+
-      }
+    ($($filename:ident),+ $(,)?) => {
+        paste! {
+            $(
+                #[test]
+                fn [<yaml_encoding_ $filename>]() {
+                    static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
+                    let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+                    xt::translate(
+                        Handle::from_slice(INPUT),
+                        Some(Format::Yaml),
+                        Format::Json,
+                        &mut output,
+                    )
+                    .unwrap();
+                    assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+                }
+            )+
+        }
     };
 }
 
