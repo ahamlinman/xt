@@ -3,3 +3,5 @@
 36ea80a66f78c38d59c3435ed5136a9938de3a1b
 # Migrate additional cases of 2-space indentation not handled by rustfmt
 91515102604a1824ba6873108ff3115f797ed23b
+# Fix some cases above where the indentation still wasn't consistent
+370430f785ac29374ad9812023e1d8c077e971eb
