@@ -122,30 +122,30 @@ xt_benchmark! {
 }
 
 fn load_small_data(format: Format) -> Vec<u8> {
-  // The K8s data expands to just a few hundred bytes regardless of format.
-  load_test_data(include_bytes!("k8s-job.msgpack.zst"), format, 512)
+    // The K8s data expands to just a few hundred bytes regardless of format.
+    load_test_data(include_bytes!("k8s-job.msgpack.zst"), format, 512)
 }
 
 fn load_large_data(format: Format) -> Vec<u8> {
-  // The GitHub data expands to somewhere between 23 - 30 MB depending on the
-  // output format. 32 MiB is a nice, round number that should be big enough.
-  load_test_data(
-    include_bytes!("github-events.msgpack.zst"),
-    format,
-    32 * 1024 * 1024,
-  )
+    // The GitHub data expands to somewhere between 23 - 30 MB depending on the
+    // output format. 32 MiB is a nice, round number that should be big enough.
+    load_test_data(
+        include_bytes!("github-events.msgpack.zst"),
+        format,
+        32 * 1024 * 1024,
+    )
 }
 
 fn load_test_data(input: &[u8], format: Format, capacity: usize) -> Vec<u8> {
-  let mut output = Vec::with_capacity(capacity);
+    let mut output = Vec::with_capacity(capacity);
 
-  xt::translate(
-    Handle::from_reader(zstd::Decoder::new(input).expect("failed to create zstd decoder")),
-    Some(Format::Msgpack),
-    format,
-    &mut output,
-  )
-  .expect("failed to translate test data");
+    xt::translate(
+        Handle::from_reader(zstd::Decoder::new(input).expect("failed to create zstd decoder")),
+        Some(Format::Msgpack),
+        format,
+        &mut output,
+    )
+    .expect("failed to translate test data");
 
-  output
+    output
 }
