@@ -822,6 +822,7 @@ dependencies = [
  "clap 3.1.15",
  "criterion",
  "hex-literal",
+ "libc",
  "memmap2",
  "paste",
  "rmp",

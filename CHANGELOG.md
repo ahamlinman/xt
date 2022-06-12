@@ -1,3 +1,16 @@
+## Unreleased
+
+### Fixed
+
+- **Exit behavior on broken pipe errors.** Previous versions of xt treated
+  broken pipes as a non-error condition and exited successfully. This version
+  handles broken pipes in a manner similar to other command line tools,
+  particularly on Unix and Unix-like systems, treating them properly as errors.
+  This may change the behavior of scripts that modify the normal return values
+  of pipelines; for example, Bash scripts with the `pipefail` option enabled
+  may now report a nonzero status when a broken pipe causes xt to exit before
+  fully translating its input.
+
 ## v0.9.1 (2022-05-15)
 
 ### Fixed
@@ -124,10 +137,12 @@
   the tool sometimes exhibited severe performance problems when translating
   multi document JSON inputs, depending on the input source and use of format
   auto detection.
-- **Inconsistent handling of broken pipe errors.** Previous versions of the
-  tool often failed with broken pipe errors when a downstream program like
-  `less` exited before reading all of its input. This version is expected to
-  suppress these errors and exit successfully.
+- **Noisy handling of broken pipes.** Previous versions of the tool often
+  panicked with broken pipe errors when a downstream program like `less` exited
+  before reading all of its input, leading to unwanted extraneous output on
+  stderr. This version is expected to suppress these errors and exit
+  successfully. (**Note (2022-06-12):** The behavior of exiting successfully is
+  incorrect and is fixed in later versions of the tool.)
 - **Support for UTF-16 and UTF-32 YAML input.** Previous versions of the tool
   required UTF-8 encoding for all YAML inputs. This version handles all text
   encodings required by the YAML 1.2 specification, with a caveat: while the

@@ -29,6 +29,9 @@ features = ["std", "derive", "cargo"]
 version = "0.5"
 features = ["preserve_order"]
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 hex-literal = "0.3"
 paste = "1"

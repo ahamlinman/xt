@@ -12,6 +12,22 @@ use clap::{
 use xt::Format;
 
 fn main() {
+    #[cfg(unix)]
+    unsafe {
+        // Restore default SIGPIPE behavior for Unix(-like) systems.
+        // https://github.com/rust-lang/rust/issues/62569
+        // https://stackoverflow.com/a/65760807
+        //
+        // TODO: https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
+        // Andrew raises a good point that this limits testing of the more portable
+        // error handling path on Unix(-like) systems, which is not good considering
+        // how hard it was to get right. My personal inclination is still to prefer
+        // matching platform behavior as closely as possible (e.g. with respect to
+        // shell return codes), but maybe there should be an easier way to turn this
+        // off for testing?
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let args = match Cli::try_parse() {
         Ok(args) => args,
         Err(err) => match err.kind() {
@@ -29,14 +45,25 @@ fn main() {
     };
 
     macro_rules! xt_fail {
-    ($fmt:literal, $($x:expr),*) => {{
-        eprintln!(concat!("xt error: ", $fmt), $($x),*);
-        process::exit(1);
-    }};
-    ($x:expr) => {
-        xt_fail!("{}", $x)
-    };
-  }
+        ($fmt:literal, $($x:expr),*) => {{
+            eprintln!(concat!("xt error: ", $fmt), $($x),*);
+            process::exit(1);
+        }};
+        ($x:expr) => {
+            xt_fail!("{}", $x)
+        };
+    }
+
+    macro_rules! xt_fail_for_error {
+        ($x:expr) => {{
+            if is_broken_pipe($x) {
+                // Fail silently. This is a fallback for non-Unix platforms
+                // where SIGPIPE won't kill us automatically.
+                process::exit(1);
+            }
+            xt_fail!($x);
+        }};
+    }
 
     let mut output = BufWriter::new(io::stdout());
     if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
@@ -56,10 +83,7 @@ fn main() {
     // errors in the error chain produced during transcoding. This check does a
     // decent job of catching those cases.
     if let Err(err) = output.flush() {
-        match is_broken_pipe(&err) {
-            true => return,
-            false => xt_fail!(err),
-        }
+        xt_fail_for_error!(&err);
     }
 
     // Some other serializers, including the one for TOML, don't trigger the above
@@ -67,9 +91,7 @@ fn main() {
     // flush internally?). So we still have to check this case in addition to the
     // above.
     if let Err(err) = result {
-        if !is_broken_pipe(err.as_ref()) {
-            xt_fail!(err)
-        }
+        xt_fail_for_error!(err.as_ref());
     }
 }
 
