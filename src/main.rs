@@ -12,21 +12,7 @@ use clap::{
 use xt::Format;
 
 fn main() {
-    #[cfg(unix)]
-    unsafe {
-        // Restore default SIGPIPE behavior for Unix(-like) systems.
-        // https://github.com/rust-lang/rust/issues/62569
-        // https://stackoverflow.com/a/65760807
-        //
-        // TODO: https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
-        // Andrew raises a good point that this limits testing of the more portable
-        // error handling path on Unix(-like) systems, which is not good considering
-        // how hard it was to get right. My personal inclination is still to prefer
-        // matching platform behavior as closely as possible (e.g. with respect to
-        // shell return codes), but maybe there should be an easier way to turn this
-        // off for testing?
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
+    init_sigpipe_handling();
 
     let args = match Cli::try_parse() {
         Ok(args) => args,
@@ -92,6 +78,50 @@ fn main() {
     // above.
     if let Err(err) = result {
         xt_fail_for_error!(err.as_ref());
+    }
+}
+
+fn init_sigpipe_handling() {
+    // Restore the default behavior of SIGPIPE for Unix(-like) systems on
+    // non-debug builds, so that broken pipes kill the process with a signal
+    // rather than allow it to exit with a normal failure code.
+    //
+    // This is an admittedly imperfect attempt to satisfy two goals:
+    //
+    // 1. Match the behavior of other Unix utilities in this situation as
+    //    closely as possible. Being killed by a signal is fundamentally
+    //    different from exiting with any particular code, and xt should respect
+    //    that rather than hack around it (e.g. it should not exit with code 141
+    //    simply because that's what a shell would produce).
+    //
+    // 2. Ensure that the portable error handling paths for broken pipes on
+    //    non-Unix systems receive at least some testing from developers on Unix
+    //    systems. The logic to remain silent on broken pipe errors is
+    //    surprisingly complex due to inconsistent I/O error reporting among
+    //    xt's dependencies, so it would be bad for this logic to be too hard to
+    //    exercise as changes are made.
+    //
+    // It's intentional that this is treated as a form of debug assertion. The
+    // expectation is that a proper Unix system will reliably couple SIGPIPE to
+    // EPIPE (human-sent signals don't count), and that xt is simple enough that
+    // replacing a graceful return to main with an instant kill from deep in the
+    // call stack doesn't change its observable behavior enough to matter (as
+    // the observation of its behavior was only possible through the now-broken
+    // pipe). This is obviously not true for a wide range of other programs.
+    //
+    // TODO: Honestly, this does feel hard to justify compared to simply exiting
+    // with code 1 on all platforms like ripgrep does. How reasonable is it that
+    // something other than a shell would run xt, intentionally break its output
+    // pipe, and then care whether it exited via a code or a signal?
+    //
+    // References:
+    //
+    // - https://github.com/rust-lang/rust/issues/62569
+    // - https://stackoverflow.com/a/65760807
+    // - https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
+    #[cfg(all(unix, not(debug_assertions)))]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 }
 
