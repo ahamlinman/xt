@@ -40,17 +40,6 @@ fn main() {
         };
     }
 
-    macro_rules! xt_fail_for_error {
-        ($x:expr) => {{
-            if is_broken_pipe($x) {
-                // Fail silently. This is a fallback for non-Unix platforms
-                // where SIGPIPE won't kill us automatically.
-                process::exit(1);
-            }
-            xt_fail!($x);
-        }};
-    }
-
     let mut output = BufWriter::new(io::stdout());
     if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
         xt_fail!("refusing to output {} to a terminal", args.to);
@@ -64,6 +53,17 @@ fn main() {
     };
 
     let result = xt::translate(handle, args.detect_from(), args.to, &mut output);
+
+    macro_rules! xt_fail_for_error {
+        ($x:expr) => {{
+            if is_broken_pipe($x) {
+                // Fail silently. This is a fallback for non-Unix platforms
+                // where SIGPIPE won't kill us automatically.
+                process::exit(1);
+            }
+            xt_fail!($x);
+        }};
+    }
 
     // Some serializers, including the one for YAML, don't expose broken pipe
     // errors in the error chain produced during transcoding. This check does a
