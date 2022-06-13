@@ -7,8 +7,8 @@ For example, you can filter a TOML file with [`jq`][jq]:
 ```sh
 $ xt Cargo.lock | jq -r '.package[] | select(.version | startswith("0.")).name'
 atty
-hashbrown
-heck
+bstr
+cast
 # etc.
 ```
 
