@@ -106,7 +106,7 @@ fn init_sigpipe_handling() {
     // EPIPE (human-sent signals don't count), and that xt is simple enough that
     // replacing a graceful return to main with an instant kill from deep in the
     // call stack doesn't change its observable behavior enough to matter (as
-    // the observation of its behavior was only possible through the now-broken
+    // the only meaningful observation of behavior was through the now-broken
     // pipe). This is obviously not true for a wide range of other programs.
     //
     // TODO: Honestly, this does feel hard to justify compared to simply exiting
