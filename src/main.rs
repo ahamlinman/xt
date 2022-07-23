@@ -185,20 +185,20 @@ struct Cli {
     input_filename: Option<PathBuf>,
 
     #[clap(
-    short = 't',
-    help = "Format to convert to",
-    help_heading = "OPTIONS",
-    default_value = "json",
-    parse(try_from_str = try_parse_format),
-  )]
+        short = 't',
+        help = "Format to convert to",
+        help_heading = "OPTIONS",
+        default_value = "json",
+        parse(try_from_str = try_parse_format),
+    )]
     to: Format,
 
     #[clap(
-    short = 'f',
-    help = "Format to convert from",
-    help_heading = "OPTIONS",
-    parse(try_from_str = try_parse_format),
-  )]
+        short = 'f',
+        help = "Format to convert from",
+        help_heading = "OPTIONS",
+        parse(try_from_str = try_parse_format),
+    )]
     from: Option<Format>,
 
     #[clap(
