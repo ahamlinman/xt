@@ -395,7 +395,10 @@ mod tests {
         assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
         buf.clear();
 
-        // `Ref`s are designed to be forgettable without breaking behavior.
+        // `Ref`s are designed to be forgettable without breaking behavior. Part
+        // of the intent of this test is to ensure that no future `Drop` impl
+        // breaks this expectation.
+        #[allow(clippy::forget_non_drop)]
         std::mem::forget(input_ref);
 
         match handle.borrow_mut() {
