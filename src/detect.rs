@@ -174,13 +174,11 @@ impl Serializer for Discard {
 /// This macro is non-hygienic, and not intended for use outside of this module.
 macro_rules! xt_detect_impl_discard_traits {
 	($($ty:ty { $($body:tt)* })*) => {
-		$(
-			impl $ty for Discard {
-				type Ok = ();
-				type Error = DiscardError;
-				xt_detect_impl_discard_methods! { $($body)* }
-			}
-		)*
+		$(impl $ty for Discard {
+			type Ok = ();
+			type Error = DiscardError;
+			xt_detect_impl_discard_methods! { $($body)* }
+		})*
 	};
 }
 

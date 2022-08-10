@@ -128,21 +128,19 @@ const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 macro_rules! xt_test_yaml_encodings {
 	($($filename:ident),+ $(,)?) => {
 		paste! {
-			$(
-				#[test]
-				fn [<yaml_encoding_ $filename>]() {
-					static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
-					let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
-					xt::translate(
-						Handle::from_slice(INPUT),
-						Some(Format::Yaml),
-						Format::Json,
-						&mut output,
-					)
-					.unwrap();
-					assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
-				}
-			)+
+			$(#[test]
+			fn [<yaml_encoding_ $filename>]() {
+				static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
+				let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+				xt::translate(
+					Handle::from_slice(INPUT),
+					Some(Format::Yaml),
+					Format::Json,
+					&mut output,
+				)
+				.unwrap();
+				assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+			})+
 		}
 	};
 }

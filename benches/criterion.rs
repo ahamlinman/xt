@@ -9,19 +9,13 @@ criterion_main!(small, large);
 criterion_group! {
 	name = small;
 	config = Criterion::default();
-	targets = small_json,
-		small_yaml,
-		small_toml,
-		small_msgpack,
+	targets = small_json, small_yaml, small_toml, small_msgpack
 }
 
 criterion_group! {
 	name = large;
 	config = Criterion::default().measurement_time(Duration::from_secs(30));
-	targets = large_json,
-		large_yaml,
-		large_toml,
-		large_msgpack,
+	targets = large_json, large_yaml, large_toml, large_msgpack
 }
 
 macro_rules! xt_benchmark {
@@ -38,18 +32,16 @@ macro_rules! xt_benchmark {
 
 			$($(group.$setting_name($setting_value);)*)?
 
-			$(
-				group.bench_function(stringify!($source), |b| {
-					b.iter(|| {
-						xt::translate(
-							xt_benchmark!(@input_handle $source &*input),
-							black_box(Some($from)),
-							black_box($to),
-							std::io::sink(),
-						)
-					})
-				});
-			)+
+			$(group.bench_function(stringify!($source), |b| {
+				b.iter(|| {
+					xt::translate(
+						xt_benchmark!(@input_handle $source &*input),
+						black_box(Some($from)),
+						black_box($to),
+						std::io::sink(),
+					)
+				})
+			});)+
 
 			group.finish();
 		}
