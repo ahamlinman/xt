@@ -19,11 +19,11 @@ fn main() {
 		Err(err) => match err.kind() {
 			DisplayHelp | DisplayVersion => err.exit(),
 			_ => {
-				// As of this writing, clap's error messages (other than those above)
-				// include an "error:" prefix, so this gives us consistent formatting
-				// for both argument and translation errors. It is a bit fragile, since
-				// it's unlikely that clap's error message format is guaranteed to be
-				// stable.
+				// As of this writing, clap's error messages (other than those
+				// above) include an "error:" prefix, so this gives us
+				// consistent formatting for both argument and translation
+				// errors. It is a bit fragile, since it's unlikely that clap's
+				// error message format is guaranteed to be stable.
 				eprint!("xt {}", err);
 				process::exit(1);
 			}
@@ -72,10 +72,10 @@ fn main() {
 		xt_fail_for_error!(&err);
 	}
 
-	// Some other serializers, including the one for TOML, don't trigger the above
-	// check but do expose broken pipe errors in their error chain (maybe they
-	// flush internally?). So we still have to check this case in addition to the
-	// above.
+	// Some other serializers, including the one for TOML, don't trigger the
+	// above check but do expose broken pipe errors in their error chain (maybe
+	// they flush internally?). So we still have to check this case in addition
+	// to the above.
 	if let Err(err) = result {
 		xt_fail_for_error!(err.as_ref());
 	}
@@ -262,18 +262,21 @@ impl Cli {
 			Some(path) if path.to_str() == Some("-") => Ok(Input::Stdin),
 			Some(path) => {
 				let file = File::open(path)?;
-				// "SAFETY": It is undefined behavior to modify a mapped file outside of
-				// the process... so we tell users not to do that in the help output.
-				// No, this is not a real solution and does not provide any actual
-				// safety guarantee. It's a risk intentionally taken in the name of
-				// performance, based on a pragmatic understanding of the failure modes
-				// most likely to appear when the requirement is violated.
+				// "SAFETY": It is undefined behavior to modify a mapped file
+				// outside of the process... so we tell users not to do that in
+				// the help output. No, this is not a real solution and does not
+				// provide any actual safety guarantee. It's a risk we take
+				// intentionally in the name of performance, based on a
+				// pragmatic understanding of the failure modes most likely to
+				// appear when the requirement is violated.
 				match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
-					// Per memmap2 docs, it's safe to drop file once mmap succeeds.
+					// Per memmap2 docs, it's safe to drop file once mmap
+					// succeeds.
 					Ok(map) => Ok(Input::Mmap(map)),
-					// If mmap fails, we can always fall back to reading the file
-					// normally. Examples of where this can matter include (but are not
-					// limited to) process substitution and named pipes.
+					// If mmap fails, we can always fall back to reading the
+					// file normally. Examples of where this can matter include
+					// (but are not limited to) process substitution and named
+					// pipes.
 					Err(_) => Ok(Input::File(file)),
 				}
 			}

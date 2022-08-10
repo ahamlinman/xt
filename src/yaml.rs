@@ -10,8 +10,8 @@ use crate::{input, transcode};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	// TODO: Can we avoid throwing away the result of a valid UTF-8 check?
-	// TODO: Can we avoid throwing away the result of a conversion? (Probably much
-	// harder than the above.)
+	// TODO: Can we avoid throwing away the result of a conversion? (Probably
+	// much harder than the above.)
 	let input_str = match ensure_utf8(input.slice()?) {
 		Ok(input_str) => input_str,
 		Err(_) => return Ok(false),
@@ -28,21 +28,22 @@ pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Bo
 where
 	O: crate::Output,
 {
-	// serde_yaml imposes a couple of interesting limitations on us, which aren't
-	// clear from the documentation alone but which are reflected in this usage.
+	// serde_yaml imposes a couple of interesting limitations on us, which
+	// aren't clear from the documentation alone but which are reflected in this
+	// usage.
 	//
 	// First, while serde_yaml supports creating a Deserializer from a reader,
 	// this actually just slurps the entire input into a byte vector and parses
 	// the resulting slice. We would have to detect the splits between YAML
 	// documents ourselves to do streaming input, either with some kind of text
-	// stream processing (the evil way) or by implementing this as a real feature
-	// upstream (the righteous way).
+	// stream processing (the evil way) or by implementing this as a real
+	// feature upstream (the righteous way).
 	//
-	// Second, yaml-rust does not support UTF-16 or UTF-32 input, even though YAML
-	// 1.2 requires this. While serde_yaml supports creating a Deserializer from a
-	// &[u8], this actually converts the slice to a &str internally. YAML has very
-	// clear rules for encoding detection, so we re-encode the input ourselves if
-	// necessary.
+	// Second, yaml-rust does not support UTF-16 or UTF-32 input, even though
+	// YAML 1.2 requires this. While serde_yaml supports creating a Deserializer
+	// from a &[u8], this actually converts the slice to a &str internally. YAML
+	// has very clear rules for encoding detection, so we re-encode the input
+	// ourselves if necessary.
 	let input: Cow<'_, [u8]> = input.try_into()?;
 	let input = ensure_utf8(&input)?;
 
@@ -124,8 +125,8 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
 		[0xFF, 0xFE, ..] | [_, 0, ..] if buf.len() >= 2 => {
 			Cow::Owned(convert_utf16(buf, u16::from_le_bytes)?)
 		}
-		// The spec shows how to match a UTF-8 BOM, but since it's the same as the
-		// default case there's no real point to an explicit check.
+		// The spec shows how to match a UTF-8 BOM, but since it's the same as
+		// the default case there's no real point to an explicit check.
 		_ => Cow::Borrowed(std::str::from_utf8(buf)?),
 	})
 }

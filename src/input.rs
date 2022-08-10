@@ -58,10 +58,10 @@ enum Source<'i> {
 impl<'i> Handle<'i> {
 	/// Creates a handle for an input slice.
 	///
-	/// Slice inputs are typically more efficient to translate than reader inputs,
-	/// but require all input to be loaded into memory in advance. This may be
-	/// inappropriate for an unbounded stream of documents in a format that
-	/// supports streaming translation.
+	/// Slice inputs are typically more efficient to translate than reader
+	/// inputs, but require all input to be loaded into memory in advance. This
+	/// may be inappropriate for an unbounded stream of documents in a format
+	/// that supports streaming translation.
 	pub fn from_slice(b: &'i [u8]) -> Handle<'i> {
 		Handle(Source::Slice(b))
 	}
@@ -84,13 +84,13 @@ impl<'i> Handle<'i> {
 	///
 	/// For slice inputs, this provides access to the original slice.
 	///
-	/// For reader inputs that are fully buffered from previous use of the handle,
-	/// this provides access to the reader's full contents as a slice.
+	/// For reader inputs that are fully buffered from previous use of the
+	/// handle, this provides access to the reader's full contents as a slice.
 	///
 	/// For reader inputs not yet fully buffered, this provides access to the
-	/// reader through a wrapper that captures its output. In subsequent calls to
-	/// `borrow_mut`, the wrapper will produce the captured bytes before producing
-	/// more bytes from the original reader.
+	/// reader through a wrapper that captures its output. In subsequent calls
+	/// to `borrow_mut`, the wrapper will produce the captured bytes before
+	/// producing more bytes from the original reader.
 	pub(crate) fn borrow_mut(&mut self) -> Ref<'i, '_> {
 		match &mut self.0 {
 			Source::Slice(b) => Ref::Slice(b),
@@ -191,14 +191,14 @@ where
 
 	/// Returns a prefix of the input.
 	///
-	/// For slice inputs and fully buffered reader inputs, this simply returns the
-	/// full input.
+	/// For slice inputs and fully buffered reader inputs, this simply returns
+	/// the full input.
 	///
 	/// For reader inputs not yet fully buffered, `want_size` represents the
 	/// minimum size of the prefix that the call should attempt to produce by
-	/// capturing new bytes from the source. The returned prefix may be smaller or
-	/// larger than `want_size` if the reader reaches EOF or more input is already
-	/// captured.
+	/// capturing new bytes from the source. The returned prefix may be smaller
+	/// or larger than `want_size` if the reader reaches EOF or more input is
+	/// already captured.
 	pub(crate) fn prefix(&mut self, want_size: usize) -> io::Result<&[u8]> {
 		match self {
 			Ref::Slice(b) => Ok(b),
@@ -212,8 +212,8 @@ where
 
 /// A wrapper that forces a [`CaptureReader`] to be rewound prior to use.
 ///
-/// This is designed to statically prevent bugs that would result from
-/// forgetting to rewind the reader before exposing its contents to consumers.
+/// This is designed to statically prevent bugs caused by forgetting to rewind
+/// the reader before exposing its contents to consumers.
 struct RewindGuard<R>(CaptureReader<R>)
 where
 	R: Read;
@@ -285,7 +285,7 @@ where
 	/// before consuming more from the source.
 	fn captured_unread(&self) -> usize {
 		// The cursor position is relative to an in-memory slice. This shouldn't
-		// truncate unless we manually call `set_position` with a ridiculous value.
+		// truncate unless we manually give the cursor a ridiculous position.
 		#[allow(clippy::cast_possible_truncation)]
 		let offset = self.prefix.position() as usize;
 		self.prefix.get_ref().len() - offset
@@ -308,8 +308,8 @@ where
 	/// Ensures that at least `size` bytes have been captured from the source
 	/// without modifying the reader's position.
 	///
-	/// The actual number of captured bytes may be less than `size` if the source
-	/// reaches EOF before producing `size` bytes.
+	/// The actual number of captured bytes may be less than `size` if the
+	/// source reaches EOF before producing `size` bytes.
 	fn capture_to_size(&mut self, size: usize) -> io::Result<()> {
 		let needed = size.saturating_sub(self.prefix.get_ref().len());
 		if needed == 0 {
@@ -329,7 +329,8 @@ where
 		self.source_eof
 	}
 
-	/// Consumes the reader, returning any captured prefix as well as the source.
+	/// Consumes the reader, returning any captured prefix as well as the
+	/// source.
 	fn into_inner(self) -> (Cursor<Vec<u8>>, R) {
 		(self.prefix, self.source)
 	}
@@ -340,8 +341,8 @@ where
 	R: Read,
 {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-		// First, copy as much data as we can from the unread portion of the cursor
-		// into the buffer.
+		// First, copy as much data as we can from the unread portion of the
+		// cursor into the buffer.
 		let prefix_size = std::cmp::min(buf.len(), self.captured_unread());
 		self.prefix.read_exact(&mut buf[..prefix_size])?;
 		if self.captured_unread() > 0 || prefix_size == buf.len() {
@@ -351,22 +352,23 @@ where
 		// Second, fill the rest of the buffer with data from the source, and
 		// capture it for ourselves as well.
 		//
-		// The `read` documentation recommends against us reading from `buf`, but
-		// does not prevent it, and does require callers of `read` to assume we
-		// might do this. As morally questionable as it is, this approach lets our
-		// consumer drive the number and size of reads against the source, making
-		// our presence more transparent to both sides. As the smallest consolation,
-		// it's worth noting that we only read bytes we know were freshly written,
-		// and do not rely on the original contents of `buf` in any way (unless, of
-		// course, the source is broken and lies about how many bytes it read).
+		// The `read` documentation recommends against us reading from `buf`,
+		// but does not prevent it, and does require callers of `read` to assume
+		// we might do this. As morally questionable as it is, this approach
+		// lets our consumer drive the number and size of reads against the
+		// source, making our presence more transparent to both sides. As the
+		// smallest consolation, it's worth noting that we only read bytes we
+		// know were freshly written, and do not rely on the original contents
+		// of `buf` in any way (unless, of course, the source is broken and lies
+		// about how many bytes it read).
 		let buf = &mut buf[prefix_size..];
 		let source_size = self.source.read(buf)?;
 		self.prefix.write_all(&buf[..source_size])?;
 
-		// Finally, mark whether the source is at EOF (keeping in mind that it can,
-		// in theory, return more data after an earlier EOF). We know that our new
-		// `buf` can't be empty as we return early when `prefix_size == buf.len()`,
-		// so a 0 byte read can only indicate EOF.
+		// Finally, mark whether the source is at EOF (keeping in mind that it
+		// can, in theory, return more data after an earlier EOF). We know `buf`
+		// can't be empty as we return early when `prefix_size == buf.len()`, so
+		// a 0 byte read can only indicate EOF.
 		self.source_eof = source_size == 0;
 
 		Ok(prefix_size + source_size)
@@ -408,8 +410,8 @@ mod tests {
 		assert_eq!(std::str::from_utf8(&buf), Ok(&DATA[..HALF]));
 		buf.clear();
 
-		// If we only consume part of a borrowed reader, we need to reset the reader
-		// before giving ownership away.
+		// If we only consume part of a borrowed reader, we need to reset the
+		// reader before giving ownership away.
 		let mut r = match handle.into() {
 			Input::Slice(_) => unreachable!(),
 			Input::Reader(r) => r,
@@ -427,8 +429,8 @@ mod tests {
 			Ref::Reader(r) => io::copy(&mut r.take(HALF as u64), &mut io::sink()).unwrap(),
 		};
 
-		// If we only consume part of a borrowed reader, turning the input into a
-		// slice should still produce the full input.
+		// If we only consume part of a borrowed reader, turning the input into
+		// a slice should still produce the full input.
 		let buf: Cow<'_, [u8]> = handle.try_into().unwrap();
 		assert_eq!(std::str::from_utf8(&buf), Ok(DATA));
 	}

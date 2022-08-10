@@ -19,14 +19,14 @@ use crate::transcode;
 const DEPTH_LIMIT: usize = 1024;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	// In MessagePack, any byte below 0x80 represents a literal unsigned integer.
-	// That means any ASCII text input is effectively a valid multi-document
+	// In MessagePack, any byte below 0x80 represents a literal unsigned
+	// integer. That means any ASCII text input is a valid multi-document
 	// MessagePack stream, where every "document" is practically meaningless. To
 	// prevent these kinds of weird matches, we only detect input as MessagePack
 	// when the first byte indicates that the next value will be a map or array.
-	// Arbitrary non-ASCII input that happens to match one of these markers (e.g.
-	// certain UTF-8 multibyte sequences) is extremely unlikely to be a valid
-	// sequence of MessagePack values.
+	// Arbitrary non-ASCII input that happens to match one of these markers
+	// (e.g. certain UTF-8 multibyte sequences) is extremely unlikely to be a
+	// valid sequence of MessagePack values.
 	let first_marker = input.prefix(1)?.get(0).map(|b| Marker::from_u8(*b));
 	if !matches!(
 		first_marker,

@@ -36,20 +36,21 @@ where
 {
 	match input.into() {
 		Input::Slice(b) => {
-			// Direct transcoding here would be nice, however the .end() method that
-			// we rely on is extremely slow in slice mode. serde_json only supports
-			// iteration if we allow it to deserialize into an actual value, so xt
-			// implements a value type that can borrow strings from the input slice
-			// (one of serde's major features).
+			// Direct transcoding here would be nice, however the .end() method
+			// that we rely on is extremely slow in slice mode. serde_json only
+			// supports iteration if we allow it to deserialize into an actual
+			// value, so xt implements a value type that can borrow strings from
+			// the input slice (one of serde's major features).
 			let de = serde_json::Deserializer::from_slice(&b);
 			for value in de.into_iter::<transcode::Value>() {
 				output.transcode_value(value?)?;
 			}
 		}
 		Input::Reader(r) => {
-			// In this case, direct transcoding performs better than deserializing
-			// into a value. It looks like transcode::Value is forced to copy every
-			// string from a &str reference, which probably explains the difference.
+			// Direct transcoding here performs better than deserializing into a
+			// value. It looks like transcode::Value is forced to copy every
+			// string from a &str reference, which probably explains the
+			// difference.
 			let mut de = serde_json::Deserializer::from_reader(BufReader::new(r));
 			while de.end().is_err() {
 				output.transcode_from(&mut de)?;
