@@ -290,66 +290,102 @@ mod tests {
 		&[],
 		// nil
 		&hex!("c0"),
-		// bool format family
-		&hex!("c2"), // false
-		&hex!("c3"), // true
-		// int format family
-		&hex!("2a"),                         // positive fixint
-		&hex!("f4"),                         // negative fixint
-		&hex!("cc 09"),                      // 8-bit unsigned
-		&hex!("cd 09 f9"),                   // 16-bit unsigned
-		&hex!("ce 09 f9 11 02"),             // 32-bit unsigned
-		&hex!("cf 09 f9 11 02 9d 74 e3 5b"), // 64-bit unsigned
-		&hex!("d0 d8"),                      // 8-bit signed
-		&hex!("d1 d8 41"),                   // 16-bit signed
-		&hex!("d2 d8 41 56 c5"),             // 32-bit signed
-		&hex!("d3 d8 41 56 c5 63 56 88 c0"), // 64-bit signed
-		// float format family
-		&hex!("ca 64 7a 5a 6e"),             // single precision
-		&hex!("cb 54 79 4b 50 45 67 4e 64"), // double precision
-		// str format family: "xt"
-		&hex!("a2 78 74"),             // fixstr
-		&hex!("d9 02 78 74"),          // str 8
-		&hex!("da 00 02 78 74"),       // str 16
-		&hex!("db 00 00 00 02 78 74"), // str 32
-		// str format family: ""
-		&hex!("a0"),             // fixstr
-		&hex!("d9 00"),          // str 8
-		&hex!("da 00 00"),       // str 16
-		&hex!("db 00 00 00 00"), // str 32
-		// bin format family: b"xt"
-		&hex!("c4 02 78 74"),          // bin 8
-		&hex!("c5 00 02 78 74"),       // bin 16
-		&hex!("c6 00 00 00 02 78 74"), // bin 32
-		// bin format family: b""
-		&hex!("c4 00"),          // bin 8
-		&hex!("c5 00 00"),       // bin 16
-		&hex!("c6 00 00 00 00"), // bin 32
-		// array format family: ["xt", true]
-		&hex!("92 a2 78 74 c3"),             // fixarray
-		&hex!("dc 00 02 a2 78 74 c3"),       // array 16
-		&hex!("dd 00 00 00 02 a2 78 74 c3"), // array 32
-		// array format family: []
-		&hex!("90"),             // fixarray
-		&hex!("dc 00 00"),       // array 16
-		&hex!("dd 00 00 00 00"), // array 32
-		// map format family: {"xt": true, "good": true}
-		&hex!("82 a2 78 74 c3 a4 67 6f 6f 64 c3"),       // fixmap
-		&hex!("de 00 02 a2 78 74 c3 a4 67 6f 6f 64 c3"), // map 16
-		&hex!("df 00 00 00 02 a2 78 74 c3 a4 67 6f 6f 64 c3"), // map 32
-		// map format family: {}
-		&hex!("80"),             // fixmap
-		&hex!("de 00 00"),       // map 16
-		&hex!("df 00 00 00 00"), // map 32
-		// ext format family
-		&hex!("d4 01 09"),                                              // fixext 1
-		&hex!("d5 01 09 f9"),                                           // fixext 2
-		&hex!("d6 01 09 f9 11 02"),                                     // fixext 4
-		&hex!("d7 01 09 f9 11 02 9d 74 e3 5b"),                         // fixext 8
-		&hex!("d8 01 09 f9 11 02 9d 74 e3 5b d8 41 56 c5 63 56 88 c0"), // fixext 16
-		&hex!("c7 04 01 09 f9 11 02"),                                  // ext 8
-		&hex!("c8 00 04 01 09 f9 11 02"),                               // ext 16
-		&hex!("c9 00 00 00 04 01 09 f9 11 02"),                         // ext 32
+		// bool (false)
+		&hex!("c2"),
+		// bool (true)
+		&hex!("c3"),
+		// positive fixint
+		&hex!("2a"),
+		// negative fixint
+		&hex!("f4"),
+		// 8-bit unsigned
+		&hex!("cc 09"),
+		// 16-bit unsigned
+		&hex!("cd 09 f9"),
+		// 32-bit unsigned
+		&hex!("ce 09 f9 11 02"),
+		// 64-bit unsigned
+		&hex!("cf 09 f9 11 02 9d 74 e3 5b"),
+		// 8-bit signed
+		&hex!("d0 d8"),
+		// 16-bit signed
+		&hex!("d1 d8 41"),
+		// 32-bit signed
+		&hex!("d2 d8 41 56 c5"),
+		// 64-bit signed
+		&hex!("d3 d8 41 56 c5 63 56 88 c0"),
+		// single precision
+		&hex!("ca 64 7a 5a 6e"),
+		// double precision
+		&hex!("cb 54 79 4b 50 45 67 4e 64"),
+		// fixstr ("xt")
+		&hex!("a2 78 74"),
+		// str 8 ("xt")
+		&hex!("d9 02 78 74"),
+		// str 16 ("xt")
+		&hex!("da 00 02 78 74"),
+		// str 32 ("xt")
+		&hex!("db 00 00 00 02 78 74"),
+		// fixstr ("")
+		&hex!("a0"),
+		// str 8 ("")
+		&hex!("d9 00"),
+		// str 16 ("")
+		&hex!("da 00 00"),
+		// str 32 ("")
+		&hex!("db 00 00 00 00"),
+		// bin 8 (b"xt")
+		&hex!("c4 02 78 74"),
+		// bin 16 (b"xt")
+		&hex!("c5 00 02 78 74"),
+		// bin 32 (b"xt")
+		&hex!("c6 00 00 00 02 78 74"),
+		// bin 8 (b"")
+		&hex!("c4 00"),
+		// bin 16 (b"")
+		&hex!("c5 00 00"),
+		// bin 32 (b"")
+		&hex!("c6 00 00 00 00"),
+		// fixarray (["xt", true])
+		&hex!("92 a2 78 74 c3"),
+		// array 16 (["xt", true])
+		&hex!("dc 00 02 a2 78 74 c3"),
+		// array 32 (["xt", true])
+		&hex!("dd 00 00 00 02 a2 78 74 c3"),
+		// fixarray ([])
+		&hex!("90"),
+		// array 16 ([])
+		&hex!("dc 00 00"),
+		// array 32 ([])
+		&hex!("dd 00 00 00 00"),
+		// fixmap ({"xt": true, "good": true})
+		&hex!("82 a2 78 74 c3 a4 67 6f 6f 64 c3"),
+		// map 16 ({"xt": true, "good": true})
+		&hex!("de 00 02 a2 78 74 c3 a4 67 6f 6f 64 c3"),
+		// map 32 ({"xt": true, "good": true})
+		&hex!("df 00 00 00 02 a2 78 74 c3 a4 67 6f 6f 64 c3"),
+		// fixmap ({})
+		&hex!("80"),
+		// map 16 ({})
+		&hex!("de 00 00"),
+		// map 32 ({})
+		&hex!("df 00 00 00 00"),
+		// fixext 1
+		&hex!("d4 01 09"),
+		// fixext 2
+		&hex!("d5 01 09 f9"),
+		// fixext 4
+		&hex!("d6 01 09 f9 11 02"),
+		// fixext 8
+		&hex!("d7 01 09 f9 11 02 9d 74 e3 5b"),
+		// fixext 16
+		&hex!("d8 01 09 f9 11 02 9d 74 e3 5b d8 41 56 c5 63 56 88 c0"),
+		// ext 8
+		&hex!("c7 04 01 09 f9 11 02"),
+		// ext 16
+		&hex!("c8 00 04 01 09 f9 11 02"),
+		// ext 32
+		&hex!("c9 00 00 00 04 01 09 f9 11 02"),
 	];
 
 	#[test]
