@@ -1,0 +1,3 @@
+# Hard tabs provide significant accessibility benefits over Rust's preferred 4-space indentation.
+# See e.g. https://redd.it/c8drjo, https://github.com/prettier/prettier/issues/7475#issuecomment-668544890.
+hard_tabs = true
