@@ -1,20 +1,20 @@
 ---
 xt: true
-good: absolutely 🧑‍💻
+good: "absolutely \U0001F9D1‍\U0001F4BB"
 power_level: 9001
 multiplier: 42.1337
 adjustment: -13
 tags:
-  - serde
+- serde
 formats:
-  - name: json
-    multi: true
-  - name: yaml
-    multi: true
-  - name: toml
-    multi: false
-  - name: msgpack
-    multi: true
-    binary: true
+- name: json
+  multi: true
+- name: yaml
+  multi: true
+- name: toml
+  multi: false
+- name: msgpack
+  multi: true
+  binary: true
 meta:
   language: rust
