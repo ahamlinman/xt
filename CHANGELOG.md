@@ -1,3 +1,15 @@
+## Unreleased
+
+### Changed
+
+- **Various details of YAML input and output.** This version of xt upgrades to
+  the latest version of the third-party `serde_yaml` library, which plays a
+  critical role in xt's YAML support. This has resulted in several noticeable
+  changes to the formatting of YAML output, including differences in the
+  indentation of list items and the use of Unicode escape sequences. It has
+  also fixed several potential bugs and vulnerabilities in YAML input handling,
+  and should improve the performance of YAML translation in general.
+
 ## v0.10.0 (2022-06-12)
 
 ### Fixed
