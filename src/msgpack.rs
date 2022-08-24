@@ -27,7 +27,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	// Arbitrary non-ASCII input that happens to match one of these markers
 	// (e.g. certain UTF-8 multibyte sequences) is extremely unlikely to be a
 	// valid sequence of MessagePack values.
-	let first_marker = input.prefix(1)?.get(0).map(|b| Marker::from_u8(*b));
+	let first_marker = input.prefix(1)?.first().map(|b| Marker::from_u8(*b));
 	if !matches!(
 		first_marker,
 		Some(
