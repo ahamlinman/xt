@@ -28,31 +28,35 @@ pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Bo
 where
 	O: crate::Output,
 {
-	// serde_yaml imposes a couple of interesting limitations on us, which
+	// serde-yaml imposes a couple of interesting limitations on us, which
 	// aren't clear from the documentation alone but which are reflected in this
 	// usage.
 	//
-	// First, while serde_yaml supports creating a Deserializer from a reader,
+	// First, while serde-yaml supports creating a Deserializer from a reader,
 	// this actually just slurps the entire input into a byte vector and parses
 	// the resulting slice. We would have to detect the splits between YAML
 	// documents ourselves to do streaming input, either with some kind of text
 	// stream processing (the evil way) or by implementing this as a real
 	// feature upstream (the righteous way).
 	//
-	// Second, yaml-rust does not support UTF-16 or UTF-32 input, even though
-	// YAML 1.2 requires this. While serde_yaml supports creating a Deserializer
-	// from a &[u8], this actually converts the slice to a &str internally. YAML
-	// has very clear rules for encoding detection, so we re-encode the input
-	// ourselves if necessary.
+	// Second, serde-yaml does not support UTF-16 or UTF-32 input, even though
+	// YAML 1.2 requires this. While serde-yaml supports creating a Deserializer
+	// from a &[u8], non-UTF-8 input will produce errors about control
+	// characters or invalid UTF-8 octets. YAML has very clear rules for
+	// encoding detection, so we re-encode the input ourselves if necessary.
 	let input: Cow<'_, [u8]> = input.try_into()?;
 	let input = ensure_utf8(&input)?;
 
 	// YAML 1.2 allows for a BOM at the start of the stream, as well as at the
 	// beginning of every subsequent document in a stream (though all documents
-	// must use the same encoding). Unfortunately, yaml-rust seems to treat BOMs
-	// like syntax errors regardless of where they show up. We take care of the
-	// former case since it's pretty easy to handle, and hopefully covers most
-	// things.
+	// must use the same encoding). Unfortunately, serde-yaml seems to treat
+	// BOMs like regular flow scalars (or something along those lines), and
+	// documents with BOMs produce errors about mapping values not being
+	// allowed. We take care of a single BOM at the start of a document since
+	// it's pretty easy to handle, and hopefully covers most things (the
+	// repeated BOM case seems to be about support for concatenating arbitrary
+	// documents, which might be better handled with proper multi-file support
+	// in xt itself).
 	let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
 
 	for de in serde_yaml::Deserializer::from_str(input) {
