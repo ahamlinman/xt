@@ -8,7 +8,7 @@
   changes to the formatting of YAML output, including differences in the
   indentation of list items and the use of Unicode escape sequences. It has
   also fixed several potential bugs and vulnerabilities in YAML input handling,
-  and should improve the performance of YAML translation in general.
+  and generally reduces memory usage for YAML inputs.
 
 ## v0.10.0 (2022-06-12)
 
