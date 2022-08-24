@@ -75,6 +75,7 @@ impl<W: Write> crate::Output for Output<W> {
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
 	{
+		writeln!(&mut self.0, "---")?;
 		let mut ser = serde_yaml::Serializer::new(&mut self.0);
 		transcode::transcode(&mut ser, de)?;
 		Ok(())
@@ -84,6 +85,7 @@ impl<W: Write> crate::Output for Output<W> {
 	where
 		S: serde::ser::Serialize,
 	{
+		writeln!(&mut self.0, "---")?;
 		serde_yaml::to_writer(&mut self.0, &value)?;
 		Ok(())
 	}
