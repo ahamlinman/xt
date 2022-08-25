@@ -41,7 +41,7 @@ Run `xt --help` for full usage details.
 xt is built to "do one thing well," and tries to maintain a simple CLI interface
 with limited options (for example, no control over details of the output
 formatting). The most common options are `-t` to specify an output format other
-than JSON, and an optional file to read from rather than standard input.
+than JSON, and one more more files to read from rather than standard input.
 
 Some of xt's notable features include:
 
