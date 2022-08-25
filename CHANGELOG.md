@@ -1,3 +1,13 @@
+## v0.12.0 (Unreleased)
+
+### Added
+
+- **Support for multiple input files.** xt now accepts more than one input file
+  on the command line, and can translate the logical concatenation of the
+  provided files to a single multi-document output. This should make it much
+  easier, for example, to translate large repositories of YAML or TOML
+  configuration files to JSON for bulk processing with `jq` or other tools.
+
 ## v0.11.0 (2022-08-24)
 
 ### Changed
