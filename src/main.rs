@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use clap::{
@@ -45,14 +45,24 @@ fn main() {
 		xt_fail!("refusing to output {} to a terminal", args.to);
 	}
 
-	let mut input = args.input().unwrap_or_else(|err| xt_fail!(err));
+	let mut input = args
+		.input_filename
+		.as_ref()
+		.map(Input::open)
+		.unwrap_or(Ok(Input::Stdin))
+		.unwrap_or_else(|err| xt_fail!(err));
 	let handle = match &mut input {
 		Input::Stdin => xt::Handle::from_reader(io::stdin()),
 		Input::File(file) => xt::Handle::from_reader(file),
 		Input::Mmap(map) => xt::Handle::from_slice(map),
 	};
+	let from = args.from.or_else(|| {
+		args.input_filename
+			.as_ref()
+			.and_then(try_get_format_from_path)
+	});
 
-	let result = xt::translate(handle, args.detect_from(), args.to, &mut output);
+	let result = xt::translate(handle, from, args.to, &mut output);
 
 	macro_rules! xt_fail_for_error {
 		($x:expr) => {{
@@ -228,58 +238,54 @@ fn try_parse_format(s: &str) -> Result<Format, String> {
 	}
 }
 
+fn try_get_format_from_path<P>(path: P) -> Option<Format>
+where
+	P: AsRef<Path>,
+{
+	match path
+		.as_ref()
+		.extension()
+		.and_then(|ext| ext.to_str())
+		.map(|ext| ext.to_ascii_lowercase())
+		.as_deref()
+	{
+		Some("json") => Some(Format::Json),
+		Some("yaml" | "yml") => Some(Format::Yaml),
+		Some("toml") => Some(Format::Toml),
+		Some("msgpack") => Some(Format::Msgpack),
+		_ => None,
+	}
+}
+
 enum Input {
 	Stdin,
 	File(std::fs::File),
 	Mmap(memmap2::Mmap),
 }
 
-impl Cli {
-	fn detect_from(&self) -> Option<Format> {
-		if self.from.is_some() {
-			return self.from;
+impl Input {
+	fn open<P>(path: P) -> io::Result<Input>
+	where
+		P: AsRef<Path>,
+	{
+		if path.as_ref().to_str() == Some("-") {
+			return Ok(Input::Stdin);
 		}
-		match &self.input_filename {
-			None => None,
-			Some(path) => match path
-				.extension()
-				.and_then(|ext| ext.to_str())
-				.map(|ext| ext.to_ascii_lowercase())
-				.as_deref()
-			{
-				Some("json") => Some(Format::Json),
-				Some("yaml" | "yml") => Some(Format::Yaml),
-				Some("toml") => Some(Format::Toml),
-				Some("msgpack") => Some(Format::Msgpack),
-				_ => None,
-			},
-		}
-	}
 
-	fn input(&self) -> io::Result<Input> {
-		match &self.input_filename {
-			None => Ok(Input::Stdin),
-			Some(path) if path.to_str() == Some("-") => Ok(Input::Stdin),
-			Some(path) => {
-				let file = File::open(path)?;
-				// "SAFETY": It is undefined behavior to modify a mapped file
-				// outside of the process... so we tell users not to do that in
-				// the help output. No, this is not a real solution and does not
-				// provide any actual safety guarantee. It's a risk we take
-				// intentionally in the name of performance, based on a
-				// pragmatic understanding of the failure modes most likely to
-				// appear when the requirement is violated.
-				match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
-					// Per memmap2 docs, it's safe to drop file once mmap
-					// succeeds.
-					Ok(map) => Ok(Input::Mmap(map)),
-					// If mmap fails, we can always fall back to reading the
-					// file normally. Examples of where this can matter include
-					// (but are not limited to) process substitution and named
-					// pipes.
-					Err(_) => Ok(Input::File(file)),
-				}
-			}
+		let file = File::open(path)?;
+		// "SAFETY": It is undefined behavior to modify a mapped file outside of
+		// the process... so we tell users not to do that in the help output.
+		// No, this is not a real solution and does not provide any actual
+		// safety guarantee. It's a risk we take intentionally in the name of
+		// performance, based on a pragmatic understanding of the failure modes
+		// most likely to appear when the requirement is violated.
+		match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
+			// Per memmap2 docs, it's safe to drop the file once mmap succeeds.
+			Ok(map) => Ok(Input::Mmap(map)),
+			// If mmap fails, we can always fall back to reading the file
+			// normally. Examples of where this can matter include (but are not
+			// limited to) process substitution and named pipes.
+			Err(_) => Ok(Input::File(file)),
 		}
 	}
 }
