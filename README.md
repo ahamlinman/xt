@@ -2,13 +2,13 @@
 
 xt is a cross-format translator for JSON, YAML, TOML, and MessagePack.
 
-For example, you can filter a TOML file with [`jq`][jq]:
+For example, you can process a set of TOML files with [`jq`][jq]:
 
 ```sh
-$ xt Cargo.lock | jq -r '.package[] | select(.version | startswith("0.")).name'
+$ xt **/Cargo.lock | jq -sr 'map(.package[].name) | unique[]'
+aho-corasick
 atty
-bstr
-cast
+autocfg
 # etc.
 ```
 
