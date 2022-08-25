@@ -40,30 +40,6 @@ fn main() {
 		};
 	}
 
-	let mut output = BufWriter::new(io::stdout());
-	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
-		xt_fail!("refusing to output {} to a terminal", args.to);
-	}
-
-	let mut input = args
-		.input_filename
-		.as_ref()
-		.map(Input::open)
-		.unwrap_or(Ok(Input::Stdin))
-		.unwrap_or_else(|err| xt_fail!(err));
-	let handle = match &mut input {
-		Input::Stdin => xt::Handle::from_reader(io::stdin()),
-		Input::File(file) => xt::Handle::from_reader(file),
-		Input::Mmap(map) => xt::Handle::from_slice(map),
-	};
-	let from = args.from.or_else(|| {
-		args.input_filename
-			.as_ref()
-			.and_then(try_get_format_from_path)
-	});
-
-	let result = xt::translate(handle, from, args.to, &mut output);
-
 	macro_rules! xt_fail_for_error {
 		($x:expr) => {{
 			if is_broken_pipe($x) {
@@ -75,19 +51,43 @@ fn main() {
 		}};
 	}
 
-	// Some serializers, including the one for YAML, don't expose broken pipe
-	// errors in the error chain produced during transcoding. This check does a
-	// decent job of catching those cases.
-	if let Err(err) = output.flush() {
-		xt_fail_for_error!(&err);
+	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
+		xt_fail!("refusing to output {} to a terminal", args.to);
 	}
 
-	// Some other serializers, including the one for TOML, don't trigger the
-	// above check but do expose broken pipe errors in their error chain (maybe
-	// they flush internally?). So we still have to check this case in addition
-	// to the above.
-	if let Err(err) = result {
-		xt_fail_for_error!(err.as_ref());
+	let mut stdin_used = false;
+	let mut output = BufWriter::new(io::stdout());
+	let mut translator = xt::Translator::new(&mut output, args.to);
+
+	let input_paths = if !args.input_paths.is_empty() {
+		args.input_paths
+	} else {
+		vec![PathBuf::from("-")]
+	};
+	for path in input_paths {
+		let mut input = Input::open(&path).unwrap_or_else(|err| xt_fail!(err));
+		if let Input::Stdin = input {
+			if stdin_used {
+				xt_fail!("cannot read from stdin more than once");
+			} else {
+				stdin_used = true;
+			}
+		}
+
+		let handle = match &mut input {
+			Input::Stdin => xt::Handle::from_reader(io::stdin()),
+			Input::File(file) => xt::Handle::from_reader(file),
+			Input::Mmap(map) => xt::Handle::from_slice(map),
+		};
+
+		let from = args.from.or_else(|| try_get_format_from_path(&path));
+		if let Err(err) = translator.translate(handle, from) {
+			xt_fail_for_error!(err.as_ref());
+		}
+	}
+
+	if let Err(err) = output.flush() {
+		xt_fail_for_error!(&err);
 	}
 }
 
@@ -106,10 +106,12 @@ fn init_sigpipe_handling() {
 	//
 	// 2. Ensure that the portable error handling paths for broken pipes on
 	//    non-Unix systems receive at least some testing from developers on Unix
-	//    systems. The logic to remain silent on broken pipe errors is
-	//    surprisingly complex due to inconsistent I/O error reporting among
-	//    xt's dependencies, so it would be bad for this logic to be too hard to
-	//    exercise as changes are made.
+	//    systems. Historically, the logic to remain silent on broken pipe
+	//    errors has been surprisingly complex due to inconsistent I/O error
+	//    reporting among xt's dependencies, so it would be bad for this logic
+	//    to be too hard to exercise as changes are made. (That said, the
+	//    dependencies have gotten better about this over time, so this point
+	//    may not apply as strongly anymore.)
 	//
 	// It's intentional that this is treated as a form of debug assertion. The
 	// expectation is that a proper Unix system will reliably couple SIGPIPE to
@@ -176,7 +178,7 @@ Use --help for full usage information and available formats.";
 /// an unbounded stream as they appear. Formats that do not support streaming
 /// must load all input into memory before translating any of it.
 ///
-/// When xt does not know the input format from a file extension or explicit -f,
+/// When xt does not know an input's format from a file extension or -f option,
 /// it will attempt to detect the format using an unspecified algorithm that is
 /// subject to change. If an unbounded stream does not match a format that
 /// supports streaming, the detector will load the entire stream into memory.
@@ -188,11 +190,11 @@ Use --help for full usage information and available formats.";
 #[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 struct Cli {
 	#[clap(
-		name = "file",
-		help = "File to read input from [default: stdin]",
+		name = "files",
+		help = "Files to translate [default: stdin]",
 		parse(from_os_str)
 	)]
-	input_filename: Option<PathBuf>,
+	input_paths: Vec<PathBuf>,
 
 	#[clap(
 		short = 't',
