@@ -5,7 +5,7 @@ xt is a cross-format translator for JSON, YAML, TOML, and MessagePack.
 For example, you can process a set of TOML files with [`jq`][jq]:
 
 ```sh
-$ xt **/Cargo.lock | jq -sr 'map(.package[].name) | unique[]'
+$ xt a/Cargo.lock b/Cargo.lock | jq -r '.package[].name' | sort -u
 aho-corasick
 atty
 autocfg
