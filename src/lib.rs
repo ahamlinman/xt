@@ -2,6 +2,7 @@
 	clippy::cast_lossless,
 	clippy::cast_possible_truncation,
 	clippy::enum_glob_use,
+	clippy::from_over_into,
 	clippy::semicolon_if_nothing_returned
 )]
 
@@ -25,12 +26,13 @@ mod yaml;
 
 pub use input::Handle;
 
-/// Translates serialized input to serialized output in a different format.
+/// Translates a single serialized input to serialized output in a different
+/// format.
 ///
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
 pub fn translate<W>(
-	mut input: Handle<'_>,
+	input: Handle<'_>,
 	from: Option<Format>,
 	to: Format,
 	output: W,
@@ -38,42 +40,47 @@ pub fn translate<W>(
 where
 	W: Write,
 {
-	let from = match from {
-		Some(format) => format,
-		None => match detect::detect_format(&mut input)? {
-			Some(format) => format,
-			None => return Err("unable to detect input format".into()),
-		},
-	};
-
-	match to {
-		Format::Json => transcode_input(input, from, json::Output::new(output)),
-		Format::Yaml => transcode_input(input, from, yaml::Output::new(output)),
-		Format::Toml => transcode_input(input, from, toml::Output::new(output)),
-		Format::Msgpack => transcode_input(input, from, msgpack::Output::new(output)),
-	}
+	Translator::new(output, to).translate(input, from)
 }
 
-/// Translates serialized input to a known output format.
-///
-/// The compiler will monomorphize a copy of this function for each supported
-/// output format, giving us n² individually optimized code paths for each
-/// possible translation. Unsurprisingly, this is far more performant than a
-/// dynamic dispatch approach using [`erased_serde`][erased_serde]. Perhaps more
-/// surprisingly, past experiments show that it also generates *smaller* code
-/// than the dynamic dispatch approach, especially with link-time optimization
-/// enabled. This could change if xt gains support for a larger set of formats.
-///
-/// [erased_serde]: https://github.com/dtolnay/erased-serde
-fn transcode_input<O>(input: Handle, from: Format, output: O) -> Result<(), Box<dyn Error>>
+/// Translates multiple inputs to a single serialized output.
+pub struct Translator<W>(Dispatcher<W>)
 where
-	O: Output,
+	W: Write;
+
+impl<W> Translator<W>
+where
+	W: Write,
 {
-	match from {
-		Format::Json => json::transcode(input, output),
-		Format::Yaml => yaml::transcode(input, output),
-		Format::Toml => toml::transcode(input, output),
-		Format::Msgpack => msgpack::transcode(input, output),
+	/// Creates a translator that produces output in the given format.
+	pub fn new(output: W, to: Format) -> Translator<W> {
+		Translator(Dispatcher::new(output, to))
+	}
+
+	/// Translates serialized input to serialized output in the translator's
+	/// output format.
+	///
+	/// When `from` is `None`, xt will attempt to detect the input format using an
+	/// unspecified and unstable algorithm.
+	pub fn translate(
+		&mut self,
+		mut input: Handle<'_>,
+		from: Option<Format>,
+	) -> Result<(), Box<dyn Error>> {
+		let from = match from {
+			Some(format) => format,
+			None => match detect::detect_format(&mut input)? {
+				Some(format) => format,
+				None => return Err("unable to detect input format".into()),
+			},
+		};
+
+		match from {
+			Format::Json => json::transcode(input, &mut self.0),
+			Format::Yaml => yaml::transcode(input, &mut self.0),
+			Format::Toml => toml::transcode(input, &mut self.0),
+			Format::Msgpack => msgpack::transcode(input, &mut self.0),
+		}
 	}
 }
 
@@ -89,29 +96,84 @@ trait Output {
 		S: serde::ser::Serialize;
 }
 
+/// An [`Output`] implementation supporting static dispatch based on a known
+/// output format.
+enum Dispatcher<W>
+where
+	W: Write,
+{
+	Json(json::Output<W>),
+	Yaml(yaml::Output<W>),
+	Toml(toml::Output<W>),
+	Msgpack(msgpack::Output<W>),
+}
+
+impl<W> Dispatcher<W>
+where
+	W: Write,
+{
+	fn new(writer: W, to: Format) -> Dispatcher<W> {
+		match to {
+			Format::Json => Dispatcher::Json(json::Output::new(writer)),
+			Format::Yaml => Dispatcher::Yaml(yaml::Output::new(writer)),
+			Format::Toml => Dispatcher::Toml(toml::Output::new(writer)),
+			Format::Msgpack => Dispatcher::Msgpack(msgpack::Output::new(writer)),
+		}
+	}
+}
+
+impl<W> Output for &mut Dispatcher<W>
+where
+	W: Write,
+{
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	where
+		D: serde::de::Deserializer<'de, Error = E>,
+		E: serde::de::Error + 'static,
+	{
+		match self {
+			Dispatcher::Json(output) => output.transcode_from(de),
+			Dispatcher::Yaml(output) => output.transcode_from(de),
+			Dispatcher::Toml(output) => output.transcode_from(de),
+			Dispatcher::Msgpack(output) => output.transcode_from(de),
+		}
+	}
+
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	where
+		S: serde::ser::Serialize,
+	{
+		match self {
+			Dispatcher::Json(output) => output.transcode_value(value),
+			Dispatcher::Yaml(output) => output.transcode_value(value),
+			Dispatcher::Toml(output) => output.transcode_value(value),
+			Dispatcher::Msgpack(output) => output.transcode_value(value),
+		}
+	}
+}
+
 /// The set of input and output formats supported by xt.
 ///
 /// The feature sets of the supported formats vary along two key dimensions.
 ///
 /// Formats supporting **multi-document translation** can represent multiple
-/// independent "documents" within a single input stream. For example, xt can
-/// translate a single YAML file with documents separated by `---` markers into
-/// a stream of newline delimited JSON values. In contrast, single document
-/// formats may only represent one logical "document" per input stream. When
-/// translating an input with more than one document to a single document output
-/// format, xt will return an error as it starts to translate the second
-/// document in the stream.
+/// independent documents in a single input. For example, xt can translate a
+/// single YAML file with documents separated by `---` markers into a stream of
+/// newline-delimited JSON values. In contrast, single document formats like
+/// TOML can only represent one document per input. When translating multiple
+/// documents to a single document output format (whether from multiple inputs
+/// or a single multi-document input), xt will return an error as it starts to
+/// translate the second document in the stream.
 ///
 /// Formats supporting **streaming input** can translate a multi-document input
 /// stream without first buffering the entire stream into memory. This enables
-/// translation of unbounded input sources, such as an upstream program emitting
-/// an event stream to xt through a pipe. Formats that do not support streaming
-/// must buffer the entire input stream into memory before translating the first
-/// document.
+/// translation of unbounded input sources, such as a program providing input to
+/// xt through a pipe. Formats that do not support streaming must buffer the
+/// entire input stream into memory before translating the first document.
 ///
 /// Support for each data format comes largely from external Rust crates, with
-/// only minor additional preprocessing from xt for select formats. Note that
-/// the crate selection for each format is **not stable**, and is documented for
+/// minor additional preprocessing from xt for select formats. Note that the
+/// crate selection for each format is **not stable**, and is documented for
 /// informational purposes only.
 #[derive(Copy, Clone)]
 pub enum Format {

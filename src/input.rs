@@ -108,11 +108,11 @@ impl<'i> Handle<'i> {
 
 /// Produces the original input as a slice, either by passing through the
 /// original slice or fully reading the original reader into a buffer.
-impl<'i> TryInto<Cow<'i, [u8]>> for Handle<'i> {
+impl<'i> TryFrom<Handle<'i>> for Cow<'i, [u8]> {
 	type Error = io::Error;
 
-	fn try_into(self) -> io::Result<Cow<'i, [u8]>> {
-		match self.0 {
+	fn try_from(handle: Handle<'i>) -> io::Result<Cow<'i, [u8]>> {
+		match handle.0 {
 			Source::Slice(b) => Ok(Cow::Borrowed(b)),
 			Source::Reader(r) => {
 				let r = r.rewind_and_take();
