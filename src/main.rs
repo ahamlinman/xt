@@ -79,7 +79,6 @@ fn main() {
 			Input::File(file) => xt::Handle::from_reader(file),
 			Input::Mmap(map) => xt::Handle::from_slice(map),
 		};
-
 		let from = args.from.or_else(|| try_get_format_from_path(&path));
 		if let Err(err) = translator.translate(handle, from) {
 			xt_fail_for_error!(err.as_ref());

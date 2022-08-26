@@ -2,6 +2,7 @@
 	clippy::cast_lossless,
 	clippy::cast_possible_truncation,
 	clippy::enum_glob_use,
+	clippy::from_over_into,
 	clippy::semicolon_if_nothing_returned
 )]
 
