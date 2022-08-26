@@ -12,8 +12,6 @@ use clap::{
 use xt::Format;
 
 fn main() {
-	init_sigpipe_handling();
-
 	let args = match Cli::try_parse() {
 		Ok(args) => args,
 		Err(err) => match err.kind() {
@@ -43,9 +41,7 @@ fn main() {
 	macro_rules! xt_fail_for_error {
 		($x:expr) => {{
 			if is_broken_pipe($x) {
-				// Fail silently. This is a fallback for non-Unix platforms
-				// where SIGPIPE won't kill us automatically.
-				process::exit(1);
+				exit_for_broken_pipe();
 			}
 			xt_fail!($x);
 		}};
@@ -90,52 +86,6 @@ fn main() {
 	}
 }
 
-fn init_sigpipe_handling() {
-	// Restore the default behavior of SIGPIPE for Unix(-like) systems on
-	// non-debug builds, so that broken pipes kill the process with a signal
-	// rather than allow it to exit with a normal failure code.
-	//
-	// This is an admittedly imperfect attempt to satisfy two goals:
-	//
-	// 1. Match the behavior of other Unix utilities in this situation as
-	//    closely as possible. Being killed by a signal is fundamentally
-	//    different from exiting with any particular code, and xt should respect
-	//    that rather than hack around it (e.g. it should not exit with code 141
-	//    simply because that's what a shell would produce).
-	//
-	// 2. Ensure that the portable error handling paths for broken pipes on
-	//    non-Unix systems receive at least some testing from developers on Unix
-	//    systems. Historically, the logic to remain silent on broken pipe
-	//    errors has been surprisingly complex due to inconsistent I/O error
-	//    reporting among xt's dependencies, so it would be bad for this logic
-	//    to be too hard to exercise as changes are made. (That said, the
-	//    dependencies have gotten better about this over time, so this point
-	//    may not apply as strongly anymore.)
-	//
-	// It's intentional that this is treated as a form of debug assertion. The
-	// expectation is that a proper Unix system will reliably couple SIGPIPE to
-	// EPIPE (human-sent signals don't count), and that xt is simple enough that
-	// replacing a graceful return to main with an instant kill from deep in the
-	// call stack doesn't change its observable behavior enough to matter (as
-	// the only meaningful observation of behavior was through the now-broken
-	// pipe). This is obviously not true for a wide range of other programs.
-	//
-	// TODO: Honestly, this does feel hard to justify compared to simply exiting
-	// with code 1 on all platforms like ripgrep does. How reasonable is it that
-	// something other than a shell would run xt, intentionally break its output
-	// pipe, and then care whether it exited via a code or a signal?
-	//
-	// References:
-	//
-	// - https://github.com/rust-lang/rust/issues/62569
-	// - https://stackoverflow.com/a/65760807
-	// - https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
-	#[cfg(all(unix, not(debug_assertions)))]
-	unsafe {
-		libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-	}
-}
-
 fn format_is_unsafe_for_terminal(format: Format) -> bool {
 	matches!(format, Format::Msgpack)
 }
@@ -150,6 +100,29 @@ fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
 		next = err.source()
 	}
 	false
+}
+
+fn exit_for_broken_pipe() {
+	// For largely historical reasons, Rust ignores SIGPIPE on Unix(-like)
+	// systems by default and treats writing to a broken pipe exclusively as a
+	// normal I/O error. Dying from SIGPIPE in this case more closely matches
+	// the behavior of a typical Unix command line program. However, we still
+	// come here through the regular (portable) error handling path instead of
+	// restoring the default SIGPIPE handler from the start, to ensure that
+	// developers on Unix don't accidentally give non-Unix users a hard time.
+	//
+	// https://github.com/rust-lang/rust/issues/62569
+	// https://stackoverflow.com/a/65760807
+	// https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
+	#[cfg(unix)]
+	unsafe {
+		libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+		libc::raise(libc::SIGPIPE);
+	}
+
+	// For non-Unix systems, we just fall back to a plain silent exit.
+	#[cfg(not(unix))]
+	process::exit(1);
 }
 
 const SHORT_HELP: &str = "Translate between serialized data formats
