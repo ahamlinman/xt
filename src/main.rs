@@ -91,11 +91,12 @@ fn format_is_unsafe_for_terminal(format: Format) -> bool {
 }
 
 fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
-	use io::ErrorKind::BrokenPipe;
 	let mut next = Some(err);
 	while let Some(err) = next {
-		if matches!(err.downcast_ref::<io::Error>(), Some(err) if err.kind() == BrokenPipe) {
-			return true;
+		if let Some(ioerr) = err.downcast_ref::<io::Error>() {
+			if ioerr.kind() == io::ErrorKind::BrokenPipe {
+				return true;
+			}
 		}
 		next = err.source()
 	}
@@ -107,9 +108,9 @@ fn exit_for_broken_pipe() {
 	// systems by default and treats writing to a broken pipe exclusively as a
 	// normal I/O error. Dying from SIGPIPE in this case more closely matches
 	// the behavior of a typical Unix command line program. However, we still
-	// come here through the regular (portable) error handling path instead of
-	// restoring the default SIGPIPE handler from the start, to ensure that
-	// developers on Unix don't accidentally give non-Unix users a hard time.
+	// come here through the regular error handling path instead of restoring
+	// the default SIGPIPE handler from the start, to ensure that developers on
+	// Unix don't accidentally write non-portable error handling logic.
 	//
 	// https://github.com/rust-lang/rust/issues/62569
 	// https://stackoverflow.com/a/65760807
