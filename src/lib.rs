@@ -15,6 +15,7 @@
 use std::error;
 use std::fmt;
 use std::io::Write;
+use std::result;
 
 mod detect;
 mod input;
@@ -26,7 +27,13 @@ mod yaml;
 
 pub use input::Handle;
 
-/// An error produced during translation.
+/// The result produced by a translation.
+///
+/// There is no useful `Ok` value, as the translator streams its output to a
+/// writer.
+pub type Result = result::Result<(), Error>;
+
+/// An error produced during a translation.
 pub type Error = Box<dyn error::Error>;
 
 /// Translates a single serialized input to serialized output in a different
@@ -34,12 +41,7 @@ pub type Error = Box<dyn error::Error>;
 ///
 /// When `from` is `None`, xt will attempt to detect the input format using an
 /// unspecified and unstable algorithm.
-pub fn translate<W>(
-	input: Handle<'_>,
-	from: Option<Format>,
-	to: Format,
-	output: W,
-) -> Result<(), crate::Error>
+pub fn translate<W>(input: Handle<'_>, from: Option<Format>, to: Format, output: W) -> crate::Result
 where
 	W: Write,
 {
@@ -65,11 +67,7 @@ where
 	///
 	/// When `from` is `None`, xt will attempt to detect the input format using an
 	/// unspecified and unstable algorithm.
-	pub fn translate(
-		&mut self,
-		mut input: Handle<'_>,
-		from: Option<Format>,
-	) -> Result<(), crate::Error> {
+	pub fn translate(&mut self, mut input: Handle<'_>, from: Option<Format>) -> crate::Result {
 		let from = match from {
 			Some(format) => format,
 			None => match detect::detect_format(&mut input)? {
@@ -89,12 +87,12 @@ where
 
 /// A trait for output formats to receive their translatable input.
 trait Output {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), crate::Error>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static;
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), crate::Error>
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize;
 }
@@ -129,7 +127,7 @@ impl<W> Output for &mut Dispatcher<W>
 where
 	W: Write,
 {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), crate::Error>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -142,7 +140,7 @@ where
 		}
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), crate::Error>
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize,
 	{
