@@ -1,7 +1,7 @@
 //! The TOML data format.
 
 use std::borrow::Cow;
-use std::error::Error;
+use std::error;
 use std::fmt;
 use std::io::{self, Write};
 use std::str;
@@ -20,7 +20,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn error::Error>>
 where
 	O: crate::Output,
 {
@@ -42,7 +42,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -68,7 +68,7 @@ impl<W: Write> crate::Output for Output<W> {
 		self.output_value(&value)
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
 	where
 		S: serde::ser::Serialize,
 	{
@@ -80,7 +80,7 @@ impl<W: Write> crate::Output for Output<W> {
 }
 
 impl<W: Write> Output<W> {
-	fn output_value(&mut self, value: &::toml::Value) -> Result<(), Box<dyn Error>> {
+	fn output_value(&mut self, value: &::toml::Value) -> Result<(), Box<dyn error::Error>> {
 		// From the spec: "TOML is designed to map unambiguously to a hash
 		// table." xt's other input formats can produce something like a boolean
 		// or array at the top level, which might make xt output an invalid TOML
@@ -115,4 +115,4 @@ impl fmt::Display for NonTableRootError {
 	}
 }
 
-impl Error for NonTableRootError {}
+impl error::Error for NonTableRootError {}

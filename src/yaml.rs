@@ -1,7 +1,7 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
-use std::error::Error;
+use std::error;
 use std::io::{self, Write};
 
 use serde::Deserialize;
@@ -24,7 +24,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	Ok(false)
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn error::Error>>
 where
 	O: crate::Output,
 {
@@ -74,7 +74,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -85,7 +85,7 @@ impl<W: Write> crate::Output for Output<W> {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
 	where
 		S: serde::ser::Serialize,
 	{
@@ -105,7 +105,7 @@ impl<W: Write> crate::Output for Output<W> {
 /// error.
 ///
 /// [spec]: https://yaml.org/spec/1.2.2/#52-character-encodings
-fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
+fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn error::Error>> {
 	let prefix = {
 		// We use -1 as a sentinel for truncated input so the match patterns are
 		// shorter to write than with Option<u8> variants.

@@ -1,6 +1,6 @@
 //! Automatic detection of data formats based on parser trials.
 
-use std::error::Error;
+use std::error;
 use std::fmt;
 use std::io;
 
@@ -63,7 +63,7 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 struct Discard;
 
 impl Output for Discard {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
 	where
 		D: de::Deserializer<'de, Error = E>,
 		E: de::Error + 'static,
@@ -72,7 +72,7 @@ impl Output for Discard {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
 	where
 		S: Serialize,
 	{
@@ -233,7 +233,7 @@ impl fmt::Display for DiscardError {
 	}
 }
 
-impl Error for DiscardError {}
+impl error::Error for DiscardError {}
 
 impl ser::Error for DiscardError {
 	fn custom<T: fmt::Display>(msg: T) -> Self {

@@ -110,6 +110,7 @@
 
 use std::borrow::Cow;
 use std::cell::Cell;
+use std::error;
 use std::fmt;
 
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
@@ -164,12 +165,12 @@ where
 	}
 }
 
-impl<S, D> std::error::Error for Error<S, D>
+impl<S, D> error::Error for Error<S, D>
 where
 	S: ser::Error + 'static,
 	D: de::Error + 'static,
 {
-	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+	fn source(&self) -> Option<&(dyn error::Error + 'static)> {
 		match self {
 			Error::Ser(ser_err, _) => Some(ser_err),
 			Error::De(de_err) => Some(de_err),

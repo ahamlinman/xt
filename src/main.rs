@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -90,7 +90,7 @@ fn format_is_unsafe_for_terminal(format: Format) -> bool {
 	matches!(format, Format::Msgpack)
 }
 
-fn is_broken_pipe(err: &(dyn Error + 'static)) -> bool {
+fn is_broken_pipe(err: &(dyn error::Error + 'static)) -> bool {
 	let mut next = Some(err);
 	while let Some(err) = next {
 		if let Some(ioerr) = err.downcast_ref::<io::Error>() {
