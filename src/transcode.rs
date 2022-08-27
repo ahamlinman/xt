@@ -91,7 +91,8 @@
 //! `Deserializer` out of the state, consumes it, stashes away any error whose
 //! type doesn't match the method's return signature, and produces an error of
 //! the correct type by generating one with a boilerplate message or pulling one
-//! out of a child state.
+//! out of a child state. It also tracks which side of the transcode originally
+//! failed so it can hide synthetic errors from the caller.
 //!
 //! An important property of this approach is that a failed transcode follows
 //! standard error handling paths in both the serializer and deserializer, which
@@ -111,10 +112,8 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::fmt;
 
-use serde::{
-	de::{self, Deserialize, DeserializeSeed, Deserializer},
-	ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer},
-};
+use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
+use serde::ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer};
 
 /// The message used to generate generic serializer and deserializer errors.
 const TRANSLATION_FAILED: &str = "translation failed";
@@ -187,9 +186,27 @@ struct State<P, E> {
 }
 
 #[derive(Clone, Copy)]
+/// The side of a transcode operation that originally failed.
+///
+/// Since the transcoder can generate synthetic serializer errors when the
+/// deserializer fails, the mere fact that a serializer error made it up the
+/// call stack doesn't mean the serializer originally caused the failure. The
+/// transcoder tracks this state separately so it knows when to discard a
+/// serializer error instead of returning it.
 enum ErrorSource {
-	Ser,
 	De,
+	Ser,
+}
+
+impl Default for ErrorSource {
+	/// Returns [`ErrorSource::De`].
+	///
+	/// Since the transcoder drives the serializer, it can always know when to
+	/// capture that an error originated from the serializer. So, all errors
+	/// with an unknown source must have originated in the deserializer.
+	fn default() -> Self {
+		ErrorSource::De
+	}
 }
 
 impl<P, E> Default for State<P, E> {
@@ -197,7 +214,7 @@ impl<P, E> Default for State<P, E> {
 		Self {
 			parent: None,
 			error: None,
-			source: ErrorSource::De,
+			source: ErrorSource::default(),
 		}
 	}
 }
@@ -207,7 +224,7 @@ impl<P, E> State<P, E> {
 		State {
 			parent: Some(parent),
 			error: None,
-			source: ErrorSource::De,
+			source: ErrorSource::default(),
 		}
 	}
 
