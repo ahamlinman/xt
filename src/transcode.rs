@@ -236,13 +236,13 @@ impl<S: Serializer> From<S> for Visitor<S> {
 }
 
 impl<S: Serializer> Visitor<S> {
-	fn forward_to_serializer<F, E>(&self, op: F) -> Result<S::Ok, E>
+	fn forward_to_serializer<F, E>(&self, serialize_op: F) -> Result<S::Ok, E>
 	where
 		F: FnOnce(S) -> Result<S::Ok, S::Error>,
 		E: de::Error,
 	{
 		let ser = self.0.take_parent();
-		match op(ser) {
+		match serialize_op(ser) {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
@@ -455,13 +455,17 @@ impl<'de, S: SerializeMap> DeserializeSeed<'de> for &ValueSeed<'_, S> {
 struct SerializeNext<'de, D: Deserializer<'de>>(State<D, D::Error>);
 
 impl<'de, D: Deserializer<'de>> SerializeNext<'de, D> {
-	fn forward_from_seed<S, E, F>(seed_state: &State<S, E>, de: D, op: F) -> Result<(), D::Error>
+	fn forward_from_seed<S, E, F>(
+		seed_state: &State<S, E>,
+		de: D,
+		serialize_op: F,
+	) -> Result<(), D::Error>
 	where
 		F: FnOnce(S, &Self) -> Result<(), E>,
 	{
 		let ser = seed_state.take_parent();
 		let next = SerializeNext::from(de);
-		match op(ser, &next) {
+		match serialize_op(ser, &next) {
 			Ok(()) => Ok(()),
 			Err(ser_err) => {
 				seed_state.capture_error(next.0.error_source(), Some(ser_err));
