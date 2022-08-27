@@ -206,9 +206,9 @@ impl<P, E> State<P, E> {
 			.expect("parent already taken from this state")
 	}
 
-	fn capture_error(&self, source: ErrorSource, error: Option<E>) {
+	fn capture_error(&self, source: ErrorSource, error: E) {
 		self.source.set(source);
-		self.error.set(error);
+		self.error.set(Some(error));
 	}
 
 	fn capture_child_error<C>(&self, child: State<C, E>) {
@@ -245,7 +245,7 @@ impl<S: Serializer> Visitor<S> {
 		match serialize_op(ser) {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
-				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				self.0.capture_error(ErrorSource::Ser, ser_err);
 				Err(de::Error::custom(TRANSLATION_FAILED))
 			}
 		}
@@ -332,7 +332,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		let mut output = match ser.serialize_seq(input.size_hint()) {
 			Ok(s) => s,
 			Err(ser_err) => {
-				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				self.0.capture_error(ErrorSource::Ser, ser_err);
 				return Err(de::Error::custom(TRANSLATION_FAILED));
 			}
 		};
@@ -352,7 +352,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		match output.end() {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
-				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				self.0.capture_error(ErrorSource::Ser, ser_err);
 				Err(de::Error::custom(TRANSLATION_FAILED))
 			}
 		}
@@ -363,7 +363,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		let mut output = match ser.serialize_map(input.size_hint()) {
 			Ok(m) => m,
 			Err(ser_err) => {
-				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				self.0.capture_error(ErrorSource::Ser, ser_err);
 				return Err(de::Error::custom(TRANSLATION_FAILED));
 			}
 		};
@@ -389,7 +389,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		match output.end() {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
-				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				self.0.capture_error(ErrorSource::Ser, ser_err);
 				Err(de::Error::custom(TRANSLATION_FAILED))
 			}
 		}
@@ -468,7 +468,7 @@ impl<'de, D: Deserializer<'de>> SerializeNext<'de, D> {
 		match serialize_op(ser, &next) {
 			Ok(()) => Ok(()),
 			Err(ser_err) => {
-				seed_state.capture_error(next.0.error_source(), Some(ser_err));
+				seed_state.capture_error(next.0.error_source(), ser_err);
 				match next.0.into_error() {
 					Some(de_err) => Err(de_err),
 					None => Err(de::Error::custom(TRANSLATION_FAILED)),
@@ -491,7 +491,7 @@ impl<'de, D: Deserializer<'de>> Serialize for SerializeNext<'de, D> {
 		match de.deserialize_any(&visitor) {
 			Ok(value) => Ok(value),
 			Err(de_err) => {
-				self.0.capture_error(visitor.0.error_source(), Some(de_err));
+				self.0.capture_error(visitor.0.error_source(), de_err);
 				match visitor.0.into_error() {
 					Some(ser_err) => Err(ser_err),
 					None => Err(ser::Error::custom(TRANSLATION_FAILED)),
