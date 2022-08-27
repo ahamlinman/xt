@@ -80,12 +80,12 @@
 //! In general, all of the transcoder's trait implementations face similar
 //! challenges, with the details varying based on which part of the process
 //! they're involved with. As such, these implementations all center around a
-//! common [`Transcoder`] type. A `Transcoder` initially owns an unused parent
+//! common [`StepState`] type. A `StepState` initially owns an unused parent
 //! (de)serializer for a trait method to take, provides storage for any error
 //! value that the method can't return directly, and tracks the original source
 //! of an error to hide synthetic errors from the transcoder's final result.
 //!
-//! A typical implementation of a Serde trait method on `Transcoder` will:
+//! A typical implementation of a Serde trait method on `StepState` will:
 //!
 //! 1. Take ownership of the parent (de)serializer held by the transcoder.
 //!    Subsequent attempts to do this will panic.
@@ -171,17 +171,17 @@ const TRANSLATION_FAILED: &str = "translation failed";
 /// The transcoder forwards the output produced by the deserializer directly to
 /// the serializer without collecting it into an intermediate data structure. An
 /// error on either side will halt further transcoding.
-pub(crate) fn transcode<'de, S, D>(s: S, d: D) -> Result<S::Ok, Error<S::Error, D::Error>>
+pub(crate) fn transcode<'de, S, D>(ser: S, de: D) -> Result<S::Ok, Error<S::Error, D::Error>>
 where
 	S: Serializer,
 	D: Deserializer<'de>,
 {
-	let visitor = Transcoder::new(s);
-	match d.deserialize_any(&visitor) {
+	let visitor = Visitor::from(ser);
+	match de.deserialize_any(&visitor) {
 		Ok(value) => Ok(value),
-		Err(derr) => match visitor.error_source() {
-			ErrorSource::Ser => Err(Error::Ser(visitor.into_error().unwrap(), derr)),
-			ErrorSource::De => Err(Error::De(derr)),
+		Err(de_err) => match visitor.0.error_source() {
+			ErrorSource::Ser => Err(Error::Ser(visitor.0.into_error().unwrap(), de_err)),
+			ErrorSource::De => Err(Error::De(de_err)),
 		},
 	}
 }
@@ -206,8 +206,8 @@ where
 {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Error::Ser(serr, derr) => write!(f, "{}: {}", derr, serr),
-			Error::De(derr) => fmt::Display::fmt(derr, f),
+			Error::Ser(ser_err, de_err) => write!(f, "{}: {}", de_err, ser_err),
+			Error::De(de_err) => fmt::Display::fmt(de_err, f),
 		}
 	}
 }
@@ -219,17 +219,13 @@ where
 {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
-			Error::Ser(serr, _) => Some(serr),
-			Error::De(derr) => Some(derr),
+			Error::Ser(ser_err, _) => Some(ser_err),
+			Error::De(de_err) => Some(de_err),
 		}
 	}
 }
 
-/// A generic helper representing a single transcoding step.
-///
-/// See the module level documentation for a more comprehensive explanation of
-/// this type's usage.
-struct Transcoder<P, E> {
+struct StepState<P, E> {
 	parent: Cell<Option<P>>,
 	error: Cell<Option<E>>,
 	source: Cell<ErrorSource>,
@@ -241,10 +237,10 @@ enum ErrorSource {
 	De,
 }
 
-impl<P, E> Transcoder<P, E> {
-	fn new(v: P) -> Transcoder<P, E> {
-		Transcoder {
-			parent: Cell::new(Some(v)),
+impl<P, E> StepState<P, E> {
+	fn new(parent: P) -> StepState<P, E> {
+		StepState {
+			parent: Cell::new(Some(parent)),
 			error: Cell::new(None),
 			source: Cell::new(ErrorSource::De),
 		}
@@ -253,7 +249,7 @@ impl<P, E> Transcoder<P, E> {
 	fn take_parent(&self) -> P {
 		match self.parent.replace(None) {
 			Some(parent) => parent,
-			None => panic!("parent already taken from transcoder"),
+			None => panic!("parent already taken in this step"),
 		}
 	}
 
@@ -271,28 +267,32 @@ impl<P, E> Transcoder<P, E> {
 	}
 }
 
-/// Handles the capture and mapping of serializer errors in visitor methods that
-/// only need to forward simple values.
-fn forward_value<S, E, F>(t: &Transcoder<S, S::Error>, op: F) -> Result<S::Ok, E>
-where
-	S: Serializer,
-	E: de::Error,
-	F: FnOnce(S) -> Result<S::Ok, S::Error>,
-{
-	let serializer = t.take_parent();
-	match op(serializer) {
-		Ok(value) => Ok(value),
-		Err(serr) => {
-			t.capture_error(ErrorSource::Ser, Some(serr));
-			Err(de::Error::custom(TRANSLATION_FAILED))
+struct Visitor<S: Serializer>(StepState<S, S::Error>);
+
+impl<S: Serializer> From<S> for Visitor<S> {
+	fn from(ser: S) -> Self {
+		Visitor(StepState::new(ser))
+	}
+}
+
+impl<S: Serializer> Visitor<S> {
+	fn forward_to_serializer<F, E>(&self, op: F) -> Result<S::Ok, E>
+	where
+		F: FnOnce(S) -> Result<S::Ok, S::Error>,
+		E: de::Error,
+	{
+		let serializer = self.0.take_parent();
+		match op(serializer) {
+			Ok(value) => Ok(value),
+			Err(ser_err) => {
+				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				Err(de::Error::custom(TRANSLATION_FAILED))
+			}
 		}
 	}
 }
 
-impl<'de, S> de::Visitor<'de> for &Transcoder<S, S::Error>
-where
-	S: Serializer,
-{
+impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 	type Value = S::Ok;
 
 	fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -300,225 +300,237 @@ where
 	}
 
 	fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_unit())
+		self.forward_to_serializer(|s| s.serialize_unit())
 	}
 
 	fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_bool(v))
+		self.forward_to_serializer(|s| s.serialize_bool(v))
 	}
 
 	fn visit_i8<E: de::Error>(self, v: i8) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_i8(v))
+		self.forward_to_serializer(|s| s.serialize_i8(v))
 	}
 
 	fn visit_i16<E: de::Error>(self, v: i16) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_i16(v))
+		self.forward_to_serializer(|s| s.serialize_i16(v))
 	}
 
 	fn visit_i32<E: de::Error>(self, v: i32) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_i32(v))
+		self.forward_to_serializer(|s| s.serialize_i32(v))
 	}
 
 	fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_i64(v))
+		self.forward_to_serializer(|s| s.serialize_i64(v))
 	}
 
 	fn visit_i128<E: de::Error>(self, v: i128) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_i128(v))
+		self.forward_to_serializer(|s| s.serialize_i128(v))
 	}
 
 	fn visit_u8<E: de::Error>(self, v: u8) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_u8(v))
+		self.forward_to_serializer(|s| s.serialize_u8(v))
 	}
 
 	fn visit_u16<E: de::Error>(self, v: u16) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_u16(v))
+		self.forward_to_serializer(|s| s.serialize_u16(v))
 	}
 
 	fn visit_u32<E: de::Error>(self, v: u32) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_u32(v))
+		self.forward_to_serializer(|s| s.serialize_u32(v))
 	}
 
 	fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_u64(v))
+		self.forward_to_serializer(|s| s.serialize_u64(v))
 	}
 
 	fn visit_u128<E: de::Error>(self, v: u128) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_u128(v))
+		self.forward_to_serializer(|s| s.serialize_u128(v))
 	}
 
 	fn visit_f32<E: de::Error>(self, v: f32) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_f32(v))
+		self.forward_to_serializer(|s| s.serialize_f32(v))
 	}
 
 	fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_f64(v))
+		self.forward_to_serializer(|s| s.serialize_f64(v))
 	}
 
 	fn visit_char<E: de::Error>(self, v: char) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_char(v))
+		self.forward_to_serializer(|s| s.serialize_char(v))
 	}
 
 	fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_str(v))
+		self.forward_to_serializer(|s| s.serialize_str(v))
 	}
 
 	fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-		forward_value(self, |s| s.serialize_bytes(v))
+		self.forward_to_serializer(|s| s.serialize_bytes(v))
 	}
 
 	fn visit_seq<A>(self, mut input: A) -> Result<Self::Value, A::Error>
 	where
 		A: de::SeqAccess<'de>,
 	{
-		let mut output = self
-			.take_parent()
-			.serialize_seq(input.size_hint())
-			.map_err(|serr| {
-				self.capture_error(ErrorSource::Ser, Some(serr));
-				de::Error::custom(TRANSLATION_FAILED)
-			})?;
+		let serializer = self.0.take_parent();
+		let mut output = match serializer.serialize_seq(input.size_hint()) {
+			Ok(ser) => ser,
+			Err(ser_err) => {
+				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				return Err(de::Error::custom(TRANSLATION_FAILED));
+			}
+		};
 
 		loop {
-			let seed = Transcoder::new(&mut output);
+			let seed = SeqSeed::from(&mut output);
 			match input.next_element_seed(&seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
-				Err(derr) => {
-					self.capture_error(seed.error_source(), seed.into_error());
-					return Err(derr);
+				Err(de_err) => {
+					self.0
+						.capture_error(seed.0.error_source(), seed.0.into_error());
+					return Err(de_err);
 				}
 			}
 		}
 
-		output.end().map_err(|serr| {
-			self.capture_error(ErrorSource::Ser, Some(serr));
-			de::Error::custom(TRANSLATION_FAILED)
-		})
+		match output.end() {
+			Ok(v) => Ok(v),
+			Err(ser_err) => {
+				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				Err(de::Error::custom(TRANSLATION_FAILED))
+			}
+		}
 	}
 
 	fn visit_map<A>(self, mut input: A) -> Result<Self::Value, A::Error>
 	where
 		A: de::MapAccess<'de>,
 	{
-		let mut output = self
-			.take_parent()
-			.serialize_map(input.size_hint())
-			.map_err(|serr| {
-				self.capture_error(ErrorSource::Ser, Some(serr));
-				de::Error::custom(TRANSLATION_FAILED)
-			})?;
+		let serializer = self.0.take_parent();
+		let mut output = match serializer.serialize_map(input.size_hint()) {
+			Ok(ser) => ser,
+			Err(ser_err) => {
+				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				return Err(de::Error::custom(TRANSLATION_FAILED));
+			}
+		};
 
 		loop {
-			let key_seed = KeySeed(Transcoder::new(&mut output));
+			let key_seed = KeySeed::from(&mut output);
 			match input.next_key_seed(&key_seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
-				Err(derr) => {
-					self.capture_error(key_seed.0.error_source(), key_seed.0.into_error());
-					return Err(derr);
+				Err(de_err) => {
+					self.0
+						.capture_error(key_seed.0.error_source(), key_seed.0.into_error());
+					return Err(de_err);
 				}
 			}
 
-			let value_seed = ValueSeed(Transcoder::new(&mut output));
-			if let Err(derr) = input.next_value_seed(&value_seed) {
-				self.capture_error(value_seed.0.error_source(), value_seed.0.into_error());
-				return Err(derr);
+			let value_seed = ValueSeed::from(&mut output);
+			if let Err(de_err) = input.next_value_seed(&value_seed) {
+				self.0
+					.capture_error(value_seed.0.error_source(), value_seed.0.into_error());
+				return Err(de_err);
 			}
 		}
 
-		output.end().map_err(|serr| {
-			self.capture_error(ErrorSource::Ser, Some(serr));
-			de::Error::custom(TRANSLATION_FAILED)
-		})
-	}
-}
-
-/// Handles the capture and mapping of errors when forwarding the next value
-/// from a deserializer to a sequence or map serializer method. As these methods
-/// require `Serialize` values, we automatically wrap the deserializer with an
-/// inner transcoder and propagate its captured error.
-fn forward_next<'de, D, F, S, SErr>(t: &Transcoder<S, SErr>, d: D, op: F) -> Result<(), D::Error>
-where
-	D: Deserializer<'de>,
-	F: FnOnce(S, &Transcoder<D, D::Error>) -> Result<(), SErr>,
-{
-	let serializer = t.take_parent();
-	let forwarder = Transcoder::new(d);
-	match op(serializer, &forwarder) {
-		Ok(()) => Ok(()),
-		Err(serr) => {
-			t.capture_error(forwarder.error_source(), Some(serr));
-			match forwarder.into_error() {
-				Some(derr) => Err(derr),
-				None => Err(de::Error::custom(TRANSLATION_FAILED)),
+		match output.end() {
+			Ok(v) => Ok(v),
+			Err(ser_err) => {
+				self.0.capture_error(ErrorSource::Ser, Some(ser_err));
+				Err(de::Error::custom(TRANSLATION_FAILED))
 			}
 		}
 	}
 }
 
-impl<'de, S> DeserializeSeed<'de> for &Transcoder<&mut S, S::Error>
-where
-	S: SerializeSeq,
-{
-	type Value = ();
+struct SeqSeed<'a, S: SerializeSeq>(StepState<&'a mut S, S::Error>);
 
-	fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		forward_next(self, d, |s, f| s.serialize_element(f))
+impl<'a, S: SerializeSeq> From<&'a mut S> for SeqSeed<'a, S> {
+	fn from(ser: &'a mut S) -> Self {
+		SeqSeed(StepState::new(ser))
 	}
 }
 
-struct KeySeed<'a, S: SerializeMap>(Transcoder<&'a mut S, S::Error>);
-
-impl<'de, S> DeserializeSeed<'de> for &KeySeed<'_, S>
-where
-	S: SerializeMap,
-{
+impl<'de, S: SerializeSeq> DeserializeSeed<'de> for &SeqSeed<'_, S> {
 	type Value = ();
 
-	fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		forward_next(&self.0, d, |s, f| s.serialize_key(f))
+	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<Self::Value, D::Error> {
+		SerializeNext::forward(de, &self.0, |ser, next| ser.serialize_element(next))
 	}
 }
 
-struct ValueSeed<'a, S: SerializeMap>(Transcoder<&'a mut S, S::Error>);
+struct KeySeed<'a, S: SerializeMap>(StepState<&'a mut S, S::Error>);
 
-impl<'de, S> DeserializeSeed<'de> for &ValueSeed<'_, S>
-where
-	S: SerializeMap,
-{
-	type Value = ();
-
-	fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		forward_next(&self.0, d, |s, f| s.serialize_value(f))
+impl<'a, S: SerializeMap> From<&'a mut S> for KeySeed<'a, S> {
+	fn from(ser: &'a mut S) -> Self {
+		KeySeed(StepState::new(ser))
 	}
 }
 
-impl<'de, D> Serialize for Transcoder<D, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+impl<'de, S: SerializeMap> DeserializeSeed<'de> for &KeySeed<'_, S> {
+	type Value = ();
+
+	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<Self::Value, D::Error> {
+		SerializeNext::forward(de, &self.0, |ser, next| ser.serialize_key(next))
+	}
+}
+
+struct ValueSeed<'a, S: SerializeMap>(StepState<&'a mut S, S::Error>);
+
+impl<'a, S: SerializeMap> From<&'a mut S> for ValueSeed<'a, S> {
+	fn from(ser: &'a mut S) -> Self {
+		ValueSeed(StepState::new(ser))
+	}
+}
+
+impl<'de, S: SerializeMap> DeserializeSeed<'de> for &ValueSeed<'_, S> {
+	type Value = ();
+
+	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<Self::Value, D::Error> {
+		SerializeNext::forward(de, &self.0, |ser, next| ser.serialize_value(next))
+	}
+}
+
+struct SerializeNext<'de, D: Deserializer<'de>>(StepState<D, D::Error>);
+
+impl<'de, D: Deserializer<'de>> SerializeNext<'de, D> {
+	fn forward<S, E, F>(de: D, state: &StepState<S, E>, op: F) -> Result<(), D::Error>
 	where
-		S: Serializer,
+		F: FnOnce(S, &Self) -> Result<(), E>,
 	{
-		let deserializer = self.take_parent();
-		let visitor = Transcoder::new(s);
-		match deserializer.deserialize_any(&visitor) {
+		let ser = state.take_parent();
+		let next = SerializeNext::from(de);
+		match op(ser, &next) {
+			Ok(()) => Ok(()),
+			Err(ser_err) => {
+				state.capture_error(next.0.error_source(), Some(ser_err));
+				match next.0.into_error() {
+					Some(de_err) => Err(de_err),
+					None => Err(de::Error::custom(TRANSLATION_FAILED)),
+				}
+			}
+		}
+	}
+}
+
+impl<'de, D: Deserializer<'de>> From<D> for SerializeNext<'de, D> {
+	fn from(de: D) -> SerializeNext<'de, D> {
+		SerializeNext(StepState::new(de))
+	}
+}
+
+impl<'de, D: Deserializer<'de>> Serialize for SerializeNext<'de, D> {
+	fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+		let de = self.0.take_parent();
+		let visitor = Visitor::from(ser);
+		match de.deserialize_any(&visitor) {
 			Ok(value) => Ok(value),
-			Err(derr) => {
-				self.capture_error(visitor.error_source(), Some(derr));
-				match visitor.into_error() {
-					Some(serr) => Err(serr),
+			Err(de_err) => {
+				self.0.capture_error(visitor.0.error_source(), Some(de_err));
+				match visitor.0.into_error() {
+					Some(ser_err) => Err(ser_err),
 					None => Err(ser::Error::custom(TRANSLATION_FAILED)),
 				}
 			}
