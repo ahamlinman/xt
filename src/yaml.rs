@@ -1,6 +1,9 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
+use std::char::DecodeUtf16Error;
+use std::error;
+use std::fmt;
 use std::io::{self, Write};
 
 use serde::Deserialize;
@@ -136,12 +139,12 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
 	})
 }
 
-fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, String>
+fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, EncodingError>
 where
 	F: Fn([u8; 4]) -> u32,
 {
 	if buf.len() % 4 != 0 {
-		return Err("truncated utf-32".into());
+		return Err(EncodingError::TruncatedUtf32);
 	}
 
 	// Start with just enough capacity for a pure ASCII result.
@@ -149,18 +152,18 @@ where
 	for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
 		result.push(match char::from_u32(unit) {
 			Some(chr) => chr,
-			None => return Err(format!("invalid utf-32: {:x}", unit)),
+			None => return Err(EncodingError::InvalidUtf32(unit)),
 		});
 	}
 	Ok(result)
 }
 
-fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, String>
+fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, EncodingError>
 where
 	F: Fn([u8; 2]) -> u16,
 {
 	if buf.len() % 2 != 0 {
-		return Err("truncated utf-16".into());
+		return Err(EncodingError::TruncatedUtf16);
 	}
 
 	// Start with just enough capacity for a pure ASCII result.
@@ -169,8 +172,30 @@ where
 	for chr in char::decode_utf16(units) {
 		result.push(match chr {
 			Ok(chr) => chr,
-			Err(err) => return Err(format!("invalid utf-16: {}", err)),
+			Err(err) => return Err(EncodingError::InvalidUtf16(err)),
 		});
 	}
 	Ok(result)
+}
+
+/// An error encountered while decoding a UTF-16 or UTF-32 YAML document.
+#[derive(Debug)]
+enum EncodingError {
+	TruncatedUtf16,
+	TruncatedUtf32,
+	InvalidUtf16(DecodeUtf16Error),
+	InvalidUtf32(u32),
+}
+
+impl error::Error for EncodingError {}
+
+impl fmt::Display for EncodingError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			EncodingError::TruncatedUtf16 => f.write_str("truncated utf-16"),
+			EncodingError::TruncatedUtf32 => f.write_str("truncated utf-32"),
+			EncodingError::InvalidUtf16(err) => write!(f, "invalid utf-16: {}", err),
+			EncodingError::InvalidUtf32(unit) => write!(f, "invalid utf-32: {:x}", unit),
+		}
+	}
 }
