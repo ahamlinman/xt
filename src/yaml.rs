@@ -56,9 +56,8 @@ where
 	// documents with BOMs produce errors about mapping values not being
 	// allowed. We take care of a single BOM at the start of a document since
 	// it's pretty easy to handle, and hopefully covers most things (the
-	// repeated BOM case seems to be about support for concatenating arbitrary
-	// documents, which might be better handled with proper multi-file support
-	// in xt itself).
+	// repeated BOM case seems to be about concatenating arbitrary documents, so
+	// xt's multi-file support might be a useful workaround).
 	let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
 
 	for de in serde_yaml::Deserializer::from_str(input) {
