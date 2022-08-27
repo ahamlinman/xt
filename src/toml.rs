@@ -1,7 +1,7 @@
 //! The TOML data format.
 
 use std::borrow::Cow;
-use std::error::Error;
+use std::error;
 use std::fmt;
 use std::io::{self, Write};
 use std::str;
@@ -20,7 +20,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
@@ -42,7 +42,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -68,7 +68,7 @@ impl<W: Write> crate::Output for Output<W> {
 		self.output_value(&value)
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize,
 	{
@@ -80,7 +80,7 @@ impl<W: Write> crate::Output for Output<W> {
 }
 
 impl<W: Write> Output<W> {
-	fn output_value(&mut self, value: &::toml::Value) -> Result<(), Box<dyn Error>> {
+	fn output_value(&mut self, value: &::toml::Value) -> crate::Result {
 		// From the spec: "TOML is designed to map unambiguously to a hash
 		// table." xt's other input formats can produce something like a boolean
 		// or array at the top level, which might make xt output an invalid TOML
@@ -88,7 +88,7 @@ impl<W: Write> Output<W> {
 		// crate dump a top-level array as an array of tables with an empty
 		// name, i.e. with "[[]]" headers.
 		if !value.is_table() {
-			return Err(NonTableRootError.into());
+			return Err(TomlOutputError::NonTableRoot.into());
 		}
 
 		// As of this writing, the toml crate can't output directly to a writer.
@@ -97,22 +97,31 @@ impl<W: Write> Output<W> {
 		Ok(())
 	}
 
-	fn ensure_one_use(&mut self) -> Result<(), &'static str> {
+	fn ensure_one_use(&mut self) -> crate::Result {
 		if self.used {
-			return Err("TOML does not support multi-document output");
+			return Err(TomlOutputError::MultiDocument.into());
 		}
 		self.used = true;
 		Ok(())
 	}
 }
 
+/// An error encountered while translating a document to TOML.
 #[derive(Debug)]
-struct NonTableRootError;
-
-impl fmt::Display for NonTableRootError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_str("root of TOML output must be a table")
-	}
+enum TomlOutputError {
+	NonTableRoot,
+	MultiDocument,
 }
 
-impl Error for NonTableRootError {}
+impl error::Error for TomlOutputError {}
+
+impl fmt::Display for TomlOutputError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			TomlOutputError::NonTableRoot => f.write_str("root of TOML output must be a table"),
+			TomlOutputError::MultiDocument => {
+				f.write_str("TOML does not support multi-document output")
+			}
+		}
+	}
+}

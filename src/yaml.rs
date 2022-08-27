@@ -1,7 +1,9 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
-use std::error::Error;
+use std::char::DecodeUtf16Error;
+use std::error;
+use std::fmt;
 use std::io::{self, Write};
 
 use serde::Deserialize;
@@ -24,7 +26,7 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	Ok(false)
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
@@ -54,9 +56,8 @@ where
 	// documents with BOMs produce errors about mapping values not being
 	// allowed. We take care of a single BOM at the start of a document since
 	// it's pretty easy to handle, and hopefully covers most things (the
-	// repeated BOM case seems to be about support for concatenating arbitrary
-	// documents, which might be better handled with proper multi-file support
-	// in xt itself).
+	// repeated BOM case seems to be about concatenating arbitrary documents, so
+	// xt's multi-file support might be a useful workaround).
 	let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
 
 	for de in serde_yaml::Deserializer::from_str(input) {
@@ -74,7 +75,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -85,7 +86,7 @@ impl<W: Write> crate::Output for Output<W> {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize,
 	{
@@ -105,7 +106,7 @@ impl<W: Write> crate::Output for Output<W> {
 /// error.
 ///
 /// [spec]: https://yaml.org/spec/1.2.2/#52-character-encodings
-fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
+fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
 	let prefix = {
 		// We use -1 as a sentinel for truncated input so the match patterns are
 		// shorter to write than with Option<u8> variants.
@@ -137,12 +138,12 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, Box<dyn Error>> {
 	})
 }
 
-fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, String>
+fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, EncodingError>
 where
 	F: Fn([u8; 4]) -> u32,
 {
 	if buf.len() % 4 != 0 {
-		return Err("truncated utf-32".into());
+		return Err(EncodingError::TruncatedUtf32);
 	}
 
 	// Start with just enough capacity for a pure ASCII result.
@@ -150,18 +151,18 @@ where
 	for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
 		result.push(match char::from_u32(unit) {
 			Some(chr) => chr,
-			None => return Err(format!("invalid utf-32: {:x}", unit)),
+			None => return Err(EncodingError::InvalidUtf32(unit)),
 		});
 	}
 	Ok(result)
 }
 
-fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, String>
+fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, EncodingError>
 where
 	F: Fn([u8; 2]) -> u16,
 {
 	if buf.len() % 2 != 0 {
-		return Err("truncated utf-16".into());
+		return Err(EncodingError::TruncatedUtf16);
 	}
 
 	// Start with just enough capacity for a pure ASCII result.
@@ -170,8 +171,30 @@ where
 	for chr in char::decode_utf16(units) {
 		result.push(match chr {
 			Ok(chr) => chr,
-			Err(err) => return Err(format!("invalid utf-16: {}", err)),
+			Err(err) => return Err(EncodingError::InvalidUtf16(err)),
 		});
 	}
 	Ok(result)
+}
+
+/// An error encountered while decoding a UTF-16 or UTF-32 YAML document.
+#[derive(Debug)]
+enum EncodingError {
+	TruncatedUtf16,
+	TruncatedUtf32,
+	InvalidUtf16(DecodeUtf16Error),
+	InvalidUtf32(u32),
+}
+
+impl error::Error for EncodingError {}
+
+impl fmt::Display for EncodingError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			EncodingError::TruncatedUtf16 => f.write_str("truncated utf-16"),
+			EncodingError::TruncatedUtf32 => f.write_str("truncated utf-32"),
+			EncodingError::InvalidUtf16(err) => write!(f, "invalid utf-16: {}", err),
+			EncodingError::InvalidUtf32(unit) => write!(f, "invalid utf-32: {:x}", unit),
+		}
+	}
 }

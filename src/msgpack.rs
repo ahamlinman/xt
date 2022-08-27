@@ -1,6 +1,6 @@
 //! The MessagePack data format.
 
-use std::error::Error;
+use std::error;
 use std::fmt::{self, Display};
 use std::io::{self, BufRead, BufReader, Read, Write};
 
@@ -64,20 +64,19 @@ fn match_input_reader<R: Read>(input: R) -> Result<(), rmp_serde::decode::Error>
 	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> Result<(), Box<dyn Error>>
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
 	match input.into() {
 		Input::Slice(b) => {
-			let mut buf = &*b;
-			while !buf.is_empty() {
-				let size = next_value_size(buf, DEPTH_LIMIT)?;
-				let (next, rest) = buf.split_at(size);
+			let mut rest = &*b;
+			while !rest.is_empty() {
+				let next;
+				(next, rest) = rest.split_at(next_value_size(rest, DEPTH_LIMIT)?);
 				let mut de = rmp_serde::Deserializer::from_read_ref(next);
 				de.set_max_depth(DEPTH_LIMIT);
 				output.transcode_from(&mut de)?;
-				buf = rest;
 			}
 		}
 		Input::Reader(r) => {
@@ -92,10 +91,7 @@ where
 	Ok(())
 }
 
-fn has_data_left<R>(r: &mut BufReader<R>) -> io::Result<bool>
-where
-	R: Read,
-{
+fn has_data_left<R: Read>(r: &mut BufReader<R>) -> io::Result<bool> {
 	r.fill_buf().map(|b| !b.is_empty())
 }
 
@@ -108,7 +104,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -118,7 +114,7 @@ impl<W: Write> crate::Output for Output<W> {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn Error>>
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize,
 	{
@@ -267,7 +263,7 @@ pub enum ReadSizeError {
 	DepthLimitExceeded,
 }
 
-impl Error for ReadSizeError {}
+impl error::Error for ReadSizeError {}
 
 impl Display for ReadSizeError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

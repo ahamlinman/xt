@@ -283,7 +283,7 @@ where
 
 	/// Returns the number of bytes remaining to read from the captured prefix
 	/// before consuming more from the source.
-	fn captured_unread(&self) -> usize {
+	fn captured_unread_size(&self) -> usize {
 		// The cursor position is relative to an in-memory slice. This shouldn't
 		// truncate unless we manually give the cursor a ridiculous position.
 		#[allow(clippy::cast_possible_truncation)]
@@ -343,9 +343,9 @@ where
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 		// First, copy as much data as we can from the unread portion of the
 		// cursor into the buffer.
-		let prefix_size = std::cmp::min(buf.len(), self.captured_unread());
+		let prefix_size = std::cmp::min(buf.len(), self.captured_unread_size());
 		self.prefix.read_exact(&mut buf[..prefix_size])?;
-		if self.captured_unread() > 0 || prefix_size == buf.len() {
+		if self.captured_unread_size() > 0 || prefix_size == buf.len() {
 			return Ok(prefix_size);
 		}
 
