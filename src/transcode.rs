@@ -186,7 +186,6 @@ struct State<P, E> {
 	source: ErrorSource,
 }
 
-#[derive(Clone, Copy)]
 /// The side of a transcode operation that originally failed.
 ///
 /// Since the transcoder can generate synthetic serializer errors when the
@@ -194,6 +193,7 @@ struct State<P, E> {
 /// call stack doesn't mean the serializer originally caused the failure. The
 /// transcoder tracks this state separately so it knows when to discard a
 /// serializer error instead of returning it.
+#[derive(Clone, Copy)]
 enum ErrorSource {
 	De,
 	Ser,
