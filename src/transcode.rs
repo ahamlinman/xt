@@ -327,9 +327,9 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		self.forward_to_serializer(|ser| ser.serialize_bytes(v))
 	}
 
-	fn visit_seq<A: de::SeqAccess<'de>>(self, mut input: A) -> Result<Self::Value, A::Error> {
+	fn visit_seq<A: de::SeqAccess<'de>>(self, mut de: A) -> Result<Self::Value, A::Error> {
 		let ser = self.0.take_parent();
-		let mut output = match ser.serialize_seq(input.size_hint()) {
+		let mut ser = match ser.serialize_seq(de.size_hint()) {
 			Ok(s) => s,
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
@@ -338,8 +338,8 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		};
 
 		loop {
-			let seed = SeqSeed::from(&mut output);
-			match input.next_element_seed(&seed) {
+			let seed = SeqSeed::from(&mut ser);
+			match de.next_element_seed(&seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
 				Err(de_err) => {
@@ -349,7 +349,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 			}
 		}
 
-		match output.end() {
+		match ser.end() {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
@@ -358,9 +358,9 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		}
 	}
 
-	fn visit_map<A: de::MapAccess<'de>>(self, mut input: A) -> Result<Self::Value, A::Error> {
+	fn visit_map<A: de::MapAccess<'de>>(self, mut de: A) -> Result<Self::Value, A::Error> {
 		let ser = self.0.take_parent();
-		let mut output = match ser.serialize_map(input.size_hint()) {
+		let mut ser = match ser.serialize_map(de.size_hint()) {
 			Ok(m) => m,
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
@@ -369,8 +369,8 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 		};
 
 		loop {
-			let key_seed = KeySeed::from(&mut output);
-			match input.next_key_seed(&key_seed) {
+			let key_seed = KeySeed::from(&mut ser);
+			match de.next_key_seed(&key_seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
 				Err(de_err) => {
@@ -379,14 +379,14 @@ impl<'de, S: Serializer> de::Visitor<'de> for &Visitor<S> {
 				}
 			}
 
-			let value_seed = ValueSeed::from(&mut output);
-			if let Err(de_err) = input.next_value_seed(&value_seed) {
+			let value_seed = ValueSeed::from(&mut ser);
+			if let Err(de_err) = de.next_value_seed(&value_seed) {
 				self.0.capture_child_error(value_seed.0);
 				return Err(de_err);
 			}
 		}
 
-		match output.end() {
+		match ser.end() {
 			Ok(v) => Ok(v),
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
