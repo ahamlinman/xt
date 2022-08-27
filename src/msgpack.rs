@@ -70,14 +70,13 @@ where
 {
 	match input.into() {
 		Input::Slice(b) => {
-			let mut buf = &*b;
-			while !buf.is_empty() {
-				let size = next_value_size(buf, DEPTH_LIMIT)?;
-				let (next, rest) = buf.split_at(size);
+			let mut rest = &*b;
+			while !rest.is_empty() {
+				let next;
+				(next, rest) = rest.split_at(next_value_size(rest, DEPTH_LIMIT)?);
 				let mut de = rmp_serde::Deserializer::from_read_ref(next);
 				de.set_max_depth(DEPTH_LIMIT);
 				output.transcode_from(&mut de)?;
-				buf = rest;
 			}
 		}
 		Input::Reader(r) => {
@@ -92,10 +91,7 @@ where
 	Ok(())
 }
 
-fn has_data_left<R>(r: &mut BufReader<R>) -> io::Result<bool>
-where
-	R: Read,
-{
+fn has_data_left<R: Read>(r: &mut BufReader<R>) -> io::Result<bool> {
 	r.fill_buf().map(|b| !b.is_empty())
 }
 

@@ -55,11 +55,11 @@ fn main() {
 	let mut output = BufWriter::new(io::stdout());
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
-	let input_paths = if !args.input_paths.is_empty() {
-		args.input_paths
-	} else {
-		vec![PathBuf::from("-")]
+	let input_paths = match args.input_paths.is_empty() {
+		true => vec![PathBuf::from("-")],
+		false => args.input_paths,
 	};
+
 	for path in input_paths {
 		let mut input = Input::open(&path).unwrap_or_else(|err| xt_fail!(err));
 		if let Input::Stdin = input {
@@ -70,12 +70,13 @@ fn main() {
 			}
 		}
 
+		let from = args.from.or_else(|| try_get_format_from_path(&path));
 		let handle = match &mut input {
 			Input::Stdin => xt::Handle::from_reader(io::stdin()),
 			Input::File(file) => xt::Handle::from_reader(file),
 			Input::Mmap(map) => xt::Handle::from_slice(map),
 		};
-		let from = args.from.or_else(|| try_get_format_from_path(&path));
+
 		if let Err(err) = translator.translate(handle, from) {
 			xt_fail_for_error!(err.as_ref());
 		}
