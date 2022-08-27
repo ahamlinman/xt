@@ -26,6 +26,9 @@ mod yaml;
 
 pub use input::Handle;
 
+/// An error produced during translation.
+pub type Error = Box<dyn error::Error>;
+
 /// Translates a single serialized input to serialized output in a different
 /// format.
 ///
@@ -36,7 +39,7 @@ pub fn translate<W>(
 	from: Option<Format>,
 	to: Format,
 	output: W,
-) -> Result<(), Box<dyn error::Error>>
+) -> Result<(), crate::Error>
 where
 	W: Write,
 {
@@ -66,7 +69,7 @@ where
 		&mut self,
 		mut input: Handle<'_>,
 		from: Option<Format>,
-	) -> Result<(), Box<dyn error::Error>> {
+	) -> Result<(), crate::Error> {
 		let from = match from {
 			Some(format) => format,
 			None => match detect::detect_format(&mut input)? {
@@ -86,12 +89,12 @@ where
 
 /// A trait for output formats to receive their translatable input.
 trait Output {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), crate::Error>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static;
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), crate::Error>
 	where
 		S: serde::ser::Serialize;
 }
@@ -126,7 +129,7 @@ impl<W> Output for &mut Dispatcher<W>
 where
 	W: Write,
 {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), crate::Error>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -139,7 +142,7 @@ where
 		}
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), crate::Error>
 	where
 		S: serde::ser::Serialize,
 	{

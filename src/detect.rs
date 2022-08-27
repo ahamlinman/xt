@@ -63,7 +63,7 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 struct Discard;
 
 impl Output for Discard {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), Box<dyn error::Error>>
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<(), crate::Error>
 	where
 		D: de::Deserializer<'de, Error = E>,
 		E: de::Error + 'static,
@@ -72,7 +72,7 @@ impl Output for Discard {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> Result<(), Box<dyn error::Error>>
+	fn transcode_value<S>(&mut self, value: S) -> Result<(), crate::Error>
 	where
 		S: Serialize,
 	{
