@@ -88,7 +88,7 @@ impl<W: Write> Output<W> {
 		// crate dump a top-level array as an array of tables with an empty
 		// name, i.e. with "[[]]" headers.
 		if !value.is_table() {
-			return Err(NonTableRootError.into());
+			return Err(TomlOutputError::NonTableRoot.into());
 		}
 
 		// As of this writing, the toml crate can't output directly to a writer.
@@ -97,22 +97,31 @@ impl<W: Write> Output<W> {
 		Ok(())
 	}
 
-	fn ensure_one_use(&mut self) -> Result<(), &'static str> {
+	fn ensure_one_use(&mut self) -> crate::Result {
 		if self.used {
-			return Err("TOML does not support multi-document output");
+			return Err(TomlOutputError::MultiDocument.into());
 		}
 		self.used = true;
 		Ok(())
 	}
 }
 
+/// An error encountered while translating a document to TOML.
 #[derive(Debug)]
-struct NonTableRootError;
-
-impl fmt::Display for NonTableRootError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_str("root of TOML output must be a table")
-	}
+enum TomlOutputError {
+	NonTableRoot,
+	MultiDocument,
 }
 
-impl error::Error for NonTableRootError {}
+impl error::Error for TomlOutputError {}
+
+impl fmt::Display for TomlOutputError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			TomlOutputError::NonTableRoot => f.write_str("root of TOML output must be a table"),
+			TomlOutputError::MultiDocument => {
+				f.write_str("TOML does not support multi-document output")
+			}
+		}
+	}
+}
