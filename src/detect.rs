@@ -132,6 +132,10 @@ impl Serializer for Discard {
 	type SerializeStruct = Discard;
 	type SerializeStructVariant = Discard;
 
+	fn is_human_readable(&self) -> bool {
+		false
+	}
+
 	xt_detect_impl_discard_methods! {
 		{ serialize_unit(self) } does nothing;
 		{ serialize_bool(self, _: bool) } does nothing;
