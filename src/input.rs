@@ -54,7 +54,7 @@ pub struct Handle<'i>(Source<'i>);
 /// The private container for the original input a [`Handle`] was created from.
 enum Source<'i> {
 	Slice(&'i [u8]),
-	Reader(RewindGuard<Box<dyn Read + 'i>>),
+	Reader(GuardedCaptureReader<Box<dyn Read + 'i>>),
 }
 
 impl<'i> Handle<'i> {
@@ -79,7 +79,7 @@ impl<'i> Handle<'i> {
 	where
 		R: Read + 'i,
 	{
-		Handle(Source::Reader(RewindGuard::new(Box::new(r))))
+		Handle(Source::Reader(GuardedCaptureReader::new(Box::new(r))))
 	}
 
 	/// Borrows a temporary reference to the input.
@@ -216,11 +216,11 @@ where
 ///
 /// This is designed to statically prevent bugs caused by forgetting to rewind
 /// the reader before exposing its contents to consumers.
-struct RewindGuard<R>(CaptureReader<R>)
+struct GuardedCaptureReader<R>(CaptureReader<R>)
 where
 	R: Read;
 
-impl<R> RewindGuard<R>
+impl<R> GuardedCaptureReader<R>
 where
 	R: Read,
 {
