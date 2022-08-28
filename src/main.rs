@@ -244,7 +244,7 @@ impl Input {
 	where
 		P: AsRef<Path>,
 	{
-		if path.as_ref().to_str() == Some("-") {
+		if path.as_ref() == Path::new("-") {
 			return Ok(Input::Stdin);
 		}
 
