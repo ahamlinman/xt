@@ -22,21 +22,23 @@
 //! - Not all input formats can translate from a reader, and must consume their
 //!   input from an in-memory slice no matter what.
 //!
-//! [`Handle`] is the main container that allows the format detection logic to
-//! borrow temporary copies of the input, and then allows the selected input
-//! format to take full ownership of the input for translation.
+//! The module accomplishes this by supporting both slice and reader inputs,
+//! exposing both possibilities to formats that can optimize for each one, and
+//! providing convenience methods for slice-only formats that automatically
+//! consume reader input as necessary.
 //!
-//! When input originally comes from a slice, for example by mapping a file into
-//! memory, `Handle` enables input formats to borrow that slice directly for the
-//! greatest efficiency.
+//! For slice inputs, the module simply passes the borrowed slice directly to
+//! the format.
 //!
-//! When input comes from a reader, the [`Ref`] provided to format detectors
-//! will transparently capture input for future reads to consume again. If at
-//! any time the format detection process consumes an entire reader, either by
-//! coincidence or by trying to detect a format that requires slice input, all
-//! future use of the input will become slice-based. Alternatively, if format
-//! detection is skipped, the selected input format will simply take the
-//! original reader without even allocating a capture buffer.
+//! For reader inputs, borrowing the input for format detection produces a
+//! special reader that captures all bytes consumed from the source, and that
+//! rewinds before each subsequent use to produce those bytes again before
+//! consuming more from the source. If a format happens to consume all of a
+//! source reader while borrowing it, or if it requests slice-based input, all
+//! future use of the input will become slice-based. When the selected input
+//! format is ready to take ownership of the input, it can receive a byte
+//! buffer, a chain of the prefix and source readers, or the source reader alone
+//! in the event that format detection was skipped.
 
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
@@ -132,8 +134,8 @@ impl<'i> TryFrom<Handle<'i>> for Cow<'i, [u8]> {
 /// A container for owned input obtained by consuming a [`Handle`].
 ///
 /// The kind of `Input` produced from a `Handle` may not correspond directly to
-/// the original `Source`. If a reader input was fully buffered through use of
-/// the `Handle`, the `Input` will provide ownership of the buffer, and the
+/// the original source. If a reader input was fully buffered through use of the
+/// `Handle`, the `Input` will provide ownership of the buffer, and the
 /// conversion from `Handle` will drop the reader.
 pub(crate) enum Input<'i> {
 	Slice(Cow<'i, [u8]>),
@@ -162,7 +164,7 @@ impl<'i> From<Handle<'i>> for Input<'i> {
 
 /// A temporary reference to input from a [`Handle`].
 ///
-/// See [`Handle::borrow_mut`] for more.
+/// See [`Handle::borrow_mut`] for details.
 pub(crate) enum Ref<'i, 'h>
 where
 	'i: 'h,
@@ -194,16 +196,16 @@ where
 	/// For slice inputs and fully buffered reader inputs, this simply returns
 	/// the full input.
 	///
-	/// For reader inputs not yet fully buffered, `want_size` represents the
+	/// For reader inputs not yet fully buffered, `size_hint` represents the
 	/// minimum size of the prefix that the call should attempt to produce by
-	/// capturing new bytes from the source. The returned prefix may be smaller
-	/// or larger than `want_size` if the reader reaches EOF or more input is
-	/// already captured.
-	pub(crate) fn prefix(&mut self, want_size: usize) -> io::Result<&[u8]> {
+	/// capturing new bytes from the source if necessary. The returned prefix
+	/// may be smaller or larger than `size_hint` if the reader reaches EOF or
+	/// more input is already captured.
+	pub(crate) fn prefix(&mut self, size_hint: usize) -> io::Result<&[u8]> {
 		match self {
 			Ref::Slice(b) => Ok(b),
 			Ref::Reader(r) => {
-				r.capture_to_size(want_size)?;
+				r.capture_up_to_size(size_hint)?;
 				Ok(r.captured())
 			}
 		}
@@ -305,12 +307,13 @@ where
 		Ok(())
 	}
 
-	/// Ensures that at least `size` bytes have been captured from the source
-	/// without modifying the reader's position.
+	/// Attempts to read enough data from the source for the capture buffer to
+	/// contain at least `size` bytes, without modifying the reader's position.
 	///
 	/// The actual number of captured bytes may be less than `size` if the
-	/// source reaches EOF before producing `size` bytes.
-	fn capture_to_size(&mut self, size: usize) -> io::Result<()> {
+	/// source reaches EOF before producing `size` bytes, or more than `size` if
+	/// more of the source is already captured.
+	fn capture_up_to_size(&mut self, size: usize) -> io::Result<()> {
 		let needed = size.saturating_sub(self.prefix.get_ref().len());
 		if needed == 0 {
 			return Ok(());
@@ -478,7 +481,7 @@ mod tests {
 	#[test]
 	fn rewindable_reader_capture_up_to() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
-		assert!(matches!(r.capture_to_size(HALF), Ok(_)));
+		assert!(matches!(r.capture_up_to_size(HALF), Ok(_)));
 		assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
 		assert!(!r.is_source_eof());
 	}

@@ -541,17 +541,15 @@ impl<'de, D: Deserializer<'de>> Serialize for SerializeNext<'de, D> {
 
 /// A deserialized value referencing borrowed data.
 ///
-/// `Value` supports use cases where a deserializer cannot provide direct
-/// transcoding and must deserialize into an in-memory value. For example, a
-/// deserializer may handle sequences of inputs by providing an `Iterator` of
-/// values, rather than allowing the deserializer to be reused or providing an
-/// `Iterator` of deserializers.
+/// `Value` supports cases where an input format does not provide access to a
+/// [`Deserializer`] for direct transcoding, and instead requires deserializing
+/// into an in-memory value.
 ///
-/// `Value` is optimized for transcoding use cases rather than generic use. It
-/// leverages Serde's zero-copy deserialization capabilities for strings and
-/// byte sequences where possible, which limits the lifetime of the value and
-/// the types of inputs it can deserialize from. It represents maps as `Vec`s of
-/// key-value pairs, and therefore does not allow random access to map values.
+/// Unlike most "Serde value" types, `Value` is explicitly optimized for use in
+/// transcoding. It uses zero-copy deserialization for byte sequences and
+/// strings where possible, which limits the lifetime of the value and the types
+/// of inputs it can deserialize from. It represents maps as `Vec`s of key-value
+/// pairs, which preserves ordering but does not allow random access to entries.
 pub(crate) enum Value<'a> {
 	Unit,
 	Bool(bool),
@@ -599,11 +597,11 @@ impl Serialize for Value<'_> {
 			Value::Bytes(v) => v.serialize(s),
 			Value::Seq(v) => v.serialize(s),
 			Value::Map(m) => {
-				let mut map = s.serialize_map(Some(m.len()))?;
+				let mut s = s.serialize_map(Some(m.len()))?;
 				for (k, v) in m {
-					map.serialize_entry(k, v)?;
+					s.serialize_entry(k, v)?;
 				}
-				map.end()
+				s.end()
 			}
 		}
 	}

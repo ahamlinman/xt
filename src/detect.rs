@@ -16,8 +16,8 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 	// try to detect the format for reader input without consuming it entirely.
 
 	// As a binary format, we expect MessagePack to be more restrictive than any
-	// text format. Note that we only detect MessagePack inputs that start with
-	// an array or map; see [`msgpack::input_matches`] for details.
+	// text format. Note that the detection of MessagePack inputs is limited,
+	// see the implementation for details.
 	if crate::msgpack::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Msgpack));
 	}
