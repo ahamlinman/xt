@@ -52,5 +52,10 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+# TODO: Reassess these settings. The differences in performance and binary size
+# I see today are not nearly as noticeable as when I first set these a year ago,
+# while the impact to compilation times is far more noticeable. (This may be a
+# function of working on a different machine with a different architecture, in
+# addition to changes in newer versions of Rust and LLVM.)
 lto = true
 codegen-units = 1
