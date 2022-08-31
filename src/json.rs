@@ -9,8 +9,11 @@ use crate::transcode;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	let result = match &mut input {
-		input::Ref::Slice(b) => match_input_buffer(b),
 		input::Ref::Reader(r) => match_input_reader(r),
+		input::Ref::Slice(b) => match std::str::from_utf8(b) {
+			Ok(s) => match_input_str(s),
+			Err(_) => return Ok(false),
+		},
 	};
 	match result {
 		Err(err) if err.is_io() => Err(err.into()),
@@ -19,8 +22,8 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	}
 }
 
-fn match_input_buffer(input: &[u8]) -> Result<(), serde_json::Error> {
-	let mut de = serde_json::Deserializer::from_slice(input);
+fn match_input_str(input: &str) -> Result<(), serde_json::Error> {
+	let mut de = serde_json::Deserializer::from_str(input);
 	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
@@ -40,7 +43,13 @@ where
 			// supports iteration if we allow it to deserialize into an actual
 			// value, so xt implements a value type that can borrow strings from
 			// the input slice (one of serde's major features).
-			let de = serde_json::Deserializer::from_slice(&b);
+			//
+			// Per RFC 8259: "JSON text exchanged between systems that are not
+			// part of a closed ecosystem MUST be encoded using UTF-8." In my
+			// testing, an upfront UTF-8 check on the entire input nets about a
+			// 15% performance improvement compared to allowing serde_json to
+			// check UTF-8 validity as it parses a byte slice.
+			let de = serde_json::Deserializer::from_str(std::str::from_utf8(&b)?);
 			for value in de.into_iter::<transcode::Value>() {
 				output.transcode_value(value?)?;
 			}
