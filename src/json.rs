@@ -1,6 +1,7 @@
 //! The JSON data format.
 
 use std::io::{self, BufReader, Read, Write};
+use std::str;
 
 use serde::Deserialize;
 
@@ -10,7 +11,7 @@ use crate::transcode;
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	let result = match &mut input {
 		input::Ref::Reader(r) => match_input_reader(r),
-		input::Ref::Slice(b) => match std::str::from_utf8(b) {
+		input::Ref::Slice(b) => match str::from_utf8(b) {
 			Ok(s) => match_input_str(s),
 			Err(_) => return Ok(false),
 		},
@@ -49,7 +50,7 @@ where
 			// testing, an upfront UTF-8 check on the entire input nets about a
 			// 15% performance improvement compared to allowing serde_json to
 			// check UTF-8 validity as it parses a byte slice.
-			let de = serde_json::Deserializer::from_str(std::str::from_utf8(&b)?);
+			let de = serde_json::Deserializer::from_str(str::from_utf8(&b)?);
 			for value in de.into_iter::<transcode::Value>() {
 				output.transcode_value(value?)?;
 			}

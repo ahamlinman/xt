@@ -5,15 +5,14 @@ use std::char::DecodeUtf16Error;
 use std::error;
 use std::fmt;
 use std::io::{self, Write};
+use std::str;
 
 use serde::Deserialize;
 
 use crate::{input, transcode};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	// TODO: Can we avoid throwing away the result of a valid UTF-8 check?
-	// TODO: Can we avoid throwing away the result of a conversion? (Probably
-	// much harder than the above.)
+	// TODO: Is it worthwhile to avoid throwing away the result of a conversion?
 	let input_str = match ensure_utf8(input.slice()?) {
 		Ok(input_str) => input_str,
 		Err(_) => return Ok(false),
@@ -134,7 +133,7 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
 		}
 		// The spec shows how to match a UTF-8 BOM, but since it's the same as
 		// the default case there's no real point to an explicit check.
-		_ => Cow::Borrowed(std::str::from_utf8(buf)?),
+		_ => Cow::Borrowed(str::from_utf8(buf)?),
 	})
 }
 

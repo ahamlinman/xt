@@ -11,7 +11,6 @@ use serde::Deserialize;
 use crate::input;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	// TODO: Can we avoid throwing away the result of the UTF-8 check?
 	let input_str = match str::from_utf8(input.slice()?) {
 		Ok(input_str) => input_str,
 		Err(_) => return Ok(false),
@@ -25,8 +24,7 @@ where
 	O: crate::Output,
 {
 	let input: Cow<'_, [u8]> = input.try_into()?;
-	let input_str = str::from_utf8(&input)?; // TOML is UTF-8 only, always.
-	let mut de = ::toml::Deserializer::new(input_str);
+	let mut de = ::toml::Deserializer::new(str::from_utf8(&input)?);
 	output.transcode_from(&mut de)
 }
 
