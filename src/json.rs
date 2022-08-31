@@ -47,9 +47,12 @@ where
 			//
 			// Per RFC 8259: "JSON text exchanged between systems that are not
 			// part of a closed ecosystem MUST be encoded using UTF-8." In my
-			// testing, an upfront UTF-8 check on the entire input nets about a
-			// 15% performance improvement compared to allowing serde_json to
-			// check UTF-8 validity as it parses a byte slice.
+			// testing, an upfront UTF-8 check on the entire input nets as much
+			// as a 20% performance improvement compared to allowing serde_json
+			// to check UTF-8 validity as it parses a byte slice. The drawback
+			// is that UTF-8 encoding errors will only provide a byte position
+			// rather than full line and column information. In this case, I
+			// think the performance improvement is the more justifiable option.
 			let de = serde_json::Deserializer::from_str(str::from_utf8(&b)?);
 			for value in de.into_iter::<transcode::Value>() {
 				output.transcode_value(value?)?;

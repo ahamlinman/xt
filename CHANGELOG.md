@@ -1,3 +1,13 @@
+## Unreleased
+
+### Changed
+
+- **Improved performance for JSON file inputs.** This version of xt improves the
+  performance of JSON file inputs by as much as 20%. In exchange, the rare case
+  of JSON documents with UTF-8 encoding errors produces slightly less detailed
+  error messages, indicating the byte position of the error rather than a line
+  and column.
+
 ## v0.12.0 (2022-08-25)
 
 ### Added
