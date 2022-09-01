@@ -1,4 +1,5 @@
 use std::error;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -30,11 +31,7 @@ fn main() {
 
 	macro_rules! xt_fail {
 		($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
-			if $path == Path::new("-") {
-				eprintln!(concat!("xt error in standard input: ", $fmt) $(, $($x),+)?);
-			} else {
-				eprintln!(concat!("xt error in {}: ", $fmt), $path.display() $(, $($x),+)?);
-			}
+			eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
 			process::exit(1);
 		}};
 		($fmt:literal, $($x:expr),*) => {{
@@ -69,13 +66,13 @@ fn main() {
 	let mut output = BufWriter::new(io::stdout());
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
-	let input_paths = match args.input_paths.is_empty() {
-		true => vec![PathBuf::from("-")],
-		false => args.input_paths,
+	let input_paths: Vec<InputPath> = match args.input_paths.is_empty() {
+		true => vec![InputPath::Stdin],
+		false => args.input_paths.into_iter().map(Into::into).collect(),
 	};
 
 	for path in input_paths {
-		let mut input = Input::open(&path).unwrap_or_else(|err| xt_fail!(path, err));
+		let mut input = path.open().unwrap_or_else(|err| xt_fail!(path, err));
 		if let Input::Stdin = input {
 			if stdin_used {
 				xt_fail!("cannot read from stdin more than once");
@@ -84,7 +81,7 @@ fn main() {
 			}
 		}
 
-		let from = args.from.or_else(|| try_get_format_from_path(&path));
+		let from = args.from.or_else(|| path.format());
 		let handle = match &mut input {
 			Input::Stdin => xt::Handle::from_reader(io::stdin()),
 			Input::File(file) => xt::Handle::from_reader(file),
@@ -228,23 +225,10 @@ fn try_parse_format(s: &str) -> Result<Format, String> {
 	}
 }
 
-fn try_get_format_from_path<P>(path: P) -> Option<Format>
-where
-	P: AsRef<Path>,
-{
-	match path
-		.as_ref()
-		.extension()
-		.and_then(|ext| ext.to_str())
-		.map(|ext| ext.to_ascii_lowercase())
-		.as_deref()
-	{
-		Some("json") => Some(Format::Json),
-		Some("yaml" | "yml") => Some(Format::Yaml),
-		Some("toml") => Some(Format::Toml),
-		Some("msgpack") => Some(Format::Msgpack),
-		_ => None,
-	}
+#[derive(PartialEq, Eq)]
+enum InputPath {
+	Stdin,
+	File(PathBuf),
 }
 
 enum Input {
@@ -253,15 +237,22 @@ enum Input {
 	Mmap(memmap2::Mmap),
 }
 
-impl Input {
-	fn open<P>(path: P) -> io::Result<Input>
-	where
-		P: AsRef<Path>,
-	{
-		if path.as_ref() == Path::new("-") {
-			return Ok(Input::Stdin);
+impl From<PathBuf> for InputPath {
+	fn from(path: PathBuf) -> Self {
+		if path == Path::new("-") {
+			Self::Stdin
+		} else {
+			Self::File(path)
 		}
+	}
+}
 
+impl InputPath {
+	fn open(&self) -> io::Result<Input> {
+		let path = match self {
+			Self::Stdin => return Ok(Input::Stdin),
+			Self::File(path) => path,
+		};
 		let file = File::open(path)?;
 		// "SAFETY": It is undefined behavior to modify a mapped file outside of
 		// the process... so we tell users not to do that in the help output.
@@ -272,10 +263,38 @@ impl Input {
 		match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
 			// Per memmap2 docs, it's safe to drop the file once mmap succeeds.
 			Ok(map) => Ok(Input::Mmap(map)),
-			// If mmap fails, we can always fall back to reading the file
-			// normally. Examples of where this can matter include (but are not
-			// limited to) process substitution and named pipes.
+			// If mmap fails, fall back to reading the file normally. Examples
+			// of where this can matter include (but are not limited to) process
+			// substitution and named pipes.
 			Err(_) => Ok(Input::File(file)),
+		}
+	}
+
+	fn format(&self) -> Option<Format> {
+		let path = match self {
+			Self::Stdin => return None,
+			Self::File(path) => path,
+		};
+		match path
+			.extension()
+			.and_then(|ext| ext.to_str())
+			.map(|ext| ext.to_ascii_lowercase())
+			.as_deref()
+		{
+			Some("json") => Some(Format::Json),
+			Some("yaml" | "yml") => Some(Format::Yaml),
+			Some("toml") => Some(Format::Toml),
+			Some("msgpack") => Some(Format::Msgpack),
+			_ => None,
+		}
+	}
+}
+
+impl fmt::Display for InputPath {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Stdin => f.write_str("standard input"),
+			Self::File(path) => fmt::Display::fmt(&path.display(), f),
 		}
 	}
 }
