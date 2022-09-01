@@ -29,21 +29,35 @@ fn main() {
 	};
 
 	macro_rules! xt_fail {
+		($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
+			if $path == Path::new("-") {
+				eprintln!(concat!("xt error in standard input: ", $fmt) $(, $($x),+)?);
+			} else {
+				eprintln!(concat!("xt error in {}: ", $fmt), $path.display() $(, $($x),+)?);
+			}
+			process::exit(1);
+		}};
 		($fmt:literal, $($x:expr),*) => {{
 			eprintln!(concat!("xt error: ", $fmt), $($x),*);
 			process::exit(1);
 		}};
-		($x:expr) => {
-			xt_fail!("{}", $x)
-		};
+		($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
+		($x:expr) => { xt_fail!("{}", $x) };
 	}
 
-	macro_rules! xt_fail_for_error {
-		($x:expr) => {{
+	macro_rules! xt_io_error {
+		(@check_pipe $x:expr) => {
 			if is_broken_pipe($x) {
 				exit_for_broken_pipe();
 			}
-			xt_fail!($x);
+		};
+		($path:ident, $x:expr) => {{
+			xt_io_error!(@check_pipe $x);
+			xt_fail!($path, "{}", $x);
+		}};
+		($x:expr) => {{
+			xt_io_error!(@check_pipe $x);
+			xt_fail!("{}", $x);
 		}};
 	}
 
@@ -61,7 +75,7 @@ fn main() {
 	};
 
 	for path in input_paths {
-		let mut input = Input::open(&path).unwrap_or_else(|err| xt_fail!(err));
+		let mut input = Input::open(&path).unwrap_or_else(|err| xt_fail!(path, err));
 		if let Input::Stdin = input {
 			if stdin_used {
 				xt_fail!("cannot read from stdin more than once");
@@ -78,12 +92,12 @@ fn main() {
 		};
 
 		if let Err(err) = translator.translate(handle, from) {
-			xt_fail_for_error!(err.as_ref());
+			xt_io_error!(path, err.as_ref());
 		}
 	}
 
 	if let Err(err) = output.flush() {
-		xt_fail_for_error!(&err);
+		xt_io_error!(&err);
 	}
 }
 
