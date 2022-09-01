@@ -2,6 +2,7 @@ use std::error;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -66,9 +67,10 @@ fn main() {
 	let mut output = BufWriter::new(io::stdout());
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
-	let input_paths: Vec<InputPath> = match args.input_paths.is_empty() {
-		true => vec![InputPath::Stdin],
-		false => args.input_paths.into_iter().map(Into::into).collect(),
+	let input_paths = if args.input_paths.is_empty() {
+		InputPathIter::stdin_only()
+	} else {
+		InputPathIter::paths(args.input_paths.into_iter().map(Into::into))
 	};
 
 	for path in input_paths {
@@ -294,7 +296,48 @@ impl fmt::Display for InputPath {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::Stdin => f.write_str("standard input"),
-			Self::File(path) => fmt::Display::fmt(&path.display(), f),
+			Self::File(path) => path.display().fmt(f),
 		}
 	}
 }
+
+enum InputPathIter<I>
+where
+	I: Iterator<Item = InputPath>,
+{
+	StdinOnly { used: bool },
+	Paths(I),
+}
+
+impl<I> InputPathIter<I>
+where
+	I: Iterator<Item = InputPath>,
+{
+	fn stdin_only() -> Self {
+		Self::StdinOnly { used: false }
+	}
+
+	fn paths(iter: I) -> Self {
+		Self::Paths(iter)
+	}
+}
+
+impl<I> Iterator for InputPathIter<I>
+where
+	I: Iterator<Item = InputPath>,
+{
+	type Item = InputPath;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self {
+			Self::StdinOnly { used: true } => None,
+			Self::StdinOnly { used: false } => {
+				*self = Self::StdinOnly { used: true };
+				Some(InputPath::Stdin)
+			}
+			Self::Paths(iter) => iter.next(),
+		}
+	}
+}
+
+impl<I> FusedIterator for InputPathIter<I> where I: Iterator<Item = InputPath> + FusedIterator {}
