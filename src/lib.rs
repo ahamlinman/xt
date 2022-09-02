@@ -14,7 +14,7 @@
 
 use std::error;
 use std::fmt;
-use std::io::Write;
+use std::io::{self, Write};
 use std::result;
 
 mod detect;
@@ -83,6 +83,11 @@ where
 			Format::Msgpack => msgpack::transcode(input, &mut self.0),
 		}
 	}
+
+	/// [Flushes](Write::flush) the underlying writer.
+	pub fn flush(&mut self) -> io::Result<()> {
+		(&mut self.0).flush()
+	}
 }
 
 /// A trait for output formats to receive their translatable input.
@@ -95,6 +100,8 @@ trait Output {
 	fn transcode_value<S>(&mut self, value: S) -> crate::Result
 	where
 		S: serde::ser::Serialize;
+
+	fn flush(&mut self) -> io::Result<()>;
 }
 
 /// An [`Output`] implementation supporting static dispatch based on a known
@@ -149,6 +156,15 @@ where
 			Dispatcher::Yaml(output) => output.transcode_value(value),
 			Dispatcher::Toml(output) => output.transcode_value(value),
 			Dispatcher::Msgpack(output) => output.transcode_value(value),
+		}
+	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		match self {
+			Dispatcher::Json(output) => output.flush(),
+			Dispatcher::Yaml(output) => output.flush(),
+			Dispatcher::Toml(output) => output.flush(),
+			Dispatcher::Msgpack(output) => output.flush(),
 		}
 	}
 }

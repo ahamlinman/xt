@@ -122,6 +122,10 @@ impl<W: Write> crate::Output for Output<W> {
 		value.serialize(&mut ser)?;
 		Ok(())
 	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		self.0.flush()
+	}
 }
 
 /// Returns the size in bytes of the MessagePack value at the start of the input

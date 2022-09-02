@@ -79,6 +79,10 @@ impl Output for Discard {
 		value.serialize(Discard)?;
 		Ok(())
 	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		Ok(())
+	}
 }
 
 /// Implements [`Serializer`] methods for [`Discard`] using a custom syntax.

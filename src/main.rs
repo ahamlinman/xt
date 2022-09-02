@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter};
 use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -93,10 +93,9 @@ fn main() {
 		if let Err(err) = translator.translate(handle, from) {
 			xt_io_error!(path, err.as_ref());
 		}
-	}
-
-	if let Err(err) = output.flush() {
-		xt_io_error!(&err);
+		if let Err(err) = translator.flush() {
+			xt_io_error!(&err);
+		}
 	}
 }
 

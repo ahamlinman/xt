@@ -93,6 +93,10 @@ impl<W: Write> crate::Output for Output<W> {
 		serde_yaml::to_writer(&mut self.0, &value)?;
 		Ok(())
 	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		self.0.flush()
+	}
 }
 
 /// Ensures that YAML input is UTF-8 by validating or converting it.

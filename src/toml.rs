@@ -75,6 +75,10 @@ impl<W: Write> crate::Output for Output<W> {
 		let value = ::toml::Value::try_from(value)?;
 		self.output_value(&value)
 	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		self.w.flush()
+	}
 }
 
 impl<W: Write> Output<W> {

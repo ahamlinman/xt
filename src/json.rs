@@ -100,4 +100,8 @@ impl<W: Write> crate::Output for Output<W> {
 		writeln!(&mut self.0)?;
 		Ok(())
 	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		self.0.flush()
+	}
 }
