@@ -20,15 +20,21 @@
 
 ## v0.11.0 (2022-08-24)
 
+### Fixed
+
+- **Issues with YAML input and output.** This version of xt upgrades to the
+  latest version of the third-party `serde_yaml` library, which plays a critical
+  role in xt's YAML support. The upgrade fixes a number of potential bugs and
+  vulnerabilities in the handling of YAML input and output, including cases
+  where xt may have produced output incompatible with other YAML parsers by
+  emitting unescaped control characters in strings.
+
 ### Changed
 
-- **Various details of YAML input and output.** This version of xt upgrades to
-  the latest version of the third-party `serde_yaml` library, which plays a
-  critical role in xt's YAML support. This has resulted in several noticeable
-  changes to the formatting of YAML output, including differences in the
-  indentation of list items and the use of Unicode escape sequences. It has
-  also fixed several potential bugs and vulnerabilities in YAML input handling,
-  and generally reduces memory usage for YAML inputs.
+- **Formatting of YAML output.** The `serde_yaml` upgrade described above also
+  introduced several noticeable changes to the formatting of YAML output,
+  including differences in the indentation of list items and broader use of
+  escape sequences for certain characters.
 
 ## v0.10.0 (2022-06-12)
 
