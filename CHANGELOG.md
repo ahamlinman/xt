@@ -1,3 +1,16 @@
+## Unreleased
+
+### Changed
+
+- **File names in error messages.** xt now prints the name of the file in which
+  a file read or translation error occurred. This should make it much easier to
+  identify problems with specific files in multi-file inputs.
+- **Output behavior on multi-file input errors.** When an error occurs in the
+  second or subsequent file of a multi-file input, xt will now try to ensure
+  that the translations of any previous files are fully written to standard
+  output. Previously, xt may have simply written an error message and exited
+  even if some files actually translated successfully.
+
 ## v0.12.1 (2022-08-31)
 
 ### Changed
