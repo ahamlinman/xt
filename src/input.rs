@@ -117,15 +117,10 @@ impl<'i> TryFrom<Handle<'i>> for Cow<'i, [u8]> {
 		match handle.0 {
 			Source::Slice(b) => Ok(Cow::Borrowed(b)),
 			Source::Reader(r) => {
-				let r = r.rewind_and_take();
-				if r.is_source_eof() {
-					let (cursor, _) = r.into_inner();
-					return Ok(Cow::Owned(cursor.into_inner()));
-				}
-				let (cursor, mut source) = r.into_inner();
-				let mut buf = cursor.into_inner();
-				source.read_to_end(&mut buf)?;
-				Ok(Cow::Owned(buf))
+				let mut r = r.rewind_and_take();
+				r.capture_to_end()?;
+				let (cursor, _) = r.into_inner();
+				return Ok(Cow::Owned(cursor.into_inner()));
 			}
 		}
 	}
@@ -302,8 +297,10 @@ where
 	/// Captures all of the source's remaining input without modifying the
 	/// reader's position.
 	fn capture_to_end(&mut self) -> io::Result<()> {
-		self.source.read_to_end(self.prefix.get_mut())?;
-		self.source_eof = true;
+		if !self.source_eof {
+			self.source.read_to_end(self.prefix.get_mut())?;
+			self.source_eof = true;
+		}
 		Ok(())
 	}
 
