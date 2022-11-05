@@ -1,3 +1,12 @@
+## Unreleased
+
+### Changed
+
+- **Rust 1.59 or higher is officially required to build xt.** This has actually
+  been the requirement for some time due to the use of dependencies and
+  language features that do not work on Rust 1.56, however xt's Cargo metadata
+  did not properly reflect this.
+
 ## v0.12.2 (2022-09-02)
 
 ### Changed
