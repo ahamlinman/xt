@@ -134,8 +134,8 @@ fn exit_for_broken_pipe() {
 		libc::raise(libc::SIGPIPE);
 	}
 
-	// For non-Unix systems, we just fall back to a plain silent exit.
-	#[cfg(not(unix))]
+	// Non-Unix systems fall back to a normal silent exit (and Unix systems
+	// should not reach this line).
 	process::exit(1);
 }
 
