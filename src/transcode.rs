@@ -224,7 +224,7 @@ impl<P, E> State<P, E> {
 		State {
 			parent: Cell::new(Some(parent)),
 			error: Cell::new(None),
-			source: Cell::new(ErrorSource::De),
+			source: Cell::new(ErrorSource::default()),
 		}
 	}
 
