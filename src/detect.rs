@@ -26,18 +26,14 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 		return Ok(Some(Format::Json));
 	}
 
-	// YAML is actually less restrictive than TOML, but we want to try it first
-	// since it supports streaming input (which means that detection may require
-	// less buffering). Detection of YAML inputs is limited to collection types;
-	// see comments in the implementation for details.
-	if crate::yaml::input_matches(input.borrow_mut())? {
-		return Ok(Some(Format::Yaml));
-	}
-
-	// Finally, TOML is the only input format that must fully buffer input
-	// before parsing.
+	// TODO: Document this.
+	// TODO: Add a test case.
+	let maybe_yaml = crate::yaml::input_matches(input.borrow_mut())?;
 	if crate::toml::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Toml));
+	}
+	if maybe_yaml {
+		return Ok(Some(Format::Yaml));
 	}
 
 	Ok(None)
