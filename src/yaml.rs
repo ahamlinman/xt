@@ -1,16 +1,18 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
-use std::io::{self, Read, Write};
+use std::io::{self, BufReader, Read, Write};
 use std::str;
 
 use serde::Deserialize;
 
-use crate::{input, transcode};
+use crate::input::{self, Input};
+use crate::transcode;
 
 mod chunker;
 mod encoding;
 
+use self::chunker::Chunker;
 use self::encoding::{Encoder, Encoding};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
@@ -31,38 +33,38 @@ pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
-	// serde-yaml imposes a couple of interesting limitations on us, which
-	// aren't clear from the documentation alone but which are reflected in this
+	// serde_yaml imposes a couple of interesting limitations on us, which
+	// aren't clear from the documentation alone but are reflected in this
 	// usage.
 	//
-	// First, while serde-yaml supports creating a Deserializer from a reader,
-	// this actually just slurps the entire input into a byte vector and parses
-	// the resulting slice. We would have to detect the splits between YAML
-	// documents ourselves to do streaming input, either with some kind of text
-	// stream processing (the evil way) or by implementing this as a real
-	// feature upstream (the righteous way).
+	// First, while serde_yaml supports creating a Deserializer from a reader,
+	// this actually slurps the entire input into a buffer for parsing. We
+	// support streaming parsing by implementing our own "chunker" that splits
+	// an unbounded YAML stream into a sequence of buffered documents. This is a
+	// terrible hack, and I sincerely hope that I will have the time and energy
+	// someday to implement true streaming support in serde_yaml.
 	//
-	// Second, serde-yaml does not support UTF-16 or UTF-32 input, even though
-	// YAML 1.2 requires this. While serde-yaml supports creating a Deserializer
-	// from a &[u8], non-UTF-8 input will produce errors about control
-	// characters or invalid UTF-8 octets. YAML has very clear rules for
-	// encoding detection, so we re-encode the input ourselves if necessary.
-	let input: Cow<'_, [u8]> = input.try_into()?;
-	let input = ensure_utf8(&input)?;
+	// Second, serde_yaml does not support UTF-16 or UTF-32 input, even though
+	// YAML 1.2 requires this. In addition to our chunker, we implement a
+	// streaming encoder that can detect the encoding of any valid YAML stream
+	// and convert it to UTF-8. The encoder will also strip any byte order mark
+	// from the beginning of the stream, as serde_yaml will choke on it. This
+	// still doesn't cover the full YAML spec, which also allows BOMs in UTF-8
+	// streams and at the starts of individual documents in the stream.
+	// However, these cases should be much rarer than that of a single BOM at
+	// the start of a UTF-16 or UTF-32 stream.
 
-	// YAML 1.2 allows for a BOM at the start of the stream, as well as at the
-	// beginning of every subsequent document in a stream (though all documents
-	// must use the same encoding). Unfortunately, serde-yaml seems to treat
-	// BOMs like regular flow scalars (or something along those lines), and
-	// documents with BOMs produce errors about mapping values not being
-	// allowed. We take care of a single BOM at the start of a document since
-	// it's pretty easy to handle, and hopefully covers most things (the
-	// repeated BOM case seems to be about concatenating arbitrary documents, so
-	// xt's multi-file support might be a useful workaround).
-	let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
-
-	for de in serde_yaml::Deserializer::from_str(input) {
-		output.transcode_from(de)?;
+	match input.into() {
+		Input::Slice(b) => {
+			for de in serde_yaml::Deserializer::from_str(&ensure_utf8(&b)?) {
+				output.transcode_from(de)?;
+			}
+		}
+		Input::Reader(r) => {
+			for chunk in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
+				output.transcode_from(serde_yaml::Deserializer::from_str(&chunk?))?;
+			}
+		}
 	}
 	Ok(())
 }

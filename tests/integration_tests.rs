@@ -145,7 +145,7 @@ macro_rules! xt_test_yaml_encodings {
 	};
 }
 
-xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf8bom, utf16bebom, utf32lebom];
+xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf16bebom, utf32lebom];
 
 /// Tests that TOML output re-orders inputs as needed to meet TOML-specific
 /// requirements, in particular that all non-table values must appear before any
