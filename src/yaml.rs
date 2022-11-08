@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use crate::{input, transcode};
 
+mod chunker;
 mod encoding;
 
 use self::encoding::{Encoder, Encoding};

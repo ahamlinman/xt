@@ -767,6 +767,7 @@ dependencies = [
  "serde_yaml",
  "stacker",
  "toml",
+ "unsafe-libyaml",
  "zstd",
 ]
 
