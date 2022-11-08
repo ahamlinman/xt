@@ -59,7 +59,7 @@ xt_benchmark! {
 
 xt_benchmark! {
 	name = small_yaml;
-	sources = buffer;
+	sources = buffer, reader;
 	loader = load_small_data;
 	translation = Format::Yaml => Format::Json;
 }
@@ -87,10 +87,11 @@ xt_benchmark! {
 
 xt_benchmark! {
 	name = large_yaml;
-	sources = buffer;
+	sources = buffer, reader;
 	loader = load_large_data;
 	translation = Format::Yaml => Format::Json;
 	group_config {
+		measurement_time = Duration::from_secs(60);
 		sample_size = 50;
 	}
 }
