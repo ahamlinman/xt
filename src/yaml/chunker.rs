@@ -19,7 +19,7 @@ use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
 use unsafe_libyaml::*;
 
@@ -41,6 +41,7 @@ where
 	R: Read,
 {
 	reader: ChunkReader<R>,
+	buffer: Vec<u8>,
 	error: Option<io::Error>,
 }
 
@@ -68,6 +69,7 @@ where
 
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader: ChunkReader::new(reader),
+			buffer: vec![],
 			error: None,
 		}));
 
@@ -104,35 +106,29 @@ where
 		const READ_SUCCESS: i32 = 1;
 		const READ_FAILURE: i32 = 0;
 
+		// The correctness of this cast and all dereferences of this pointer
+		// depends on our caller upholding the safety invariant in the function
+		// documentation.
 		let read_state = read_state.cast::<ReadState<R>>();
 
-		// Assuming libyaml is correct, `size` represents the size of an
-		// allocated buffer, the length of which cannot possibly exceed
-		// usize::MAX.
+		// `size` represents the size of an allocated buffer, the length of
+		// which cannot possibly exceed usize::MAX.
 		#[allow(clippy::cast_possible_truncation)]
 		let size = size as usize;
 
-		// TODO: FIXME: THIS IS PROBABLY UNSOUND!!!
-		//
-		// Inspection of the libyaml code shows that it initially allocates this
-		// buffer using `std::alloc::alloc`, which does not guarantee that the
-		// allocated memory is initialized. While I haven't managed to trip
-		// Miri's uninitialized data checks (which obviously are just a basic
-		// smoke test and NOT proof that the code works), I have not yet found
-		// concrete evidence that libyaml is actually initializing this buffer.
-		// It is quite possible that this conversion invokes undefined behavior,
-		// and the only reason I haven't yet experienced a sharp knife being
-		// slowly and painfully stabbed into my eyeball (or any other expected
-		// consequence of invoking UB, like program misbehavior) is because the
-		// reader on the other side isn't trying to read anything from the
-		// slice. While I'll continue to analyze the libyaml code, I'm becoming
-		// increasingly resigned to the fact that we'll probably need to
-		// maintain our own properly initialized buffer and perform a second
-		// copy into the libyaml buffer.
-		let buf = std::slice::from_raw_parts_mut(buffer, size);
+		// Manual review shows that libyaml uses `std::alloc::alloc` to allocate
+		// the provided buffer, and performs no explicit initialization of its
+		// own. Because `alloc` does not necessarily initialize memory, it would
+		// be instant Undefined Behavior to form a Rust slice from this buffer,
+		// and even if it weren't it would be unsound to expose this buffer to a
+		// safe `Read` implementation. To ensure soundness, we maintain our own
+		// initialized buffer for the reader to populate, then copy that buffer
+		// ourselves to libyaml.
+		(*read_state).buffer.resize(size, 0);
 
-		match (*read_state).reader.read(buf) {
+		match (*read_state).reader.read(&mut (*read_state).buffer[..]) {
 			Ok(len) => {
+				ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len);
 				// Note that libyaml's EOF condition is the same as Rust's: set
 				// `size_read` to 0 and return success.
 				*size_read = len as u64;
