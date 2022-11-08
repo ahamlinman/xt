@@ -9,6 +9,8 @@ use std::str;
 
 use serde::Deserialize;
 
+mod encoding;
+
 use crate::{input, transcode};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
