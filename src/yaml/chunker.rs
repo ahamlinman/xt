@@ -30,7 +30,9 @@ where
 {
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
-	document_kind: Option<DocumentKind>,
+	last_document: Option<Document>,
+	current_document_kind: Option<DocumentKind>,
+	stream_ended: bool,
 }
 
 /// The state for the libyaml input callback.
@@ -80,7 +82,9 @@ where
 		Self {
 			parser,
 			read_state,
-			document_kind: None,
+			last_document: None,
+			current_document_kind: None,
+			stream_ended: false,
 		}
 	}
 
@@ -139,6 +143,10 @@ where
 	type Item = io::Result<Document>;
 
 	fn next(&mut self) -> Option<Self::Item> {
+		if self.stream_ended {
+			return None;
+		}
+
 		loop {
 			// SAFETY: We properly initialized self.parser and self.read_state
 			// when the Chunker was constructed.
@@ -157,34 +165,44 @@ where
 			};
 
 			match event.type_ {
-				YAML_STREAM_END_EVENT => return None,
 				YAML_DOCUMENT_START_EVENT => {
-					self.document_kind = None;
-					let offset = event.start_mark.index;
 					// SAFETY: We properly initialized self.read_state when the
 					// Chunker was constructed.
-					unsafe { (*self.read_state).reader.trim_to_offset(offset) };
+					unsafe {
+						let offset = event.start_mark.index;
+						(*self.read_state).reader.trim_to_offset(offset);
+					}
+					self.current_document_kind = None;
+					if let Some(doc) = self.last_document.take() {
+						return Some(Ok(doc));
+					}
 				}
 				YAML_SCALAR_EVENT => {
-					self.document_kind.get_or_insert(DocumentKind::Scalar);
+					self.current_document_kind
+						.get_or_insert(DocumentKind::Scalar);
 				}
 				YAML_SEQUENCE_START_EVENT | YAML_MAPPING_START_EVENT => {
-					self.document_kind.get_or_insert(DocumentKind::Collection);
+					self.current_document_kind
+						.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
-					let offset = event.end_mark.index;
 					// SAFETY: We properly initialized self.read_state when the
 					// Chunker was constructed, and libyaml validates that the
 					// input is UTF-8 during parsing.
 					let content = unsafe {
+						let offset = event.end_mark.index;
 						String::from_utf8_unchecked(
 							(*self.read_state).reader.take_to_offset(offset),
 						)
 					};
-					return Some(Ok(Document {
+					self.last_document = Some(Document {
 						content,
-						kind: self.document_kind.take().unwrap(),
-					}));
+						kind: self.current_document_kind.take().unwrap(),
+					});
+				}
+				YAML_STREAM_END_EVENT => {
+					self.stream_ended = true;
+					return self.last_document.take().map(Ok);
 				}
 				_ => {}
 			};
