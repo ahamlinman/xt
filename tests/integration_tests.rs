@@ -17,6 +17,8 @@
 //!
 //! "Little," that is, if you're ready for some fun with macros.
 
+use std::io;
+
 use paste::paste;
 
 use xt::{Format, Handle};
@@ -163,6 +165,17 @@ fn toml_reordering() {
 	)
 	.unwrap();
 	assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+}
+
+/// Tests that a TOML input that starts with a table is not accidentally
+/// mis-detected as YAML. This happened with an early version of streaming YAML
+/// input support, since a YAML parser can successfully parse a TOML table
+/// header as a valid document containing a flow sequence, and not actually fail
+/// until later in the stream.
+#[test]
+fn toml_initial_table_detection() {
+	const INPUT: &[u8] = include_bytes!("initial_table.toml");
+	xt::translate(Handle::from_reader(INPUT), None, Format::Json, io::sink()).unwrap();
 }
 
 /// Tests that halting transcoding in the middle of a YAML input does not panic
