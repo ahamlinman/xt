@@ -112,12 +112,23 @@ where
 		#[allow(clippy::cast_possible_truncation)]
 		let size = size as usize;
 
-		// TODO: This needs more scrutiny. We can reasonably expect libyaml to
-		// pass us a properly allocated buffer of the provided size, however it
-		// seems that it might just malloc() this buffer with no further
-		// initialization of its contents. u8 shouldn't have any big type-level
-		// invariants (unlike e.g. bool), but I don't think that's enough to
-		// eliminate the possibility of instant UB on this conversion.
+		// TODO: FIXME: THIS IS PROBABLY UNSOUND!!!
+		//
+		// Inspection of the libyaml code shows that it initially allocates this
+		// buffer using `std::alloc::alloc`, which does not guarantee that the
+		// allocated memory is initialized. While I haven't managed to trip
+		// Miri's uninitialized data checks (which obviously are just a basic
+		// smoke test and NOT proof that the code works), I have not yet found
+		// concrete evidence that libyaml is actually initializing this buffer.
+		// It is quite possible that this conversion invokes undefined behavior,
+		// and the only reason I haven't yet experienced a sharp knife being
+		// slowly and painfully stabbed into my eyeball (or any other expected
+		// consequence of invoking UB, like program misbehavior) is because the
+		// reader on the other side isn't trying to read anything from the
+		// slice. While I'll continue to analyze the libyaml code, I'm becoming
+		// increasingly resigned to the fact that we'll probably need to
+		// maintain our own properly initialized buffer and perform a second
+		// copy into the libyaml buffer.
 		let buf = std::slice::from_raw_parts_mut(buffer, size);
 
 		match (*read_state).reader.read(buf) {
