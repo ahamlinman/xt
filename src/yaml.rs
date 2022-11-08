@@ -1,17 +1,17 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
-use std::char::DecodeUtf16Error;
-use std::error;
-use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::str;
 
 use serde::Deserialize;
 
+use crate::{input, transcode};
+
 mod encoding;
 
-use crate::{input, transcode};
+use self::encoding::Encoding;
+use self::encoding::Transcoder;
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	// TODO: Is it worthwhile to avoid throwing away the result of a conversion?
@@ -103,103 +103,18 @@ impl<W: Write> crate::Output for Output<W> {
 
 /// Ensures that YAML input is UTF-8 by validating or converting it.
 ///
-/// This function detects UTF-16 and UTF-32 input based on [section 5.2 of the
-/// YAML v1.2.2 specification][spec]; detection behavior for non-YAML inputs is
-/// not well defined. Conversions are optimized for simplicity and size, rather
-/// than performance. Input that is invalid in the detected encoding, or whose
-/// size does not evenly divide the detected code unit size, will return an
-/// error.
-///
-/// [spec]: https://yaml.org/spec/1.2.2/#52-character-encodings
+/// See [Encoding::detect] for details on the detection algorithm.
 fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
-	let prefix = {
-		// We use -1 as a sentinel for truncated input so the match patterns are
-		// shorter to write than with Option<u8> variants.
-		let mut result: [i16; 4] = Default::default();
-		let mut iter = buf.iter();
-		result.fill_with(|| iter.next().map(|x| i16::from(*x)).unwrap_or(-1));
-		result
-	};
-
-	// See https://yaml.org/spec/1.2.2/#52-character-encodings. Notably, valid
-	// YAML streams that do not begin with a BOM must begin with an ASCII
-	// character, so that the pattern of null bytes reveals the encoding.
-	Ok(match prefix {
-		[0, 0, 0xFE, 0xFF] | [0, 0, 0, _] if buf.len() >= 4 => {
-			Cow::Owned(convert_utf32(buf, u32::from_be_bytes)?)
-		}
-		[0xFF, 0xFE, 0, 0] | [_, 0, 0, 0] if buf.len() >= 4 => {
-			Cow::Owned(convert_utf32(buf, u32::from_le_bytes)?)
-		}
-		[0xFE, 0xFF, ..] | [0, _, ..] if buf.len() >= 2 => {
-			Cow::Owned(convert_utf16(buf, u16::from_be_bytes)?)
-		}
-		[0xFF, 0xFE, ..] | [_, 0, ..] if buf.len() >= 2 => {
-			Cow::Owned(convert_utf16(buf, u16::from_le_bytes)?)
-		}
-		// The spec shows how to match a UTF-8 BOM, but since it's the same as
-		// the default case there's no real point to an explicit check.
-		_ => Cow::Borrowed(str::from_utf8(buf)?),
-	})
-}
-
-fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, EncodingError>
-where
-	F: Fn([u8; 4]) -> u32,
-{
-	if buf.len() % 4 != 0 {
-		return Err(EncodingError::TruncatedUtf32);
-	}
-
-	// Start with just enough capacity for a pure ASCII result.
-	let mut result = String::with_capacity(buf.len() / 4);
-	for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
-		result.push(match char::from_u32(unit) {
-			Some(chr) => chr,
-			None => return Err(EncodingError::InvalidUtf32(unit)),
-		});
-	}
-	Ok(result)
-}
-
-fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, EncodingError>
-where
-	F: Fn([u8; 2]) -> u16,
-{
-	if buf.len() % 2 != 0 {
-		return Err(EncodingError::TruncatedUtf16);
-	}
-
-	// Start with just enough capacity for a pure ASCII result.
-	let mut result = String::with_capacity(buf.len() / 2);
-	let units = buf.chunks_exact(2).map(|x| get_u16(x.try_into().unwrap()));
-	for chr in char::decode_utf16(units) {
-		result.push(match chr {
-			Ok(chr) => chr,
-			Err(err) => return Err(EncodingError::InvalidUtf16(err)),
-		});
-	}
-	Ok(result)
-}
-
-/// An error encountered while decoding a UTF-16 or UTF-32 YAML document.
-#[derive(Debug)]
-enum EncodingError {
-	TruncatedUtf16,
-	TruncatedUtf32,
-	InvalidUtf16(DecodeUtf16Error),
-	InvalidUtf32(u32),
-}
-
-impl error::Error for EncodingError {}
-
-impl fmt::Display for EncodingError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			EncodingError::TruncatedUtf16 => f.write_str("truncated utf-16"),
-			EncodingError::TruncatedUtf32 => f.write_str("truncated utf-32"),
-			EncodingError::InvalidUtf16(err) => write!(f, "invalid utf-16: {}", err),
-			EncodingError::InvalidUtf32(unit) => write!(f, "invalid utf-32: {:x}", unit),
+	match Encoding::detect(buf) {
+		Encoding::Utf8 => Ok(Cow::Borrowed(str::from_utf8(buf)?)),
+		encoding => {
+			let mut result = String::with_capacity(match encoding {
+				Encoding::Utf8 => unreachable!(),
+				Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
+				Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
+			});
+			Transcoder::new(buf, encoding).read_to_string(&mut result)?;
+			Ok(Cow::Owned(result))
 		}
 	}
 }

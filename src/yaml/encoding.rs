@@ -15,9 +15,6 @@ pub(super) enum Encoding {
 }
 
 impl Encoding {
-	/// The desired length of the prefix for encoding detection.
-	const DETECT_LEN: usize = 4;
-
 	/// Detects the text encoding of a YAML 1.2 stream based on its leading
 	/// bytes.
 	///
@@ -88,22 +85,6 @@ where
 			Utf16Little => From16(Utf8Encoder::new(Utf16Decoder::new(reader, Little))),
 			Utf32Little => From32(Utf8Encoder::new(Utf32Decoder::new(reader, Little))),
 		})
-	}
-
-	/// Creates a transcoder by detecting the source encoding from the first
-	/// bytes of the reader.
-	///
-	/// See [`Encoding::detect`] for details of the detection process. Note that
-	/// `from_reader` provides as many prefix bytes to the detector as it needs
-	/// for accurate detection.
-	pub(super) fn from_reader(mut reader: R) -> io::Result<impl Read> {
-		let mut prefix = ArrayBuffer::<{ Encoding::DETECT_LEN }>::new();
-		io::copy(
-			&mut (&mut reader).take(Encoding::DETECT_LEN as u64),
-			&mut prefix,
-		)?;
-		let encoding = Encoding::detect(prefix.unread());
-		Ok(Transcoder::new(prefix.chain(reader), encoding))
 	}
 }
 
