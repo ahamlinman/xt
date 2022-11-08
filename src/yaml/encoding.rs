@@ -49,16 +49,16 @@ impl Encoding {
 
 /// Reads a YAML 1.2 stream as UTF-8 regardless of its source encoding.
 ///
-/// Given a UTF-16 or UTF-32 YAML stream, a `Transcoder` can transparently
+/// Given a UTF-16 or UTF-32 YAML stream, an `Encoder` can transparently
 /// re-encode it to UTF-8 and strip any initial byte order mark as it is read
 /// from, improving compatibility with parsers that do not accept the full range
-/// of supported YAML encodings. Otherwise, a `Transcoder` can pass through a
+/// of supported YAML encodings. Otherwise, an `Encoder` can pass through a
 /// UTF-8 stream with little overhead.
-pub(super) struct Transcoder<R>(TranscoderKind<R>)
+pub(super) struct Encoder<R>(EncoderKind<R>)
 where
 	R: BufRead;
 
-enum TranscoderKind<R>
+enum EncoderKind<R>
 where
 	R: BufRead,
 {
@@ -67,16 +67,16 @@ where
 	From32(Utf8Encoder<Utf32Decoder<R>>),
 }
 
-impl<R> Transcoder<R>
+impl<R> Encoder<R>
 where
 	R: BufRead,
 {
 	/// Creates a transcoder using a known source encoding.
 	#[allow(clippy::enum_glob_use)]
 	pub(super) fn new(reader: R, from: Encoding) -> Self {
+		use EncoderKind::*;
 		use Encoding::*;
 		use Endianness::*;
-		use TranscoderKind::*;
 
 		Self(match from {
 			Utf8 => Passthrough(reader),
@@ -88,15 +88,15 @@ where
 	}
 }
 
-impl<R> Read for Transcoder<R>
+impl<R> Read for Encoder<R>
 where
 	R: BufRead,
 {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 		match &mut self.0 {
-			TranscoderKind::Passthrough(r) => r.read(buf),
-			TranscoderKind::From16(r) => r.read(buf),
-			TranscoderKind::From32(r) => r.read(buf),
+			EncoderKind::Passthrough(r) => r.read(buf),
+			EncoderKind::From16(r) => r.read(buf),
+			EncoderKind::From32(r) => r.read(buf),
 		}
 	}
 }

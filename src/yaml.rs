@@ -10,8 +10,7 @@ use crate::{input, transcode};
 
 mod encoding;
 
-use self::encoding::Encoding;
-use self::encoding::Transcoder;
+use self::encoding::{Encoder, Encoding};
 
 pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	// TODO: Is it worthwhile to avoid throwing away the result of a conversion?
@@ -113,7 +112,7 @@ fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
 				Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
 				Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
 			});
-			Transcoder::new(buf, encoding).read_to_string(&mut result)?;
+			Encoder::new(buf, encoding).read_to_string(&mut result)?;
 			Ok(Cow::Owned(result))
 		}
 	}
