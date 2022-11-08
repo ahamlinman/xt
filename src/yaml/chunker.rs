@@ -166,19 +166,10 @@ where
 					unsafe { (*self.read_state).reader.trim_to_offset(offset) };
 				}
 				YAML_SCALAR_EVENT => {
-					if self.document_kind.is_none() {
-						self.document_kind = Some(DocumentKind::Scalar);
-					}
+					self.document_kind.get_or_insert(DocumentKind::Scalar);
 				}
-				YAML_SEQUENCE_START_EVENT => {
-					if self.document_kind.is_none() {
-						self.document_kind = Some(DocumentKind::Sequence);
-					}
-				}
-				YAML_MAPPING_START_EVENT => {
-					if self.document_kind.is_none() {
-						self.document_kind = Some(DocumentKind::Mapping);
-					}
+				YAML_SEQUENCE_START_EVENT | YAML_MAPPING_START_EVENT => {
+					self.document_kind.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
 					let offset = event.end_mark.index;
@@ -192,7 +183,7 @@ where
 					};
 					return Some(Ok(Document {
 						content,
-						kind: self.document_kind.unwrap(),
+						kind: self.document_kind.take().unwrap(),
 					}));
 				}
 				_ => {}
@@ -222,17 +213,15 @@ pub(super) struct Document {
 	kind: DocumentKind,
 }
 
-/// The kind of root element that a YAML document has.
-#[derive(Clone, Copy)]
+/// The type of content contained in a YAML document.
 pub enum DocumentKind {
 	Scalar,
-	Sequence,
-	Mapping,
+	Collection,
 }
 
 impl Document {
-	/// Returns true if the root of this document is a YAML scalar, rather than
-	/// a sequence or mapping.
+	/// Returns true if the content of the document is a scalar rather than a
+	/// collection (sequence or mapping).
 	pub(super) fn is_scalar(&self) -> bool {
 		matches!(self.kind, DocumentKind::Scalar)
 	}
