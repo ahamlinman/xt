@@ -99,6 +99,14 @@ where
 			EncoderKind::From32(r) => r.read(buf),
 		}
 	}
+
+	fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
+		match &mut self.0 {
+			EncoderKind::Passthrough(r) => r.read_to_string(buf),
+			EncoderKind::From16(r) => r.read_to_string(buf),
+			EncoderKind::From32(r) => r.read_to_string(buf),
+		}
+	}
 }
 
 /// The required size of a buffer large enough to encode any `char` as UTF-8,
@@ -198,6 +206,28 @@ where
 			}
 		}
 
+		Ok(written)
+	}
+
+	fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
+		if !self.remainder.is_empty() {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidData,
+				"cannot read to string starting from a partial character boundary",
+			));
+		}
+
+		let mut written = 0;
+		while let Some(next) = self.next_char() {
+			match next {
+				Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+				Err(err) => return Err(err),
+				Ok(ch) => {
+					buf.push(ch);
+					written += ch.len_utf8();
+				}
+			}
+		}
 		Ok(written)
 	}
 }
