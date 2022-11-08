@@ -30,29 +30,14 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 		return Ok(Some(Format::Json));
 	}
 
-	// At this point, we can move on to the formats that require full buffering.
-
-	// Of the text formats that require buffering, TOML is more restrictive than
-	// YAML. In fact, if we don't try TOML first, the YAML parser may accept the
-	// input by parsing it as a single plain style flow scalar, i.e. as a giant
-	// string. This generally works for any TOML document that doesn't start
-	// with a table. `Cargo.lock` is a great example, if you're curious.
-	if crate::toml::input_matches(input.borrow_mut())? {
-		return Ok(Some(Format::Toml));
-	}
-
-	// Finally, YAML is our traditional fallback format. Yes, we still get the
-	// giant string behavior described above for arbitrary text documents, but
-	// it is how xt has worked for a long time and it's not actively harmful. We
-	// also try to defer the YAML check as long as we can since detecting and
-	// re-encoding UTF-16 and UTF-32 input might be expensive. In particular, we
-	// do it after the MessagePack check since some valid MessagePack values
-	// would be false matches under the YAML 1.2 encoding detection algorithm.
-	// For example, a MessagePack fixarray with the integer 0 as its first value
-	// encodes as 0x9_ 0x00, which matches one of the byte patterns for
-	// UTF-16-LE YAML input.
+	// TODO: Rewrite this.
 	if crate::yaml::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Yaml));
+	}
+
+	// TODO: Rewrite this.
+	if crate::toml::input_matches(input.borrow_mut())? {
+		return Ok(Some(Format::Toml));
 	}
 
 	Ok(None)

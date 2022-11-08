@@ -16,7 +16,7 @@ pub(super) enum Encoding {
 
 impl Encoding {
 	/// The desired length of the prefix for encoding detection.
-	const DETECT_LEN: usize = 4;
+	pub(super) const DETECT_LEN: usize = 4;
 
 	/// Detects the text encoding of a YAML 1.2 stream based on its leading
 	/// bytes.

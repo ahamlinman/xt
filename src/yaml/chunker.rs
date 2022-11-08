@@ -30,6 +30,7 @@ where
 {
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
+	document_kind: Option<DocumentKind>,
 }
 
 /// The state for the libyaml input callback.
@@ -76,7 +77,11 @@ where
 			yaml_parser_set_input(parser, Self::read_handler, read_state as *mut c_void);
 		}
 
-		Self { parser, read_state }
+		Self {
+			parser,
+			read_state,
+			document_kind: None,
+		}
 	}
 
 	/// Implements [`yaml_read_handler_t`].
@@ -131,7 +136,7 @@ impl<R> Iterator for Chunker<R>
 where
 	R: Read,
 {
-	type Item = io::Result<String>;
+	type Item = io::Result<Document>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -154,19 +159,41 @@ where
 			match event.type_ {
 				YAML_STREAM_END_EVENT => return None,
 				YAML_DOCUMENT_START_EVENT => {
+					self.document_kind = None;
 					let offset = event.start_mark.index;
 					// SAFETY: We properly initialized self.read_state when the
 					// Chunker was constructed.
 					unsafe { (*self.read_state).reader.trim_to_offset(offset) };
 				}
+				YAML_SCALAR_EVENT => {
+					if self.document_kind.is_none() {
+						self.document_kind = Some(DocumentKind::Scalar);
+					}
+				}
+				YAML_SEQUENCE_START_EVENT => {
+					if self.document_kind.is_none() {
+						self.document_kind = Some(DocumentKind::Sequence);
+					}
+				}
+				YAML_MAPPING_START_EVENT => {
+					if self.document_kind.is_none() {
+						self.document_kind = Some(DocumentKind::Mapping);
+					}
+				}
 				YAML_DOCUMENT_END_EVENT => {
 					let offset = event.end_mark.index;
 					// SAFETY: We properly initialized self.read_state when the
-					// Chunker was constructed.
-					let chunk = unsafe { (*self.read_state).reader.take_to_offset(offset) };
-					// SAFETY: libyaml validates that the input is UTF-8 during
-					// parsing.
-					return Some(Ok(unsafe { String::from_utf8_unchecked(chunk) }));
+					// Chunker was constructed, and libyaml validates that the
+					// input is UTF-8 during parsing.
+					let content = unsafe {
+						String::from_utf8_unchecked(
+							(*self.read_state).reader.take_to_offset(offset),
+						)
+					};
+					return Some(Ok(Document {
+						content,
+						kind: self.document_kind.unwrap(),
+					}));
 				}
 				_ => {}
 			};
@@ -186,6 +213,36 @@ where
 			drop(Box::from_raw(self.parser));
 			drop(Box::from_raw(self.read_state));
 		}
+	}
+}
+
+/// A UTF-8 encoded YAML document.
+pub(super) struct Document {
+	content: String,
+	kind: DocumentKind,
+}
+
+/// The kind of root element that a YAML document has.
+#[derive(Clone, Copy)]
+pub enum DocumentKind {
+	Scalar,
+	Sequence,
+	Mapping,
+}
+
+impl Document {
+	/// Returns true if the root of this document is a YAML scalar, rather than
+	/// a sequence or mapping.
+	pub(super) fn is_scalar(&self) -> bool {
+		matches!(self.kind, DocumentKind::Scalar)
+	}
+}
+
+impl Deref for Document {
+	type Target = str;
+
+	fn deref(&self) -> &Self::Target {
+		&self.content
 	}
 }
 

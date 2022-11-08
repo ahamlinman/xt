@@ -4,9 +4,7 @@ use std::borrow::Cow;
 use std::io::{self, BufReader, Read, Write};
 use std::str;
 
-use serde::Deserialize;
-
-use crate::input::{self, Input};
+use crate::input::{self, Input, Ref};
 use crate::transcode;
 
 mod chunker;
@@ -15,18 +13,18 @@ mod encoding;
 use self::chunker::Chunker;
 use self::encoding::{Encoder, Encoding};
 
-pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	// TODO: Is it worthwhile to avoid throwing away the result of a conversion?
-	let input_str = match ensure_utf8(input.slice()?) {
-		Ok(input_str) => input_str,
-		Err(_) => return Ok(false),
+pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
+	let encoding = Encoding::detect(input.prefix(Encoding::DETECT_LEN)?);
+	let chunk = match &mut input {
+		Ref::Slice(b) => Chunker::new(Encoder::new(b, encoding)).next(),
+		Ref::Reader(r) => Chunker::new(Encoder::new(BufReader::new(r), encoding)).next(),
 	};
-	let input_str = input_str.strip_prefix('\u{FEFF}').unwrap_or(&input_str);
-
-	if let Some(de) = serde_yaml::Deserializer::from_str(input_str).next() {
-		return Ok(serde::de::IgnoredAny::deserialize(de).is_ok());
+	match chunk {
+		Some(Ok(doc)) => Ok(!doc.is_scalar()),
+		Some(Err(err)) if err.kind() == io::ErrorKind::InvalidData => Ok(false),
+		Some(Err(err)) => Err(err),
+		None => Ok(false),
 	}
-	Ok(false)
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
@@ -61,8 +59,8 @@ where
 			}
 		}
 		Input::Reader(r) => {
-			for chunk in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
-				output.transcode_from(serde_yaml::Deserializer::from_str(&chunk?))?;
+			for doc in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
+				output.transcode_from(serde_yaml::Deserializer::from_str(&doc?))?;
 			}
 		}
 	}
