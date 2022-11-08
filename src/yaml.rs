@@ -14,6 +14,12 @@ use self::chunker::Chunker;
 use self::encoding::{Encoder, Encoding};
 
 pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
+	// YAML can be surprisingly liberal in what it accepts. In particular, the
+	// contents of many non-YAML text documents can actually be parsed as YAML
+	// scalars, including TOML documents that do not start with a table. To
+	// prevent these kinds of weird matches, we only detect input as YAML when
+	// the first document in the stream encodes a collection (map or sequence).
+
 	let encoding = Encoding::detect(input.prefix(Encoding::DETECT_LEN)?);
 	let chunk = match &mut input {
 		Ref::Slice(b) => Chunker::new(Encoder::new(b, encoding)).next(),

@@ -12,30 +12,30 @@ use crate::{Format, Output};
 /// Detects the input format by trying each known format and selecting the first
 /// one that works.
 pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Format>> {
-	// We begin with the formats that support streaming input, so that we can
-	// try to detect the format for reader input without consuming it entirely.
-
 	// As a binary format, we expect MessagePack to be more restrictive than any
-	// text format. Note that the detection of MessagePack inputs is limited,
-	// see the implementation for details.
+	// text format. Detection of MessagePack inputs is limited to collection
+	// types; see comments in the implementation for details.
 	if crate::msgpack::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Msgpack));
 	}
 
-	// In addition to being the only text format that supports streaming, we
-	// expect JSON to be more restrictive than the two other text formats. For
+	// We expect JSON to be more restrictive than other text formats. For
 	// example, a "#" comment at the start of a document could be TOML or YAML,
 	// but definitely not JSON.
 	if crate::json::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Json));
 	}
 
-	// TODO: Rewrite this.
+	// YAML is actually less restrictive than TOML, but we want to try it first
+	// since it supports streaming input (which means that detection may require
+	// less buffering). Detection of YAML inputs is limited to collection types;
+	// see comments in the implementation for details.
 	if crate::yaml::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Yaml));
 	}
 
-	// TODO: Rewrite this.
+	// Finally, TOML is the only input format that must fully buffer input
+	// before parsing. (TODO: Limit the input size for TOML detection.)
 	if crate::toml::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Toml));
 	}
