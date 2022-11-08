@@ -150,7 +150,7 @@ Use --help for full usage information and available formats.";
 ///
 ///      json  Multi-document with self-delineating values (object, array,
 ///            string) or whitespace between values. Default format for .json
-///            files. Supports streaming input.
+///            files.
 ///
 ///      yaml  Multi-document with "---" syntax. Default format for .yaml and
 ///            .yml files.
@@ -158,20 +158,15 @@ Use --help for full usage information and available formats.";
 ///      toml  Single documents only. Default format for .toml files.
 ///
 ///   msgpack  Multi-document as values are naturally self-delineating. Default
-///            format for .msgpack files. Supports streaming input.
-///
-/// Input formats that support streaming can translate individual documents in
-/// an unbounded stream as they appear. Formats that do not support streaming
-/// must load all input into memory before translating any of it.
+///            format for .msgpack files.
 ///
 /// When xt does not know an input's format from a file extension or -f option,
 /// it will attempt to detect the format using an unspecified algorithm that is
-/// subject to change. If an unbounded stream does not match a format that
-/// supports streaming, the detector will load the entire stream into memory.
+/// subject to change.
 ///
 /// xt does not guarantee that every translation is possible, or lossless, or
 /// reversible. xt's behavior is undefined if an input file is modified while
-/// running. xt is not designed for use with untrusted input.
+/// running.
 #[derive(Parser)]
 #[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 struct Cli {
