@@ -35,7 +35,7 @@ pub(crate) fn detect_format(input: &mut input::Handle) -> io::Result<Option<Form
 	}
 
 	// Finally, TOML is the only input format that must fully buffer input
-	// before parsing. (TODO: Limit the input size for TOML detection.)
+	// before parsing.
 	if crate::toml::input_matches(input.borrow_mut())? {
 		return Ok(Some(Format::Toml));
 	}

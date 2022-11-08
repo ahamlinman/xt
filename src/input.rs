@@ -172,20 +172,6 @@ impl<'i, 'h> Ref<'i, 'h>
 where
 	'i: 'h,
 {
-	/// Returns the full input as a slice.
-	///
-	/// For reader inputs not yet fully buffered, this will immediately consume
-	/// all remaining bytes from the reader into memory.
-	pub(crate) fn slice(&mut self) -> io::Result<&[u8]> {
-		match self {
-			Ref::Slice(b) => Ok(b),
-			Ref::Reader(r) => {
-				r.capture_to_end()?;
-				Ok(r.captured())
-			}
-		}
-	}
-
 	/// Returns a prefix of the input.
 	///
 	/// For slice inputs and fully buffered reader inputs, this simply returns

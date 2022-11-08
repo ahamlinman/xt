@@ -8,13 +8,34 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::input;
+use crate::input::{self, Ref};
 
-pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	let input_str = match str::from_utf8(input.slice()?) {
+pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
+	let input_buf = match input {
+		Ref::Slice(b) => b,
+		Ref::Reader(_) => {
+			// Our TOML parser requires that we fully buffer all input into a
+			// &str before parsing. However, if we have an unbounded input
+			// stream, we don't just want to endlessly fill up some poor buffer
+			// until we finally crash from an allocation failure.
+			//
+			// As an arbitrary cutoff, let's say that if you're streaming a TOML
+			// document >= 2 MiB in size into xt, it might be time to stop and
+			// think about some things.
+			const SIZE_CUTOFF: usize = 2 * 1024_usize.pow(2);
+			let prefix = input.prefix(SIZE_CUTOFF)?;
+			if prefix.len() >= SIZE_CUTOFF {
+				return Ok(false);
+			}
+			prefix
+		}
+	};
+
+	let input_str = match str::from_utf8(input_buf) {
 		Ok(input_str) => input_str,
 		Err(_) => return Ok(false),
 	};
+
 	let mut de = ::toml::Deserializer::new(input_str);
 	Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
