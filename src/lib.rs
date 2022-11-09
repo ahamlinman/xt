@@ -1,4 +1,6 @@
 #![deny(
+	unsafe_op_in_unsafe_fn,
+	clippy::undocumented_unsafe_blocks,
 	clippy::cast_lossless,
 	clippy::cast_possible_truncation,
 	clippy::from_over_into,

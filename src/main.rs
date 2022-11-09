@@ -1,3 +1,12 @@
+#![deny(
+	unsafe_op_in_unsafe_fn,
+	clippy::undocumented_unsafe_blocks,
+	clippy::cast_lossless,
+	clippy::cast_possible_truncation,
+	clippy::from_over_into,
+	clippy::semicolon_if_nothing_returned
+)]
+
 use std::error;
 use std::fmt;
 use std::fs::File;
@@ -111,7 +120,7 @@ fn is_broken_pipe(err: &(dyn error::Error + 'static)) -> bool {
 				return true;
 			}
 		}
-		next = err.source()
+		next = err.source();
 	}
 	false
 }
@@ -129,6 +138,8 @@ fn exit_for_broken_pipe() {
 	// https://stackoverflow.com/a/65760807
 	// https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
 	#[cfg(unix)]
+	// SAFETY: libc is assumed to work correctly. Everything in the block comes
+	// from libc, so there are no Rust invariants to violate.
 	unsafe {
 		libc::signal(libc::SIGPIPE, libc::SIG_DFL);
 		libc::raise(libc::SIGPIPE);

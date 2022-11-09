@@ -57,8 +57,7 @@ where
 	/// BOMs. Consider using the [`encoding`](super::encoding) module to
 	/// re-encode non-UTF-8 streams.
 	pub(super) fn new(reader: R) -> Self {
-		// SAFETY: libyaml is assumed to be correct. To avoid leaking memory, we
-		// don't unbox the pointer until after the panic attempt.
+		// SAFETY: libyaml functions are assumed to work correctly.
 		let parser = unsafe {
 			let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 			if yaml_parser_initialize(parser.as_mut_ptr()).fail {
@@ -72,14 +71,13 @@ where
 			buffer: vec![],
 			error: None,
 		}));
+		// SAFETY: libyaml functions are assumed to work correctly. As required
+		// by `read_handler`, the data pointer points to the `ReadState<R>`
+		// initialized directly above.
+		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state as *mut c_void) };
 
-		// SAFETY: libyaml is assumed to be correct. The data pointer we provide
-		// to `yaml_parser_set_input` is a valid pointer to an initialized
-		// `ReadState<R>`.
-		unsafe {
-			yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING);
-			yaml_parser_set_input(parser, Self::read_handler, read_state as *mut c_void);
-		}
+		// SAFETY: libyaml functions are assumed to work correctly.
+		unsafe { yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING) };
 
 		Self {
 			parser,
@@ -96,7 +94,6 @@ where
 	///
 	/// The `data` pointer provided to [`yaml_parser_set_input`] alongside this
 	/// function must be a valid pointer to an initialized `ReadState<R>`.
-	/// libyaml is assumed to initialize all other pointers correctly.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
@@ -106,9 +103,6 @@ where
 		const READ_SUCCESS: i32 = 1;
 		const READ_FAILURE: i32 = 0;
 
-		// The correctness of this cast and all dereferences of this pointer
-		// depends on our caller upholding the safety invariant in the function
-		// documentation.
 		let read_state = read_state.cast::<ReadState<R>>();
 
 		// `size` represents the size of an allocated buffer, the length of
@@ -124,19 +118,31 @@ where
 		// safe `Read` implementation. To ensure soundness, we maintain our own
 		// initialized buffer for the reader to populate, then copy that buffer
 		// ourselves to libyaml.
-		(*read_state).buffer.resize(size, 0);
+		//
+		// SAFETY: Our caller is responsible for the validity of `read_state`.
+		unsafe { (*read_state).buffer.resize(size, 0) };
 
-		match (*read_state).reader.read(&mut (*read_state).buffer[..]) {
+		// SAFETY: Our caller is responsible for the validity of `read_state`.
+		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
 			Ok(len) => {
-				ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len);
+				// SAFETY: The two buffers come from separate allocations, so
+				// they cannot overlap unless the allocator is seriously broken.
+				// Our caller is responsible for the validity of `read_state`.
+				unsafe { ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len) };
+
 				// Note that libyaml's EOF condition is the same as Rust's: set
 				// `size_read` to 0 and return success.
-				*size_read = len as u64;
-				(*read_state).error = None;
+				//
+				// SAFETY: libyaml is assumed to initialize the pointer correctly.
+				unsafe { *size_read = len as u64 };
+
+				// SAFETY: Our caller is responsible for the validity of `read_state`.
+				unsafe { (*read_state).error = None };
 				READ_SUCCESS
 			}
 			Err(err) => {
-				(*read_state).error = Some(err);
+				// SAFETY: Our caller is responsible for the validity of `read_state`.
+				unsafe { (*read_state).error = Some(err) };
 				READ_FAILURE
 			}
 		}
@@ -155,8 +161,8 @@ where
 		}
 
 		loop {
-			// SAFETY: We properly initialized self.parser and self.read_state
-			// when the Chunker was constructed.
+			// SAFETY: `self.parser` and `self.read_state` should have been
+			// properly initialized on Chunker construction.
 			let event = unsafe {
 				match Event::from_parser(self.parser) {
 					Ok(event) => event,
@@ -173,8 +179,8 @@ where
 
 			match event.type_ {
 				YAML_DOCUMENT_START_EVENT => {
-					// SAFETY: We properly initialized self.read_state when the
-					// Chunker was constructed.
+					// SAFETY: `self.read_state` should have been properly
+					// initialized on Chunker construction.
 					unsafe {
 						let offset = event.start_mark.index;
 						(*self.read_state).reader.trim_to_offset(offset);
@@ -193,9 +199,9 @@ where
 						.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
-					// SAFETY: We properly initialized self.read_state when the
-					// Chunker was constructed, and libyaml validates that the
-					// input is UTF-8 during parsing.
+					// SAFETY: `self.read_state` should have been properly
+					// initialized on Chunker construction. libyaml validates
+					// that the input is UTF-8 during parsing.
 					let content = unsafe {
 						let offset = event.end_mark.index;
 						String::from_utf8_unchecked(
@@ -222,10 +228,11 @@ where
 	R: Read,
 {
 	fn drop(&mut self) {
-		// SAFETY: libyaml is assumed to be correct. Both of the raw pointers
-		// were originally obtained from Boxes.
+		// SAFETY: libyaml functions are assumed to work correctly.
+		unsafe { yaml_parser_delete(self.parser) };
+
+		// SAFETY: These pointers were obtained from Boxes on Chunker construction.
 		unsafe {
-			yaml_parser_delete(self.parser);
 			drop(Box::from_raw(self.parser));
 			drop(Box::from_raw(self.read_state));
 		}
@@ -270,11 +277,15 @@ impl Event {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ()> {
-		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
-		if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-			return Err(());
+		// SAFETY: libyaml functions are assumed to work correctly. Our caller
+		// is responsible for the validity of `parser`.
+		unsafe {
+			let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
+			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
+				return Err(());
+			}
+			Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 		}
-		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
 }
 
@@ -282,20 +293,20 @@ impl Deref for Event {
 	type Target = yaml_event_t;
 
 	fn deref(&self) -> &Self::Target {
-		// SAFETY: We never expose the raw pointer externally, so there should
-		// be no opportunity to violate aliasing rules by creating a &mut.
+		// SAFETY: This is the only place where we ever convert this pointer to
+		// a reference. Because we have `&self`, Rust will have verified that
+		// there is no aliasing violation.
 		unsafe { &*self.0 }
 	}
 }
 
 impl Drop for Event {
 	fn drop(&mut self) {
-		// SAFETY: libyaml is assumed to be correct. The raw pointer was
-		// originally obtained from a Box.
-		unsafe {
-			yaml_event_delete(self.0);
-			drop(Box::from_raw(self.0));
-		}
+		// SAFETY: libyaml functions are assumed to work correctly.
+		unsafe { yaml_event_delete(self.0) };
+
+		// SAFETY: This pointer was obtained from a Box on Event construction.
+		unsafe { drop(Box::from_raw(self.0)) };
 	}
 }
 
@@ -313,17 +324,20 @@ impl ParserError {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Self {
-		Self {
-			problem: NonNull::new((*parser).problem as *mut i8).map(|problem| {
-				LocatedError::from_parts(
-					problem.as_ptr().cast(),
-					(*parser).problem_mark,
-					Some((*parser).problem_offset),
-				)
-			}),
-			context: NonNull::new((*parser).context as *mut i8).map(|context| {
-				LocatedError::from_parts(context.as_ptr().cast(), (*parser).context_mark, None)
-			}),
+		// SAFETY: Our caller is responsible for the validity of `parser`.
+		unsafe {
+			Self {
+				problem: NonNull::new((*parser).problem as *mut i8).map(|problem| {
+					LocatedError::from_parts(
+						problem.as_ptr().cast(),
+						(*parser).problem_mark,
+						Some((*parser).problem_offset),
+					)
+				}),
+				context: NonNull::new((*parser).context as *mut i8).map(|context| {
+					LocatedError::from_parts(context.as_ptr().cast(), (*parser).context_mark, None)
+				}),
+			}
 		}
 	}
 }
@@ -366,7 +380,8 @@ impl LocatedError {
 		override_offset: Option<u64>,
 	) -> Self {
 		Self {
-			description: CStr::from_ptr(description).to_string_lossy().into_owned(),
+			// SAFETY: Our caller is responsible for the validity of `description`.
+			description: unsafe { CStr::from_ptr(description).to_string_lossy().into_owned() },
 			line: mark.line + 1,
 			column: mark.column + 1,
 			offset: match mark.index > 0 {
