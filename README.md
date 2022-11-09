@@ -18,7 +18,7 @@ Or transform a JSON configuration file into YAML for easier editing:
 $ xt -t yaml config.json > config.yaml
 ```
 
-Or store a stream of JSON events as MessagePack to save space:
+Or store an unbounded stream of JSON events as MessagePack to save space:
 
 ```sh
 $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpack
@@ -26,7 +26,7 @@ $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpa
 
 ## Installation
 
-You can install xt [from crates.io][crate], using Rust 1.56.0 or later.
+You can install xt [from crates.io][crate]:
 
 ```sh
 cargo install --locked xt
@@ -59,12 +59,9 @@ automatically via file extension, or by trying different parsers on the input.
 ### Multi-Document Support and Streaming
 
 When an input format allows for multiple concatenated documents in a single
-input, xt will recognize and translate every document in the input. For example,
-a set of YAML documents separated by `---` markers translates to a stream of
-newline-delimited JSON documents.
-
-xt can translate unbounded JSON and MessagePack inputs without slurping all
-input into memory, even when automatic format detection is enabled.
+input, xt will recognize and translate every individual document it finds in the
+stream. For example, a set of YAML documents separated by `---` markers
+translates to a stream of newline-delimited JSON documents.
 
 [jq]: https://stedolan.github.io/jq/
 [serde]: https://serde.rs/

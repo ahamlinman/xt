@@ -1,3 +1,32 @@
+## Unreleased
+
+### Added
+
+- **Streaming support for YAML inputs.** xt now translates unbounded streams of
+  YAML documents without buffering all input into memory. Previously, xt
+  attempted to fully buffer streaming YAML inputs into memory during format
+  detection and translation.
+
+### Removed
+
+- **Acceptance of rare UTF-8 encoding quirks.** As a side effect of the new
+  support for streaming YAML input, xt no longer accepts UTF-8 encoded YAML
+  streams that begin with a Unicode byte order mark, even though this is allowed
+  by the YAML 1.2 specification. Such inputs should be exceptionally rare in
+  practice. As before, xt fully supports BOMs at the beginning of UTF-16 and
+  UTF-32 YAML streams.
+
+### Changed
+
+- **Format detection never slurps all input into memory.** Previously, the
+  format detection algorithm would occasionally attempt to buffer the full
+  contents of a potentially unbounded stream into memory, causing xt to consume
+  as much memory as it could before crashing. To mitigate this issue, the
+  detection of TOML inputs from non-file sources is now limited to streams less
+  than 2 MiB in size. As always, the format detection algorithm is unstable and
+  provides best-effort results only; this limit or other details of the
+  algorithm may change in the future.
+
 ## v0.13.0 (2022-11-05)
 
 ### Changed

@@ -1,66 +1,74 @@
 //! The YAML data format.
 
 use std::borrow::Cow;
-use std::char::DecodeUtf16Error;
-use std::error;
-use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, BufReader, Read, Write};
 use std::str;
 
-use serde::Deserialize;
+use crate::input::{self, Input, Ref};
+use crate::transcode;
 
-use crate::{input, transcode};
+mod chunker;
+mod encoding;
 
-pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
-	// TODO: Is it worthwhile to avoid throwing away the result of a conversion?
-	let input_str = match ensure_utf8(input.slice()?) {
-		Ok(input_str) => input_str,
-		Err(_) => return Ok(false),
+use self::chunker::Chunker;
+use self::encoding::{Encoder, Encoding};
+
+pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
+	// YAML can be surprisingly liberal in what it accepts. In particular, the
+	// contents of many non-YAML text documents can actually be parsed as YAML
+	// scalars, including TOML documents that do not start with a table. To
+	// prevent these kinds of weird matches, we only detect input as YAML when
+	// the first document in the stream encodes a collection (map or sequence).
+
+	let encoding = Encoding::detect(input.prefix(Encoding::DETECT_LEN)?);
+	let chunk = match &mut input {
+		Ref::Slice(b) => Chunker::new(Encoder::new(b, encoding)).next(),
+		Ref::Reader(r) => Chunker::new(Encoder::new(BufReader::new(r), encoding)).next(),
 	};
-	let input_str = input_str.strip_prefix('\u{FEFF}').unwrap_or(&input_str);
-
-	if let Some(de) = serde_yaml::Deserializer::from_str(input_str).next() {
-		return Ok(serde::de::IgnoredAny::deserialize(de).is_ok());
+	match chunk {
+		Some(Ok(doc)) => Ok(!doc.is_scalar()),
+		Some(Err(err)) if err.kind() == io::ErrorKind::InvalidData => Ok(false),
+		Some(Err(err)) => Err(err),
+		None => Ok(false),
 	}
-	Ok(false)
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
-	// serde-yaml imposes a couple of interesting limitations on us, which
-	// aren't clear from the documentation alone but which are reflected in this
+	// serde_yaml imposes a couple of interesting limitations on us, which
+	// aren't clear from the documentation alone but are reflected in this
 	// usage.
 	//
-	// First, while serde-yaml supports creating a Deserializer from a reader,
-	// this actually just slurps the entire input into a byte vector and parses
-	// the resulting slice. We would have to detect the splits between YAML
-	// documents ourselves to do streaming input, either with some kind of text
-	// stream processing (the evil way) or by implementing this as a real
-	// feature upstream (the righteous way).
+	// First, while serde_yaml supports creating a Deserializer from a reader,
+	// this actually slurps the entire input into a buffer for parsing. We
+	// support streaming parsing by implementing our own "chunker" that splits
+	// an unbounded YAML stream into a sequence of buffered documents. This is a
+	// terrible hack, and I sincerely hope that I will have the time and energy
+	// someday to implement true streaming support in serde_yaml.
 	//
-	// Second, serde-yaml does not support UTF-16 or UTF-32 input, even though
-	// YAML 1.2 requires this. While serde-yaml supports creating a Deserializer
-	// from a &[u8], non-UTF-8 input will produce errors about control
-	// characters or invalid UTF-8 octets. YAML has very clear rules for
-	// encoding detection, so we re-encode the input ourselves if necessary.
-	let input: Cow<'_, [u8]> = input.try_into()?;
-	let input = ensure_utf8(&input)?;
+	// Second, serde_yaml does not support UTF-16 or UTF-32 input, even though
+	// YAML 1.2 requires this. In addition to our chunker, we implement a
+	// streaming encoder that can detect the encoding of any valid YAML stream
+	// and convert it to UTF-8. The encoder will also strip any byte order mark
+	// from the beginning of the stream, as serde_yaml will choke on it. This
+	// still doesn't cover the full YAML spec, which also allows BOMs in UTF-8
+	// streams and at the starts of individual documents in the stream.
+	// However, these cases should be much rarer than that of a single BOM at
+	// the start of a UTF-16 or UTF-32 stream.
 
-	// YAML 1.2 allows for a BOM at the start of the stream, as well as at the
-	// beginning of every subsequent document in a stream (though all documents
-	// must use the same encoding). Unfortunately, serde-yaml seems to treat
-	// BOMs like regular flow scalars (or something along those lines), and
-	// documents with BOMs produce errors about mapping values not being
-	// allowed. We take care of a single BOM at the start of a document since
-	// it's pretty easy to handle, and hopefully covers most things (the
-	// repeated BOM case seems to be about concatenating arbitrary documents, so
-	// xt's multi-file support might be a useful workaround).
-	let input = input.strip_prefix('\u{FEFF}').unwrap_or(&input);
-
-	for de in serde_yaml::Deserializer::from_str(input) {
-		output.transcode_from(de)?;
+	match input.into() {
+		Input::Slice(b) => {
+			for de in serde_yaml::Deserializer::from_str(&ensure_utf8(&b)?) {
+				output.transcode_from(de)?;
+			}
+		}
+		Input::Reader(r) => {
+			for doc in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
+				output.transcode_from(serde_yaml::Deserializer::from_str(&doc?))?;
+			}
+		}
 	}
 	Ok(())
 }
@@ -101,103 +109,18 @@ impl<W: Write> crate::Output for Output<W> {
 
 /// Ensures that YAML input is UTF-8 by validating or converting it.
 ///
-/// This function detects UTF-16 and UTF-32 input based on [section 5.2 of the
-/// YAML v1.2.2 specification][spec]; detection behavior for non-YAML inputs is
-/// not well defined. Conversions are optimized for simplicity and size, rather
-/// than performance. Input that is invalid in the detected encoding, or whose
-/// size does not evenly divide the detected code unit size, will return an
-/// error.
-///
-/// [spec]: https://yaml.org/spec/1.2.2/#52-character-encodings
+/// See [Encoding::detect] for details on the detection algorithm.
 fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
-	let prefix = {
-		// We use -1 as a sentinel for truncated input so the match patterns are
-		// shorter to write than with Option<u8> variants.
-		let mut result: [i16; 4] = Default::default();
-		let mut iter = buf.iter();
-		result.fill_with(|| iter.next().map(|x| i16::from(*x)).unwrap_or(-1));
-		result
-	};
-
-	// See https://yaml.org/spec/1.2.2/#52-character-encodings. Notably, valid
-	// YAML streams that do not begin with a BOM must begin with an ASCII
-	// character, so that the pattern of null bytes reveals the encoding.
-	Ok(match prefix {
-		[0, 0, 0xFE, 0xFF] | [0, 0, 0, _] if buf.len() >= 4 => {
-			Cow::Owned(convert_utf32(buf, u32::from_be_bytes)?)
-		}
-		[0xFF, 0xFE, 0, 0] | [_, 0, 0, 0] if buf.len() >= 4 => {
-			Cow::Owned(convert_utf32(buf, u32::from_le_bytes)?)
-		}
-		[0xFE, 0xFF, ..] | [0, _, ..] if buf.len() >= 2 => {
-			Cow::Owned(convert_utf16(buf, u16::from_be_bytes)?)
-		}
-		[0xFF, 0xFE, ..] | [_, 0, ..] if buf.len() >= 2 => {
-			Cow::Owned(convert_utf16(buf, u16::from_le_bytes)?)
-		}
-		// The spec shows how to match a UTF-8 BOM, but since it's the same as
-		// the default case there's no real point to an explicit check.
-		_ => Cow::Borrowed(str::from_utf8(buf)?),
-	})
-}
-
-fn convert_utf32<F>(buf: &[u8], get_u32: F) -> Result<String, EncodingError>
-where
-	F: Fn([u8; 4]) -> u32,
-{
-	if buf.len() % 4 != 0 {
-		return Err(EncodingError::TruncatedUtf32);
-	}
-
-	// Start with just enough capacity for a pure ASCII result.
-	let mut result = String::with_capacity(buf.len() / 4);
-	for unit in buf.chunks_exact(4).map(|x| get_u32(x.try_into().unwrap())) {
-		result.push(match char::from_u32(unit) {
-			Some(chr) => chr,
-			None => return Err(EncodingError::InvalidUtf32(unit)),
-		});
-	}
-	Ok(result)
-}
-
-fn convert_utf16<F>(buf: &[u8], get_u16: F) -> Result<String, EncodingError>
-where
-	F: Fn([u8; 2]) -> u16,
-{
-	if buf.len() % 2 != 0 {
-		return Err(EncodingError::TruncatedUtf16);
-	}
-
-	// Start with just enough capacity for a pure ASCII result.
-	let mut result = String::with_capacity(buf.len() / 2);
-	let units = buf.chunks_exact(2).map(|x| get_u16(x.try_into().unwrap()));
-	for chr in char::decode_utf16(units) {
-		result.push(match chr {
-			Ok(chr) => chr,
-			Err(err) => return Err(EncodingError::InvalidUtf16(err)),
-		});
-	}
-	Ok(result)
-}
-
-/// An error encountered while decoding a UTF-16 or UTF-32 YAML document.
-#[derive(Debug)]
-enum EncodingError {
-	TruncatedUtf16,
-	TruncatedUtf32,
-	InvalidUtf16(DecodeUtf16Error),
-	InvalidUtf32(u32),
-}
-
-impl error::Error for EncodingError {}
-
-impl fmt::Display for EncodingError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			EncodingError::TruncatedUtf16 => f.write_str("truncated utf-16"),
-			EncodingError::TruncatedUtf32 => f.write_str("truncated utf-32"),
-			EncodingError::InvalidUtf16(err) => write!(f, "invalid utf-16: {}", err),
-			EncodingError::InvalidUtf32(unit) => write!(f, "invalid utf-32: {:x}", unit),
+	match Encoding::detect(buf) {
+		Encoding::Utf8 => Ok(Cow::Borrowed(str::from_utf8(buf)?)),
+		encoding => {
+			let mut result = String::with_capacity(match encoding {
+				Encoding::Utf8 => unreachable!(),
+				Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
+				Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
+			});
+			Encoder::new(buf, encoding).read_to_string(&mut result)?;
+			Ok(Cow::Owned(result))
 		}
 	}
 }

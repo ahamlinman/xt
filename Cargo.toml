@@ -1,6 +1,6 @@
 [package]
 name = "xt"
-version = "0.13.1-dev"
+version = "0.14.0-dev"
 description = "Translate between serialized data formats"
 repository = "https://github.com/ahamlinman/xt"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
@@ -19,6 +19,7 @@ rmp-serde = "1"
 serde = "1"
 serde_json = "1"
 serde_yaml = "0.9"
+unsafe-libyaml = "0.2"
 
 [dependencies.clap]
 version = "3"
