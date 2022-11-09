@@ -250,9 +250,9 @@ impl InputPath {
 			Self::File(path) => path,
 		};
 		let file = File::open(path)?;
-		// "SAFETY": It is undefined behavior to modify a mapped file outside of
-		// the process... so we tell users not to do that in the help output.
-		// No, this is not a real solution and does not provide any actual
+		// (UN)SAFETY: It is Undefined Behavior to modify a mapped file outside
+		// of the process… so we tell users not to do that in the help output.
+		// Sadly, this is NOT a real solution and does NOT provide any actual
 		// safety guarantee. It's a risk we take intentionally in the name of
 		// performance, based on a pragmatic understanding of the failure modes
 		// most likely to appear when the requirement is violated.

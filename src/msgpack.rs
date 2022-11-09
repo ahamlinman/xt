@@ -8,7 +8,7 @@ use rmp::Marker;
 use rmp_serde::decode::Error::{InvalidDataRead, InvalidMarkerRead};
 use serde::Deserialize;
 
-use crate::input::{self, Input};
+use crate::input::{self, Input, Ref};
 use crate::transcode;
 
 /// The maximum allowed nesting depth of MessagePack values.
@@ -18,7 +18,7 @@ use crate::transcode;
 /// the program using the default main thread stack size on Linux and macOS.
 const DEPTH_LIMIT: usize = 1024;
 
-pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 	// In MessagePack, any byte below 0x80 represents a literal unsigned
 	// integer. That means any ASCII text input is a valid multi-document
 	// MessagePack stream, where every "document" is practically meaningless. To
@@ -27,9 +27,8 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	// Arbitrary non-ASCII input that happens to match one of these markers
 	// (e.g. certain UTF-8 multibyte sequences) is extremely unlikely to be a
 	// valid sequence of MessagePack values.
-	let first_marker = input.prefix(1)?.first().map(|b| Marker::from_u8(*b));
 	if !matches!(
-		first_marker,
+		input.prefix(1)?.first().copied().map(Marker::from_u8),
 		Some(
 			Marker::FixArray(_)
 				| Marker::Array16
@@ -42,8 +41,8 @@ pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
 	}
 
 	let result = match &mut input {
-		input::Ref::Slice(b) => match_input_buffer(b),
-		input::Ref::Reader(r) => match_input_reader(r),
+		Ref::Slice(b) => match_input_buffer(b),
+		Ref::Reader(r) => match_input_reader(r),
 	};
 	match result {
 		Err(InvalidMarkerRead(err) | InvalidDataRead(err)) => Err(err),
@@ -81,7 +80,7 @@ where
 		}
 		Input::Reader(r) => {
 			let mut r = BufReader::new(r);
-			while has_data_left(&mut r)? {
+			while !r.fill_buf()?.is_empty() {
 				let mut de = rmp_serde::Deserializer::new(&mut r);
 				de.set_max_depth(DEPTH_LIMIT);
 				output.transcode_from(&mut de)?;
@@ -89,10 +88,6 @@ where
 		}
 	}
 	Ok(())
-}
-
-fn has_data_left<R: Read>(r: &mut BufReader<R>) -> io::Result<bool> {
-	r.fill_buf().map(|b| !b.is_empty())
 }
 
 pub(crate) struct Output<W: Write>(W);

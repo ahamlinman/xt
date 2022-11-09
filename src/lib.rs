@@ -1,7 +1,6 @@
 #![deny(
 	clippy::cast_lossless,
 	clippy::cast_possible_truncation,
-	clippy::enum_glob_use,
 	clippy::from_over_into,
 	clippy::semicolon_if_nothing_returned
 )]
@@ -202,8 +201,7 @@ pub enum Format {
 	Json,
 	/// The [YAML 1.2][yaml] format as interpreted by [`serde_yaml`].
 	///
-	/// This format supports multi-document translation, but does not support
-	/// streaming input.
+	/// This format supports multi-document translation and streaming input.
 	///
 	/// [yaml]: https://yaml.org/spec/1.2.2/
 	Yaml,

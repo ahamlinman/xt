@@ -211,9 +211,9 @@ enum ErrorSource {
 impl Default for ErrorSource {
 	/// Returns [`ErrorSource::De`].
 	///
-	/// Since the transcoder drives the serializer, it can always know when to
-	/// capture that an error originated from the serializer. So, all errors
-	/// with an unknown source must have originated in the deserializer.
+	/// Since the transcoder drives the serializer, it always knows when to
+	/// capture that an error originated there. Therefore, all errors with an
+	/// unknown source must have originated in the deserializer.
 	fn default() -> Self {
 		ErrorSource::De
 	}

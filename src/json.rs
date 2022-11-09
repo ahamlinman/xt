@@ -5,13 +5,13 @@ use std::str;
 
 use serde::Deserialize;
 
-use crate::input::{self, Input};
+use crate::input::{self, Input, Ref};
 use crate::transcode;
 
-pub(crate) fn input_matches(mut input: input::Ref) -> io::Result<bool> {
+pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 	let result = match &mut input {
-		input::Ref::Reader(r) => match_input_reader(r),
-		input::Ref::Slice(b) => match str::from_utf8(b) {
+		Ref::Reader(r) => match_input_reader(r),
+		Ref::Slice(b) => match str::from_utf8(b) {
 			Ok(s) => match_input_str(s),
 			Err(_) => return Ok(false),
 		},

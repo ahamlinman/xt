@@ -74,8 +74,7 @@ impl<R> Encoder<R>
 where
 	R: BufRead,
 {
-	/// Creates a transcoder using a known source encoding.
-	#[allow(clippy::enum_glob_use)]
+	/// Creates an encoder using a known source encoding.
 	pub(super) fn new(reader: R, from: Encoding) -> Self {
 		use EncoderKind::*;
 		use Encoding::*;
@@ -90,8 +89,8 @@ where
 		})
 	}
 
-	/// Creates a transcoder by detecting the source encoding from the first
-	/// bytes of the reader.
+	/// Creates an encoder by detecting the source encoding from the first bytes
+	/// of the reader.
 	///
 	/// See [`Encoding::detect`] for details of the detection process. Note that
 	/// `from_reader` provides as many prefix bytes to the detector as it needs
@@ -276,12 +275,9 @@ where
 	}
 
 	fn next_u16(&mut self) -> io::Result<Option<u16>> {
-		match self.source.fill_buf() {
-			Ok(buf) if buf.is_empty() => return Ok(None),
-			Err(err) => return Err(err),
-			_ => {}
-		};
-
+		if self.source.fill_buf()?.is_empty() {
+			return Ok(None);
+		}
 		let mut next = [0u8; 2];
 		self.source.read_exact(&mut next)?;
 		self.pos += next.len() as u64;
@@ -309,13 +305,11 @@ where
 				Err(err) => return Some(Err(err)),
 			},
 		};
-
 		if !(0xD800..=0xDFFF).contains(&lead) {
 			// SAFETY: This is not a UTF-16 surrogate, which means that the u16
 			// code unit directly encodes the desired code point.
 			return Some(Ok(unsafe { char::from_u32_unchecked(u32::from(lead)) }));
 		}
-
 		if lead >= 0xDC00 {
 			// Invalid: a UTF-16 trailing surrogate with no leading surrogate.
 			return Some(Err(EncodingError::new(lead, pos).into()));
@@ -334,11 +328,13 @@ where
 			return Some(Err(EncodingError::new(trail, pos).into()));
 		}
 
-		// At this point, we are confident that we have valid leading and
-		// trailing surrogates, and can decode them into the correct code point.
-		let ch = 0x1_0000 + (u32::from(lead - 0xD800) << 10 | u32::from(trail - 0xDC00));
-		// SAFETY: We have confirmed that the surrogate pair is valid.
-		Some(Ok(unsafe { char::from_u32_unchecked(ch as u32) }))
+		// SAFETY: We have confirmed that the two code units form a valid
+		// surrogate pair.
+		Some(Ok(unsafe {
+			char::from_u32_unchecked(
+				0x10000 + (u32::from(lead - 0xD800) << 10 | u32::from(trail - 0xDC00)),
+			)
+		}))
 	}
 }
 
@@ -517,9 +513,9 @@ impl<const SIZE: usize> ArrayBuffer<SIZE> {
 		let n = buf.len();
 		debug_assert!(
 			n <= SIZE,
-			"called ArrayBuffer::set with a slice of size {} on an ArrayBuffer of size {}",
-			n,
+			"set a {} byte ArrayBuffer with a slice of {} bytes",
 			SIZE,
+			n,
 		);
 		self.buf[..n].copy_from_slice(buf);
 		self.pos = 0;
@@ -543,6 +539,12 @@ impl<const SIZE: usize> BufRead for ArrayBuffer<SIZE> {
 	}
 
 	fn consume(&mut self, amt: usize) {
+		debug_assert!(
+			amt <= self.unread().len(),
+			"consumed {} bytes from an ArrayBuffer with {} bytes unread",
+			amt,
+			self.unread().len()
+		);
 		self.pos += amt;
 	}
 }

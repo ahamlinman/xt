@@ -131,7 +131,6 @@ fn load_large_data(format: Format) -> Vec<u8> {
 
 fn load_test_data(input: &[u8], format: Format, capacity: usize) -> Vec<u8> {
 	let mut output = Vec::with_capacity(capacity);
-
 	xt::translate(
 		Handle::from_reader(zstd::Decoder::new(input).expect("failed to create zstd decoder")),
 		Some(Format::Msgpack),
@@ -139,6 +138,5 @@ fn load_test_data(input: &[u8], format: Format, capacity: usize) -> Vec<u8> {
 		&mut output,
 	)
 	.expect("failed to translate test data");
-
 	output
 }

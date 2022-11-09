@@ -19,7 +19,6 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 	// scalars, including TOML documents that do not start with a table. To
 	// prevent these kinds of weird matches, we only detect input as YAML when
 	// the first document in the stream encodes a collection (map or sequence).
-
 	let encoding = Encoding::detect(input.prefix(Encoding::DETECT_LEN)?);
 	let chunk = match &mut input {
 		Ref::Slice(b) => Chunker::new(Encoder::new(b, encoding)).next(),
@@ -57,7 +56,6 @@ where
 	// streams and at the starts of individual documents in the stream.
 	// However, these cases should be much rarer than that of a single BOM at
 	// the start of a UTF-16 or UTF-32 stream.
-
 	match input.into() {
 		Input::Slice(b) => {
 			for de in serde_yaml::Deserializer::from_str(&ensure_utf8(&b)?) {
