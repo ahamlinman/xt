@@ -74,7 +74,7 @@ where
 		// SAFETY: libyaml functions are assumed to work correctly. As required
 		// by `read_handler`, the data pointer points to the `ReadState<R>`
 		// initialized directly above.
-		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state as *mut c_void) };
+		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state.cast::<c_void>()) };
 
 		// SAFETY: libyaml functions are assumed to work correctly.
 		unsafe { yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING) };

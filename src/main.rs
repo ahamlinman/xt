@@ -1,10 +1,17 @@
 #![deny(
+	// Enforce some additional strictness on unsafe code.
 	unsafe_op_in_unsafe_fn,
 	clippy::undocumented_unsafe_blocks,
+	// Deny a number of `as` casts in favor of safer alternatives.
+	clippy::as_underscore,
+	clippy::ptr_as_ptr,
 	clippy::cast_lossless,
 	clippy::cast_possible_truncation,
+	clippy::checked_conversions,
+	clippy::unnecessary_cast,
+	// More general style-type things.
 	clippy::from_over_into,
-	clippy::semicolon_if_nothing_returned
+	clippy::semicolon_if_nothing_returned,
 )]
 
 use std::error;
