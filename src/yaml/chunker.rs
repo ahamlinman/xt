@@ -19,9 +19,14 @@ use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
-use std::ptr::{self, NonNull};
+use std::ptr;
 
-use unsafe_libyaml::*;
+use unsafe_libyaml::{
+	yaml_event_delete, yaml_event_t, yaml_mark_t, yaml_parser_delete, yaml_parser_initialize,
+	yaml_parser_parse, yaml_parser_set_encoding, yaml_parser_set_input, yaml_parser_t,
+	YAML_DOCUMENT_END_EVENT, YAML_DOCUMENT_START_EVENT, YAML_MAPPING_START_EVENT,
+	YAML_SCALAR_EVENT, YAML_SEQUENCE_START_EVENT, YAML_STREAM_END_EVENT, YAML_UTF8_ENCODING,
+};
 
 /// An iterator over individual raw documents in a UTF-8-encoded YAML stream.
 pub(super) struct Chunker<R>
@@ -324,18 +329,20 @@ impl ParserError {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Self {
-		// SAFETY: Our caller is responsible for the validity of `parser`.
+		// SAFETY: Our caller is responsible for the validity of `parser`. We
+		// validate that the `description` for each `LocatedError::from_parts`
+		// call is not null.
 		unsafe {
 			Self {
-				problem: NonNull::new((*parser).problem as *mut i8).map(|problem| {
+				problem: (!(*parser).problem.is_null()).then(|| {
 					LocatedError::from_parts(
-						problem.as_ptr().cast(),
+						(*parser).problem,
 						(*parser).problem_mark,
 						Some((*parser).problem_offset),
 					)
 				}),
-				context: NonNull::new((*parser).context as *mut i8).map(|context| {
-					LocatedError::from_parts(context.as_ptr().cast(), (*parser).context_mark, None)
+				context: (!(*parser).context.is_null()).then(|| {
+					LocatedError::from_parts((*parser).context, (*parser).context_mark, None)
 				}),
 			}
 		}

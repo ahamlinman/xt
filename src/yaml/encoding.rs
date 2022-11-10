@@ -158,14 +158,13 @@ where
 	}
 
 	fn next_char(&mut self) -> Option<io::Result<char>> {
-		match self.started {
-			true => self.source.next(),
-			false => {
-				self.started = true;
-				match self.source.next() {
-					Some(Ok(ch)) if ch == '\u{FEFF}' => self.source.next(),
-					next => next,
-				}
+		if self.started {
+			self.source.next()
+		} else {
+			self.started = true;
+			match self.source.next() {
+				Some(Ok(ch)) if ch == '\u{FEFF}' => self.source.next(),
+				next => next,
 			}
 		}
 	}
