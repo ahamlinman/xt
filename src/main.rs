@@ -60,7 +60,7 @@ fn main() {
 		Ok(args) => args,
 		Err(err) => {
 			eprintln!("xt error: {}", err);
-			write_short_help(io::stderr());
+			write_short_help(io::stderr().lock());
 			process::exit(1);
 		}
 	};
@@ -149,8 +149,8 @@ fn exit_for_broken_pipe() {
 
 struct Cli {
 	input_paths: Vec<PathBuf>,
-	to: Format,
 	from: Option<Format>,
+	to: Format,
 }
 
 impl Cli {
@@ -158,8 +158,8 @@ impl Cli {
 		use lexopt::prelude::*;
 
 		let mut input_paths: Vec<PathBuf> = vec![];
-		let mut to: Option<Format> = None;
 		let mut from: Option<Format> = None;
+		let mut to: Option<Format> = None;
 
 		let mut parser = lexopt::Parser::from_env();
 		while let Some(arg) = parser.next()? {
@@ -175,11 +175,11 @@ impl Cli {
 				}
 				Short('V') | Long("version") => {
 					const VERSION: &str = version_string();
-					let _ = writeln!(io::stdout(), "{VERSION}");
+					let _ = writeln!(io::stdout().lock(), "{VERSION}");
 					process::exit(0);
 				}
 				Short('h') => {
-					write_short_help(io::stdout());
+					write_short_help(io::stdout().lock());
 					process::exit(0);
 				}
 				Long("help") => {
@@ -217,16 +217,19 @@ where
 	W: Write,
 {
 	let argv0 = usage_name();
-	let _ = writeln!(w, "Usage: {argv0} {USAGE}");
-	let _ = writeln!(w, "Formats: json, yaml, toml, msgpack");
-	let _ = writeln!(w, "Try '{argv0} --help' for more information.");
+	let _ = write!(
+		w,
+		r#"Usage: {argv0} {USAGE}
+Formats: json, yaml, toml, msgpack
+Try '{argv0} --help' for more information.
+"#
+	);
 }
 
 /// Writes long help output to standard output, ignoring errors.
 fn print_long_help() {
 	const VERSION: &str = version_string();
 	let argv0 = usage_name();
-
 	let _ = write!(
 		io::stdout().lock(),
 		r#"{VERSION} - Translate between serialized data formats
