@@ -165,9 +165,15 @@ impl Cli {
 		while let Some(arg) = parser.next()? {
 			match arg {
 				Short('f') => {
+					if from.is_some() {
+						return Err("cannot provide '-f' more than once".into());
+					}
 					from = Some(parser.value()?.parse_with(try_parse_format)?);
 				}
 				Short('t') => {
+					if to.is_some() {
+						return Err("cannot provide '-t' more than once".into());
+					}
 					to = Some(parser.value()?.parse_with(try_parse_format)?);
 				}
 				Value(val) => {
