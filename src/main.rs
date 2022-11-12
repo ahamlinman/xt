@@ -14,66 +14,56 @@
 	clippy::semicolon_if_nothing_returned,
 )]
 
+use std::borrow::Cow;
+use std::env;
 use std::error;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use clap::{
-	ErrorKind::{DisplayHelp, DisplayVersion},
-	Parser,
-};
-
 use xt::Format;
 
-fn main() {
-	let args = match Cli::try_parse() {
-		Ok(args) => args,
-		Err(err) => match err.kind() {
-			DisplayHelp | DisplayVersion => err.exit(),
-			_ => {
-				// As of this writing, clap's error messages (other than those
-				// above) include an "error:" prefix, so this gives us
-				// consistent formatting for both argument and translation
-				// errors. It is a bit fragile, since it's unlikely that clap's
-				// error message format is guaranteed to be stable.
-				eprint!("xt {}", err);
-				process::exit(1);
-			}
-		},
+macro_rules! xt_fail {
+	($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
+		eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
+		process::exit(1);
+	}};
+	($fmt:literal, $($x:expr),*) => {{
+		eprintln!(concat!("xt error: ", $fmt), $($x),*);
+		process::exit(1);
+	}};
+	($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
+	($x:expr) => { xt_fail!("{}", $x) };
+}
+
+macro_rules! xt_io_error {
+	(@check_pipe $x:expr) => {
+		if is_broken_pipe($x) {
+			exit_for_broken_pipe();
+		}
 	};
+	($path:ident, $x:expr) => {{
+		xt_io_error!(@check_pipe $x);
+		xt_fail!($path, "{}", $x);
+	}};
+	($x:expr) => {{
+		xt_io_error!(@check_pipe $x);
+		xt_fail!("{}", $x);
+	}};
+}
 
-	macro_rules! xt_fail {
-		($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
-			eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
+fn main() {
+	let args = match Cli::parse_args() {
+		Ok(args) => args,
+		Err(err) => {
+			eprintln!("xt error: {}", err);
+			write_short_help(io::stderr().lock());
 			process::exit(1);
-		}};
-		($fmt:literal, $($x:expr),*) => {{
-			eprintln!(concat!("xt error: ", $fmt), $($x),*);
-			process::exit(1);
-		}};
-		($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
-		($x:expr) => { xt_fail!("{}", $x) };
-	}
-
-	macro_rules! xt_io_error {
-		(@check_pipe $x:expr) => {
-			if is_broken_pipe($x) {
-				exit_for_broken_pipe();
-			}
-		};
-		($path:ident, $x:expr) => {{
-			xt_io_error!(@check_pipe $x);
-			xt_fail!($path, "{}", $x);
-		}};
-		($x:expr) => {{
-			xt_io_error!(@check_pipe $x);
-			xt_fail!("{}", $x);
-		}};
-	}
+		}
+	};
 
 	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
 		xt_fail!("refusing to output {} to a terminal", args.to);
@@ -157,85 +147,159 @@ fn exit_for_broken_pipe() {
 	process::exit(1);
 }
 
-const SHORT_HELP: &str = "Translate between serialized data formats
-
-Use --help for full usage information and available formats.";
-
-/// Translate between serialized data formats
-///
-/// This version of xt supports the following formats, each of which may be
-/// specified by full name or first character (e.g. '-ty' == '-t yaml'):
-///
-///      json  Multi-document with self-delineating values (object, array,
-///            string) or whitespace between values. Default format for .json
-///            files.
-///
-///      yaml  Multi-document with "---" syntax. Default format for .yaml and
-///            .yml files.
-///
-///      toml  Single documents only. Default format for .toml files.
-///
-///   msgpack  Multi-document as values are naturally self-delineating. Default
-///            format for .msgpack files.
-///
-/// When xt does not know an input's format from a file extension or -f option,
-/// it will attempt to detect the format using an unspecified algorithm that is
-/// subject to change.
-///
-/// xt does not guarantee that every translation is possible, or lossless, or
-/// reversible. xt's behavior is undefined if an input file is modified while
-/// running.
-#[derive(Parser)]
-#[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 struct Cli {
-	#[clap(
-		name = "files",
-		help = "Files to translate [default: stdin]",
-		parse(from_os_str)
-	)]
 	input_paths: Vec<PathBuf>,
-
-	#[clap(
-		short = 't',
-		help = "Format to convert to",
-		help_heading = "OPTIONS",
-		default_value = "json",
-		parse(try_from_str = try_parse_format),
-	)]
-	to: Format,
-
-	#[clap(
-		short = 'f',
-		help = "Format to convert from",
-		help_heading = "OPTIONS",
-		parse(try_from_str = try_parse_format),
-	)]
 	from: Option<Format>,
-
-	#[clap(
-		short = 'h',
-		long,
-		help = "Prints help information",
-		help_heading = "FLAGS"
-	)]
-	help: bool,
-
-	#[clap(
-		short = 'V',
-		long,
-		help = "Prints version information",
-		help_heading = "FLAGS"
-	)]
-	version: bool,
+	to: Format,
 }
 
-fn try_parse_format(s: &str) -> Result<Format, String> {
+impl Cli {
+	fn parse_args() -> Result<Self, lexopt::Error> {
+		use lexopt::prelude::*;
+
+		let mut input_paths: Vec<PathBuf> = vec![];
+		let mut from: Option<Format> = None;
+		let mut to: Option<Format> = None;
+
+		let mut parser = lexopt::Parser::from_env();
+		while let Some(arg) = parser.next()? {
+			match arg {
+				Short('f') => {
+					if from.is_some() {
+						return Err("cannot provide '-f' more than once".into());
+					}
+					from = Some(parser.value()?.parse_with(try_parse_format)?);
+				}
+				Short('t') => {
+					if to.is_some() {
+						return Err("cannot provide '-t' more than once".into());
+					}
+					to = Some(parser.value()?.parse_with(try_parse_format)?);
+				}
+				Value(val) => {
+					input_paths.push(PathBuf::from(val));
+				}
+				Short('V') | Long("version") => {
+					const VERSION: &str = version_string();
+					let _ = writeln!(io::stdout().lock(), "{VERSION}");
+					process::exit(0);
+				}
+				Short('h') => {
+					write_short_help(io::stdout().lock());
+					process::exit(0);
+				}
+				Long("help") => {
+					print_long_help();
+					process::exit(0);
+				}
+				_ => return Err(arg.unexpected()),
+			}
+		}
+
+		Ok(Cli {
+			input_paths,
+			from,
+			to: to.unwrap_or(Format::Json),
+		})
+	}
+}
+
+fn try_parse_format(s: &str) -> Result<Format, &'static str> {
 	match s {
 		"j" | "json" => Ok(Format::Json),
 		"y" | "yaml" => Ok(Format::Yaml),
 		"t" | "toml" => Ok(Format::Toml),
 		"m" | "msgpack" => Ok(Format::Msgpack),
-		_ => Err(format!("'{}' is not a valid format", s)),
+		_ => Err("not a valid format name"),
+	}
+}
+
+/// A usage summary string shared across short and long help output.
+static USAGE: &str = "[-f format] [-t format] [file ...]";
+
+/// Writes short help output to the provided writer, ignoring errors.
+fn write_short_help<W>(mut w: W)
+where
+	W: Write,
+{
+	let argv0 = usage_name();
+	let _ = write!(
+		w,
+		r#"Usage: {argv0} {USAGE}
+Formats: json, yaml, toml, msgpack
+Try '{argv0} --help' for more information.
+"#
+	);
+}
+
+/// Writes long help output to standard output, ignoring errors.
+fn print_long_help() {
+	const VERSION: &str = version_string();
+	let argv0 = usage_name();
+	let _ = write!(
+		io::stdout().lock(),
+		r#"{VERSION} - Translate between serialized data formats
+
+Usage: {argv0} {USAGE}
+
+Options:
+    -f format  Format to convert from  (default: auto-detect)
+    -t format  Format to convert to    (default: json)
+
+Flags:
+    -h, --help     Print help information
+    -V, --version  Print version information
+
+This version of xt supports the following formats, which may be specified by
+full name or first character (e.g. '-ty' == '-t yaml'):
+
+     json  Multi-document (self-delineating or whitespace between values).
+           Default for .json input files.
+
+     yaml  Multi-document (with "---" or "..." syntax).
+           Default for .yaml and .yml input files.
+
+     toml  Single document per stream only.
+           Default for .toml input files.
+
+  msgpack  Multi-document (always self-delineating).
+           Default for .msgpack input files.
+
+When no '-f' option is provided, xt will detect the format of each input from
+its file extension, or by running a format detection algorithm on the input
+stream. Details of the detection algorithm are subject to change.
+
+With no input files, or with the special file name '-', xt translates from
+standard input. With multiple input files, xt outputs the logical concatenation
+of all documents in all input files to a single output stream.
+
+xt does not guarantee that every translation is possible, or lossless, or
+reversible. xt's behavior is undefined if an input file is modified while
+running.
+"#
+	);
+}
+
+/// Returns the name of this program as it was invoked, or a default.
+fn usage_name() -> Cow<'static, str> {
+	if let Some(Ok(name)) = env::args_os().next().map(|s| s.into_string()) {
+		Cow::Owned(name)
+	} else {
+		Cow::Borrowed(match env!("CARGO_PKG_NAME") {
+			"" => "xt",
+			name => name,
+		})
+	}
+}
+
+/// Returns the full version string for the program (including the crate name)
+/// based on Cargo metadata, or a default if Cargo metadata is unavailable.
+const fn version_string() -> &'static str {
+	let version = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+	if !version.is_empty() {
+		version
+	} else {
+		"xt 0.0.0-unknown"
 	}
 }
 

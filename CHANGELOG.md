@@ -1,3 +1,13 @@
+## Unreleased
+
+### Changed
+
+- **Help output and CLI argument errors.** This version of xt includes updated
+  output for the `-h` and `--help` flags. The new `-h` output includes a
+  one-line usage summary along with a list of valid formats for quick reference,
+  while the new `--help` output provides the same details in fewer lines. CLI
+  argument parsing errors also include a short usage summary and format list.
+
 ## v0.14.0 (2022-11-10)
 
 ### Added
