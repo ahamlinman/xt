@@ -17,7 +17,7 @@
 use std::error;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -56,7 +56,11 @@ macro_rules! xt_io_error {
 fn main() {
 	let args = match Cli::parse_args() {
 		Ok(args) => args,
-		Err(err) => xt_fail!("{}", err),
+		Err(err) => {
+			eprintln!("xt error: {}", err);
+			write_short_help(io::stderr());
+			process::exit(1);
+		}
 	};
 
 	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
@@ -141,34 +145,6 @@ fn exit_for_broken_pipe() {
 	process::exit(1);
 }
 
-const SHORT_HELP: &str = "Translate between serialized data formats
-
-Use --help for full usage information and available formats.";
-
-/// Translate between serialized data formats
-///
-/// This version of xt supports the following formats, each of which may be
-/// specified by full name or first character (e.g. '-ty' == '-t yaml'):
-///
-///      json  Multi-document with self-delineating values (object, array,
-///            string) or whitespace between values. Default format for .json
-///            files.
-///
-///      yaml  Multi-document with "---" syntax. Default format for .yaml and
-///            .yml files.
-///
-///      toml  Single documents only. Default format for .toml files.
-///
-///   msgpack  Multi-document as values are naturally self-delineating. Default
-///            format for .msgpack files.
-///
-/// When xt does not know an input's format from a file extension or -f option,
-/// it will attempt to detect the format using an unspecified algorithm that is
-/// subject to change.
-///
-/// xt does not guarantee that every translation is possible, or lossless, or
-/// reversible. xt's behavior is undefined if an input file is modified while
-/// running.
 struct Cli {
 	input_paths: Vec<PathBuf>,
 	to: Format,
@@ -195,11 +171,17 @@ impl Cli {
 				Value(val) => {
 					input_paths.push(PathBuf::from(val));
 				}
-				Short('h') | Long("help") => {
-					xt_fail!("help is not supported");
-				}
 				Short('V') | Long("version") => {
-					xt_fail!("version is not supported");
+					println!("{}", VERSION);
+					process::exit(0);
+				}
+				Short('h') => {
+					write_short_help(io::stdout());
+					process::exit(0);
+				}
+				Long("help") => {
+					print_long_help();
+					process::exit(0);
 				}
 				_ => return Err(arg.unexpected()),
 			}
@@ -221,6 +203,71 @@ fn try_parse_format(s: &str) -> Result<Format, &'static str> {
 		"m" | "msgpack" => Ok(Format::Msgpack),
 		_ => Err("not a valid format name"),
 	}
+}
+
+// TODO: Fallback or error if these aren't defined.
+static NAME: &str = env!("CARGO_PKG_NAME");
+
+// TODO: Fallback or error if these aren't defined.
+static VERSION: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+
+static USAGE: &str = "[-f format] [-t format] [file ...]";
+
+/// Writes short help output to the provided writer, ignoring errors.
+fn write_short_help<W>(mut w: W)
+where
+	W: Write,
+{
+	// TODO: Print the name that the program was invoked with.
+	let _ = writeln!(w, "Usage: {NAME} {USAGE}");
+	let _ = writeln!(w, "Try '{NAME} --help' for more information.");
+}
+
+/// Writes long help output to standard output, ignoring errors.
+fn print_long_help() {
+	// TODO: Print the name that the program was invoked with.
+	let _ = write!(
+		io::stdout().lock(),
+		r#"{VERSION} - Translate between serialized data formats
+
+Usage: {NAME} {USAGE}
+
+Options:
+    -f format  Format to convert from  (default: auto-detect)
+    -t format  Format to convert to    (default: json)
+
+Flags:
+    -h, --help     Print help information
+    -V, --version  Print version information
+
+This version of xt supports the following formats, which may be specified by
+their full name or their first character (e.g. '-ty' == '-t yaml'):
+
+     json  Multi-document (self-delineating or whitespace between values).
+           Default for .json input files.
+
+     yaml  Multi-document (with "---" or "..." syntax).
+           Default for .yaml and .yml input files.
+
+     toml  Single document per stream only.
+           Default for .toml input files.
+
+  msgpack  Multi-document (always self-delineating).
+           Default for .msgpack input files.
+
+When no '-f' option is provided, xt will detect the format of each input from
+its file extension, or by running a format detection algorithm on the input
+stream. Details of the detection algorithm are subject to change.
+
+With no input files, or with the special file name '-', xt translates from
+standard input. With multiple input files, xt outputs the logical concatenation
+of all documents in all input files to a single output stream.
+
+xt does not guarantee that every translation is possible, or lossless, or
+reversible. xt's behavior is undefined if an input file is modified while
+running.
+"#
+	);
 }
 
 #[derive(PartialEq, Eq)]
