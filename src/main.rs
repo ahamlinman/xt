@@ -22,58 +22,42 @@ use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use clap::{
-	ErrorKind::{DisplayHelp, DisplayVersion},
-	Parser,
-};
-
 use xt::Format;
 
-fn main() {
-	let args = match Cli::try_parse() {
-		Ok(args) => args,
-		Err(err) => match err.kind() {
-			DisplayHelp | DisplayVersion => err.exit(),
-			_ => {
-				// As of this writing, clap's error messages (other than those
-				// above) include an "error:" prefix, so this gives us
-				// consistent formatting for both argument and translation
-				// errors. It is a bit fragile, since it's unlikely that clap's
-				// error message format is guaranteed to be stable.
-				eprint!("xt {}", err);
-				process::exit(1);
-			}
-		},
+macro_rules! xt_fail {
+	($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
+		eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
+		process::exit(1);
+	}};
+	($fmt:literal, $($x:expr),*) => {{
+		eprintln!(concat!("xt error: ", $fmt), $($x),*);
+		process::exit(1);
+	}};
+	($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
+	($x:expr) => { xt_fail!("{}", $x) };
+}
+
+macro_rules! xt_io_error {
+	(@check_pipe $x:expr) => {
+		if is_broken_pipe($x) {
+			exit_for_broken_pipe();
+		}
 	};
+	($path:ident, $x:expr) => {{
+		xt_io_error!(@check_pipe $x);
+		xt_fail!($path, "{}", $x);
+	}};
+	($x:expr) => {{
+		xt_io_error!(@check_pipe $x);
+		xt_fail!("{}", $x);
+	}};
+}
 
-	macro_rules! xt_fail {
-		($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
-			eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
-			process::exit(1);
-		}};
-		($fmt:literal, $($x:expr),*) => {{
-			eprintln!(concat!("xt error: ", $fmt), $($x),*);
-			process::exit(1);
-		}};
-		($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
-		($x:expr) => { xt_fail!("{}", $x) };
-	}
-
-	macro_rules! xt_io_error {
-		(@check_pipe $x:expr) => {
-			if is_broken_pipe($x) {
-				exit_for_broken_pipe();
-			}
-		};
-		($path:ident, $x:expr) => {{
-			xt_io_error!(@check_pipe $x);
-			xt_fail!($path, "{}", $x);
-		}};
-		($x:expr) => {{
-			xt_io_error!(@check_pipe $x);
-			xt_fail!("{}", $x);
-		}};
-	}
+fn main() {
+	let args = match Cli::parse_args() {
+		Ok(args) => args,
+		Err(err) => xt_fail!("{}", err),
+	};
 
 	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
 		xt_fail!("refusing to output {} to a terminal", args.to);
@@ -185,57 +169,57 @@ Use --help for full usage information and available formats.";
 /// xt does not guarantee that every translation is possible, or lossless, or
 /// reversible. xt's behavior is undefined if an input file is modified while
 /// running.
-#[derive(Parser)]
-#[clap(version, about = SHORT_HELP, verbatim_doc_comment)]
 struct Cli {
-	#[clap(
-		name = "files",
-		help = "Files to translate [default: stdin]",
-		parse(from_os_str)
-	)]
 	input_paths: Vec<PathBuf>,
-
-	#[clap(
-		short = 't',
-		help = "Format to convert to",
-		help_heading = "OPTIONS",
-		default_value = "json",
-		parse(try_from_str = try_parse_format),
-	)]
 	to: Format,
-
-	#[clap(
-		short = 'f',
-		help = "Format to convert from",
-		help_heading = "OPTIONS",
-		parse(try_from_str = try_parse_format),
-	)]
 	from: Option<Format>,
-
-	#[clap(
-		short = 'h',
-		long,
-		help = "Prints help information",
-		help_heading = "FLAGS"
-	)]
-	help: bool,
-
-	#[clap(
-		short = 'V',
-		long,
-		help = "Prints version information",
-		help_heading = "FLAGS"
-	)]
-	version: bool,
 }
 
-fn try_parse_format(s: &str) -> Result<Format, String> {
+impl Cli {
+	fn parse_args() -> Result<Self, lexopt::Error> {
+		use lexopt::prelude::*;
+
+		let mut input_paths: Vec<PathBuf> = vec![];
+		let mut to: Option<Format> = None;
+		let mut from: Option<Format> = None;
+
+		let mut parser = lexopt::Parser::from_env();
+		while let Some(arg) = parser.next()? {
+			match arg {
+				Short('f') => {
+					from = Some(parser.value()?.parse_with(try_parse_format)?);
+				}
+				Short('t') => {
+					to = Some(parser.value()?.parse_with(try_parse_format)?);
+				}
+				Value(val) => {
+					input_paths.push(PathBuf::from(val));
+				}
+				Short('h') | Long("help") => {
+					xt_fail!("help is not supported");
+				}
+				Short('V') | Long("version") => {
+					xt_fail!("version is not supported");
+				}
+				_ => return Err(arg.unexpected()),
+			}
+		}
+
+		Ok(Cli {
+			input_paths,
+			from,
+			to: to.unwrap_or(Format::Json),
+		})
+	}
+}
+
+fn try_parse_format(s: &str) -> Result<Format, &'static str> {
 	match s {
 		"j" | "json" => Ok(Format::Json),
 		"y" | "yaml" => Ok(Format::Yaml),
 		"t" | "toml" => Ok(Format::Toml),
 		"m" | "msgpack" => Ok(Format::Msgpack),
-		_ => Err(format!("'{}' is not a valid format", s)),
+		_ => Err("not a valid format name"),
 	}
 }
 
