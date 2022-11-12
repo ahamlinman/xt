@@ -218,6 +218,7 @@ where
 {
 	let argv0 = usage_name();
 	let _ = writeln!(w, "Usage: {argv0} {USAGE}");
+	let _ = writeln!(w, "Formats: json, yaml, toml, msgpack");
 	let _ = writeln!(w, "Try '{argv0} --help' for more information.");
 }
 
@@ -241,7 +242,7 @@ Flags:
     -V, --version  Print version information
 
 This version of xt supports the following formats, which may be specified by
-their full name or their first character (e.g. '-ty' == '-t yaml'):
+full name or first character (e.g. '-ty' == '-t yaml'):
 
      json  Multi-document (self-delineating or whitespace between values).
            Default for .json input files.
