@@ -20,7 +20,6 @@ use std::error;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
-use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -74,11 +73,10 @@ fn main() {
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
 	let input_paths = if args.input_paths.is_empty() {
-		InputPathIter::stdin_only()
+		InputPaths::stdin_only()
 	} else {
-		InputPathIter::paths(args.input_paths.into_iter().map(Into::into))
+		InputPaths::paths(args.input_paths.into_iter().map(Into::into))
 	};
-
 	for path in input_paths {
 		let mut input = path.open().unwrap_or_else(|err| xt_fail!(path, err));
 		if let Input::Stdin = input {
@@ -89,7 +87,7 @@ fn main() {
 			}
 		}
 
-		let from = args.from.or_else(|| path.format());
+		let from = args.from.or_else(|| path.extension_format());
 		let handle = match &mut input {
 			Input::Stdin => xt::Handle::from_reader(io::stdin()),
 			Input::File(file) => xt::Handle::from_reader(file),
@@ -348,7 +346,7 @@ impl InputPath {
 		}
 	}
 
-	fn format(&self) -> Option<Format> {
+	fn extension_format(&self) -> Option<Format> {
 		let path = match self {
 			Self::Stdin => return None,
 			Self::File(path) => path,
@@ -377,7 +375,7 @@ impl fmt::Display for InputPath {
 	}
 }
 
-enum InputPathIter<I>
+enum InputPaths<I>
 where
 	I: Iterator<Item = InputPath>,
 {
@@ -385,7 +383,7 @@ where
 	Paths(I),
 }
 
-impl<I> InputPathIter<I>
+impl<I> InputPaths<I>
 where
 	I: Iterator<Item = InputPath>,
 {
@@ -398,7 +396,7 @@ where
 	}
 }
 
-impl<I> Iterator for InputPathIter<I>
+impl<I> Iterator for InputPaths<I>
 where
 	I: Iterator<Item = InputPath>,
 {
@@ -406,14 +404,12 @@ where
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			Self::StdinOnly { used: true } => None,
 			Self::StdinOnly { used: false } => {
 				*self = Self::StdinOnly { used: true };
 				Some(InputPath::Stdin)
 			}
+			Self::StdinOnly { used: true } => None,
 			Self::Paths(iter) => iter.next(),
 		}
 	}
 }
-
-impl<I> FusedIterator for InputPathIter<I> where I: Iterator<Item = InputPath> + FusedIterator {}
