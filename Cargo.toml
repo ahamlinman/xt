@@ -13,6 +13,7 @@ exclude = ["benches/**"]
 
 [dependencies]
 atty = "0.2"
+lexopt = "0.2"
 memmap2 = "0.5"
 rmp = "0.8"
 rmp-serde = "1"
