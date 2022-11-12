@@ -89,7 +89,7 @@ fn main() {
 
 		let from = args.from.or_else(|| path.extension_format());
 		let handle = match &mut input {
-			Input::Stdin => xt::Handle::from_reader(io::stdin()),
+			Input::Stdin => xt::Handle::from_reader(io::stdin().lock()),
 			Input::File(file) => xt::Handle::from_reader(file),
 			Input::Mmap(map) => xt::Handle::from_slice(map),
 		};
