@@ -14,6 +14,8 @@
 	clippy::semicolon_if_nothing_returned,
 )]
 
+use std::borrow::Cow;
+use std::env;
 use std::error;
 use std::fmt;
 use std::fs::File;
@@ -172,7 +174,8 @@ impl Cli {
 					input_paths.push(PathBuf::from(val));
 				}
 				Short('V') | Long("version") => {
-					println!("{}", VERSION);
+					const VERSION: &str = version_string();
+					let _ = writeln!(io::stdout(), "{VERSION}");
 					process::exit(0);
 				}
 				Short('h') => {
@@ -205,12 +208,7 @@ fn try_parse_format(s: &str) -> Result<Format, &'static str> {
 	}
 }
 
-// TODO: Fallback or error if these aren't defined.
-static NAME: &str = env!("CARGO_PKG_NAME");
-
-// TODO: Fallback or error if these aren't defined.
-static VERSION: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
-
+/// A usage summary string shared across short and long help output.
 static USAGE: &str = "[-f format] [-t format] [file ...]";
 
 /// Writes short help output to the provided writer, ignoring errors.
@@ -218,19 +216,21 @@ fn write_short_help<W>(mut w: W)
 where
 	W: Write,
 {
-	// TODO: Print the name that the program was invoked with.
-	let _ = writeln!(w, "Usage: {NAME} {USAGE}");
-	let _ = writeln!(w, "Try '{NAME} --help' for more information.");
+	let argv0 = usage_name();
+	let _ = writeln!(w, "Usage: {argv0} {USAGE}");
+	let _ = writeln!(w, "Try '{argv0} --help' for more information.");
 }
 
 /// Writes long help output to standard output, ignoring errors.
 fn print_long_help() {
-	// TODO: Print the name that the program was invoked with.
+	const VERSION: &str = version_string();
+	let argv0 = usage_name();
+
 	let _ = write!(
 		io::stdout().lock(),
 		r#"{VERSION} - Translate between serialized data formats
 
-Usage: {NAME} {USAGE}
+Usage: {argv0} {USAGE}
 
 Options:
     -f format  Format to convert from  (default: auto-detect)
@@ -268,6 +268,29 @@ reversible. xt's behavior is undefined if an input file is modified while
 running.
 "#
 	);
+}
+
+/// Returns the name of this program as it was invoked, or a default.
+fn usage_name() -> Cow<'static, str> {
+	if let Some(Ok(name)) = env::args_os().next().map(|s| s.into_string()) {
+		Cow::Owned(name)
+	} else {
+		Cow::Borrowed(match env!("CARGO_PKG_NAME") {
+			"" => "xt",
+			name => name,
+		})
+	}
+}
+
+/// Returns the full version string for the program (including the crate name)
+/// based on Cargo metadata, or a default if Cargo metadata is unavailable.
+const fn version_string() -> &'static str {
+	let version = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+	if !version.is_empty() {
+		version
+	} else {
+		"xt 0.0.0-unknown"
+	}
 }
 
 #[derive(PartialEq, Eq)]
