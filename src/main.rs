@@ -27,11 +27,11 @@ use xt::Format;
 
 macro_rules! xt_fail {
 	($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
-		eprintln!(concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
+		let _ = writeln!(io::stderr().lock(), concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
 		process::exit(1);
 	}};
 	($fmt:literal, $($x:expr),*) => {{
-		eprintln!(concat!("xt error: ", $fmt), $($x),*);
+		let _ = writeln!(io::stderr().lock(), concat!("xt error: ", $fmt), $($x),*);
 		process::exit(1);
 	}};
 	($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
@@ -58,8 +58,9 @@ fn main() {
 	let args = match Cli::parse_args() {
 		Ok(args) => args,
 		Err(err) => {
-			eprintln!("xt error: {}", err);
-			write_short_help(io::stderr().lock());
+			let mut stderr = io::stderr().lock();
+			let _ = writeln!(stderr, "xt error: {}", err);
+			write_short_help(stderr);
 			process::exit(1);
 		}
 	};
