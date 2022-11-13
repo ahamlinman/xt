@@ -514,9 +514,7 @@ impl<const SIZE: usize> ArrayBuffer<SIZE> {
 		let n = buf.len();
 		debug_assert!(
 			n <= SIZE,
-			"set a {} byte ArrayBuffer with a slice of {} bytes",
-			SIZE,
-			n,
+			"set a {SIZE} byte ArrayBuffer with a slice of {n} bytes"
 		);
 		self.buf[..n].copy_from_slice(buf);
 		self.pos = 0;
@@ -542,9 +540,8 @@ impl<const SIZE: usize> BufRead for ArrayBuffer<SIZE> {
 	fn consume(&mut self, amt: usize) {
 		debug_assert!(
 			amt <= self.unread().len(),
-			"consumed {} bytes from an ArrayBuffer with {} bytes unread",
-			amt,
-			self.unread().len()
+			"consumed {amt} bytes from an ArrayBuffer with {unread} bytes unread",
+			unread = self.unread().len(),
 		);
 		self.pos += amt;
 	}
