@@ -364,7 +364,7 @@ impl Display for ParserError {
 			None => f.write_str("unknown libyaml error"),
 			Some(problem) => match &self.context {
 				None => Display::fmt(problem, f),
-				Some(context) => write!(f, "{}, {}", problem, context),
+				Some(context) => write!(f, "{problem}, {context}"),
 			},
 		}
 	}
@@ -409,12 +409,19 @@ impl LocatedError {
 impl Display for LocatedError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if self.line == 1 && self.column == 1 {
-			write!(f, "{} at position {}", self.description, self.offset)
+			write!(
+				f,
+				"{issue} at position {byte}",
+				issue = self.description,
+				byte = self.offset
+			)
 		} else {
 			write!(
 				f,
-				"{} at line {} column {}",
-				self.description, self.line, self.column,
+				"{issue} at line {line} column {column}",
+				issue = self.description,
+				line = self.line,
+				column = self.column,
 			)
 		}
 	}

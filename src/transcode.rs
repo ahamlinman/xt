@@ -159,7 +159,7 @@ where
 {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Error::Ser(ser_err, de_err) => write!(f, "{}: {}", de_err, ser_err),
+			Error::Ser(ser_err, de_err) => write!(f, "{de_err}: {ser_err}"),
 			Error::De(de_err) => fmt::Display::fmt(de_err, f),
 		}
 	}
