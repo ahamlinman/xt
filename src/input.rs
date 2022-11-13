@@ -150,7 +150,7 @@ impl<'i> From<Handle<'i>> for Input<'i> {
 				} else if cursor.get_ref().is_empty() {
 					Input::Reader(source)
 				} else {
-					Input::Reader(Box::new(cursor.chain(source)))
+					Input::Reader(Box::new(FusedReader::new(cursor).chain(source)))
 				}
 			}
 		}
@@ -190,6 +190,40 @@ where
 				Ok(r.captured())
 			}
 		}
+	}
+}
+
+/// Drops a reader as soon as it first reaches EOF.
+///
+/// When used as the first half of a [`Chain`](std::io::Chain), `FusedReader`
+/// cleans up the first reader's resources as soon as the chain moves on to the
+/// second reader, rather than when the `Chain` as a whole is dropped.
+struct FusedReader<R>(Option<R>)
+where
+	R: Read;
+
+impl<R> FusedReader<R>
+where
+	R: Read,
+{
+	fn new(r: R) -> FusedReader<R> {
+		FusedReader(Some(r))
+	}
+}
+
+impl<R> Read for FusedReader<R>
+where
+	R: Read,
+{
+	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+		let n = match &mut self.0 {
+			None => return Ok(0),
+			Some(r) => r.read(buf)?,
+		};
+		if n == 0 && !buf.is_empty() {
+			self.0 = None;
+		}
+		Ok(n)
 	}
 }
 
