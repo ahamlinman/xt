@@ -346,11 +346,11 @@ impl From<PathBuf> for InputPath {
 
 impl InputPath {
 	fn open(&self) -> io::Result<Input> {
-		let path = match self {
+		let file = match self {
 			Self::Stdin => return Ok(Input::Stdin),
-			Self::File(path) => path,
+			Self::File(path) => File::open(path)?,
 		};
-		let file = File::open(path)?;
+
 		// (UN)SAFETY: It is Undefined Behavior to modify a mapped file outside
 		// of the process… so we tell users not to do that in the help output.
 		// This is NOT a real solution and does NOT provide any actual safety
@@ -360,20 +360,23 @@ impl InputPath {
 		// input formats (where translating a slice is more efficient than
 		// translating a reader) while possibly giving the OS smarter memory
 		// management options compared to just reading a file into a buffer.
-		match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
-			Ok(map) => {
-				// On Unix, make a best-effort attempt to advise the system that
-				// we will access the map sequentially. This has broader support
-				// than MAP_POPULATE.
-				#[cfg(unix)]
+		if let Ok(map) = unsafe { memmap2::Mmap::map(&file) } {
+			#[cfg(unix)]
+			{
+				// Make a best-effort attempt to advise the system that we will
+				// soon access these pages sequentially. madvise failures on
+				// these two values should not affect the normal functionality
+				// of the mapping.
 				let _ = map.advise(memmap2::Advice::Sequential);
-				// Per memmap2 docs, it's safe to drop the original file.
-				Ok(Input::Mmap(map))
+				let _ = map.advise(memmap2::Advice::WillNeed);
 			}
-			// If mmap fails (process substitution, named pipes, etc.), fall
-			// back to reader-based input.
-			Err(_) => Ok(Input::File(file)),
+			// Per memmap2 docs, it's safe to drop the original file now.
+			return Ok(Input::Mmap(map));
 		}
+
+		// If mmap fails (process substitution, named pipes, etc.), fall back to
+		// reader-based input.
+		Ok(Input::File(file))
 	}
 
 	fn extension_format(&self) -> Option<Format> {
