@@ -358,8 +358,17 @@ impl InputPath {
 		// performance, based on a pragmatic understanding of the failure modes
 		// most likely to appear when the requirement is violated.
 		match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
-			// Per memmap2 docs, it's safe to drop the file once mmap succeeds.
-			Ok(map) => Ok(Input::Mmap(map)),
+			Ok(map) => {
+				// On Unix, make a best-effort attempt to advise the system that
+				// we will access the map sequentially. This has broader support
+				// than MAP_POPULATE.
+				//
+				// TODO: Reconsider MAP_POPULATE entirely. Need to test on Linux.
+				#[cfg(unix)]
+				let _ = map.advise(memmap2::Advice::Sequential);
+				// Per memmap2 docs, it's safe to drop the original file.
+				Ok(Input::Mmap(map))
+			}
 			// If mmap fails, fall back to reading the file normally. Examples
 			// of where this can matter include (but are not limited to) process
 			// substitution and named pipes.
