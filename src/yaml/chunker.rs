@@ -62,23 +62,24 @@ where
 	/// BOMs. Consider using the [`encoding`](super::encoding) module to
 	/// re-encode non-UTF-8 streams.
 	pub(super) fn new(reader: R) -> Self {
+		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 		// SAFETY: libyaml functions are assumed to work correctly.
-		let parser = unsafe {
-			let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
-			if yaml_parser_initialize(parser.as_mut_ptr()).fail {
-				panic!("out of memory for libyaml parser initialization");
-			}
-			Box::into_raw(parser).cast::<yaml_parser_t>()
-		};
+		if unsafe { yaml_parser_initialize(parser.as_mut_ptr()) }.fail {
+			panic!("out of memory for libyaml parser initialization");
+		}
 
+		// NOTE: Nothing after this point is expected to panic or fail, so we
+		// should not need to worry about leaking this memory before we have a
+		// chance to construct the return value.
+		let parser = Box::into_raw(parser).cast::<yaml_parser_t>();
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader: ChunkReader::new(reader),
 			buffer: vec![],
 			error: None,
 		}));
+
 		// SAFETY: libyaml functions are assumed to work correctly. As required
-		// by `read_handler`, the data pointer points to the `ReadState<R>`
-		// initialized directly above.
+		// by `read_handler`, the data pointer points to a `ReadState<R>`.
 		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state.cast::<c_void>()) };
 
 		// SAFETY: libyaml functions are assumed to work correctly.
@@ -110,8 +111,8 @@ where
 
 		let read_state = read_state.cast::<ReadState<R>>();
 
-		// `size` represents the size of an allocated buffer, the length of
-		// which cannot possibly exceed usize::MAX.
+		// `size` represents the size of an in-memory buffer, which cannot
+		// possibly exceed usize::MAX.
 		#[allow(clippy::cast_possible_truncation)]
 		let size = size as usize;
 
