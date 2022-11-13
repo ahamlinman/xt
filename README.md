@@ -24,44 +24,61 @@ Or store an unbounded stream of JSON events as MessagePack to save space:
 $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpack
 ```
 
+[jq]: https://stedolan.github.io/jq/
+
 ## Installation
 
-You can install xt [from crates.io][crate]:
+xt is built with [Rust][rust], and leverages the powerful [Serde][serde]
+ecosystem of data serialization and deserialization libraries.
+
+After [installing Rust][install rust] on your system, you can install xt
+[from crates.io][crate] using Cargo:
 
 ```sh
-cargo install --locked xt
+cargo install xt
 ```
 
+[rust]: https://www.rust-lang.org/
+[serde]: https://serde.rs/
+[install rust]: https://www.rust-lang.org/tools/install
 [crate]: https://crates.io/crates/xt
 
 ## Usage and Features
 
-Run `xt --help` for full usage details.
+```
+xt [-f format] [-t format] [file ...]
+```
 
-xt is built to "do one thing well," and tries to maintain a simple CLI interface
-with limited options (for example, no control over details of the output
-formatting). The most common options are `-t` to specify an output format other
-than JSON, and one more more files to read from rather than standard input.
+Or, run `xt --help` for full usage information.
+
+xt is built to "do one thing well," and tries to maintain a minimal CLI
+interface and feature set. The most common options are `-t` to specify an output
+format other than JSON, and one or more files to read from rather than standard
+input.
 
 Some of xt's notable features include:
 
-### Efficiency
-
-xt builds on the powerful and unique [Serde][serde] ecosystem of streaming
-serializers and deserializers for various data formats, and can often wire an
-input format's parser directly to an output format's writer.
-
 ### Automatic Format Detection
 
-When the input format is not specified with the `-f` flag, xt will detect it
-automatically via file extension, or by trying different parsers on the input.
+When the input format is not specified with the `-f` option, xt can detect it
+automatically by file extension, or by examining the content of the input stream
+itself.
 
-### Multi-Document Support and Streaming
+### Multi-Document Support
 
-When an input format allows for multiple concatenated documents in a single
-input, xt will recognize and translate every individual document it finds in the
-stream. For example, a set of YAML documents separated by `---` markers
-translates to a stream of newline-delimited JSON documents.
+With most output formats, xt can translate multiple input files, each containing
+one or more independent documents, to a single output stream. For example, a set
+of YAML files with documents separated by `---` markers can translate to a
+single stream of newline-delimited JSON objects. With format detection enabled,
+xt can even translate input files in different formats to a single output.
 
-[jq]: https://stedolan.github.io/jq/
-[serde]: https://serde.rs/
+### Streaming Translation
+
+xt can translate multi-document inputs from unbounded sources like shell pipes
+with minimal buffering, while still supporting features like automatic format
+detection. Streaming is enabled automatically whenever it's required.
+
+## License
+
+xt is released under the terms of the MIT License. See `LICENSE.txt` for more
+information.
