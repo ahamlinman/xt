@@ -46,6 +46,8 @@ impl Encoding {
 				_ => {}
 			};
 		}
+		// The spec implies that we should try to match a UTF-8 BOM, but since
+		// UTF-8 is also the default case there's no good reason to.
 		Encoding::Utf8
 	}
 }
@@ -141,8 +143,8 @@ where
 	S: Iterator<Item = io::Result<char>>,
 {
 	source: S,
-	remainder: ArrayBuffer<MAX_UTF8_ENCODED_LEN>,
 	started: bool,
+	remainder: ArrayBuffer<MAX_UTF8_ENCODED_LEN>,
 }
 
 impl<S> Utf8Encoder<S>
@@ -152,8 +154,8 @@ where
 	fn new(source: S) -> Self {
 		Self {
 			source,
-			remainder: ArrayBuffer::new(),
 			started: false,
+			remainder: ArrayBuffer::new(),
 		}
 	}
 
@@ -254,9 +256,9 @@ struct Utf16Decoder<R>
 where
 	R: BufRead,
 {
+	endianness: Endianness,
 	source: R,
 	pos: u64,
-	endianness: Endianness,
 	buf: Option<u16>,
 }
 
@@ -266,9 +268,9 @@ where
 {
 	fn new(source: R, endianness: Endianness) -> Self {
 		Self {
+			endianness,
 			source,
 			pos: 0,
-			endianness,
 			buf: None,
 		}
 	}
@@ -342,9 +344,9 @@ struct Utf32Decoder<R>
 where
 	R: BufRead,
 {
+	endianness: Endianness,
 	source: R,
 	pos: u64,
-	endianness: Endianness,
 }
 
 impl<R> Utf32Decoder<R>
@@ -353,9 +355,9 @@ where
 {
 	fn new(source: R, endianness: Endianness) -> Self {
 		Self {
+			endianness,
 			source,
 			pos: 0,
-			endianness,
 		}
 	}
 }

@@ -94,7 +94,7 @@ where
 		}
 	}
 
-	/// Implements [`yaml_read_handler_t`].
+	/// Implements [`yaml_read_handler_t`](unsafe_libyaml::yaml_read_handler_t).
 	///
 	/// # Safety
 	///
