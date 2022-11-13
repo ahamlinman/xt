@@ -183,6 +183,14 @@ where
 				}
 			};
 
+			// Note that while we chunk the document as soon as we receive a
+			// DOCUMENT_END event, we don't emit the chunk until the next
+			// DOCUMENT_START or STREAM_END event. libyaml can sometimes parse
+			// what looks like a valid YAML document from a non-YAML input, only
+			// to error out when it looks for the start of the next document.
+			// This is especially problematic when the chunker's output is used
+			// to determine whether an arbitrary input is valid YAML (e.g. in
+			// xt's parser-based format detection).
 			match event.type_ {
 				YAML_DOCUMENT_START_EVENT => {
 					// SAFETY: `self.read_state` should have been properly
@@ -283,15 +291,13 @@ impl Event {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ()> {
+		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 		// SAFETY: libyaml functions are assumed to work correctly. Our caller
 		// is responsible for the validity of `parser`.
-		unsafe {
-			let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
-			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-				return Err(());
-			}
-			Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
+		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
+			return Err(());
 		}
+		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
 }
 
@@ -300,8 +306,8 @@ impl Deref for Event {
 
 	fn deref(&self) -> &Self::Target {
 		// SAFETY: This is the only place where we ever convert this pointer to
-		// a reference. Because we have `&self`, Rust will have verified that
-		// there is no aliasing violation.
+		// a reference. Because we have `&self`, Rust has already verified that
+		// we're following the rules.
 		unsafe { &*self.0 }
 	}
 }
