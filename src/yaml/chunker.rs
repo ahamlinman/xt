@@ -260,7 +260,7 @@ pub(super) struct Document {
 }
 
 /// The type of content contained in a YAML document.
-pub enum DocumentKind {
+pub(super) enum DocumentKind {
 	Scalar,
 	Collection,
 }

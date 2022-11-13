@@ -93,7 +93,7 @@ where
 pub(crate) struct Output<W: Write>(W);
 
 impl<W: Write> Output<W> {
-	pub fn new(w: W) -> Output<W> {
+	pub(crate) fn new(w: W) -> Output<W> {
 		Output(w)
 	}
 }
@@ -204,7 +204,6 @@ where
 	let count = count.into();
 	let mut total = 0;
 	let mut seq = input;
-
 	for _ in 0..count {
 		if seq.is_empty() {
 			return Err(ReadSizeError::Truncated);
@@ -213,7 +212,6 @@ where
 		total += size;
 		seq = &seq[size..];
 	}
-
 	Ok(total)
 }
 
@@ -223,7 +221,8 @@ where
 {
 	let pairs = pairs.into();
 	let first = total_seq_size(input, pairs, depth_limit)?;
-	Ok(first + total_seq_size(&input[first..], pairs, depth_limit)?)
+	let second = total_seq_size(&input[first..], pairs, depth_limit)?;
+	Ok(first + second)
 }
 
 fn try_read_length_8(input: &[u8]) -> Result<u8, ReadSizeError> {
@@ -253,10 +252,10 @@ where
 
 /// The error type returned by [`next_value_size`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ReadSizeError {
+enum ReadSizeError {
 	/// A MessagePack value in the input was truncated.
 	Truncated,
-	/// A MessagePack value in the input contained the reserved marker byte 0xc1.
+	/// A MessagePack value in the input used the reserved marker byte `0xc1`.
 	InvalidMarker,
 	/// The maximum allowed nesting depth of MessagePack values was exceeded.
 	DepthLimitExceeded,

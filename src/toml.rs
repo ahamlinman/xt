@@ -55,7 +55,7 @@ pub(crate) struct Output<W: Write> {
 }
 
 impl<W: Write> Output<W> {
-	pub fn new(w: W) -> Output<W> {
+	pub(crate) fn new(w: W) -> Output<W> {
 		Output { w, used: false }
 	}
 }

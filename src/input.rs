@@ -34,11 +34,10 @@
 //! special reader that captures all bytes consumed from the source, and that
 //! rewinds before each subsequent use to produce those bytes again before
 //! consuming more from the source. If a format happens to consume all of a
-//! source reader while borrowing it, or if it requests slice-based input, all
-//! future use of the input will become slice-based. When the selected input
-//! format is ready to take ownership of the input, it can receive a byte
-//! buffer, a chain of the prefix and source readers, or the source reader alone
-//! in the event that format detection was skipped.
+//! source reader while borrowing it, all future use of the input will become
+//! slice-based. When the selected input format is ready to take ownership of
+//! the input, it can receive a byte buffer, a chain of the prefix and source
+//! readers, or the source reader alone if format detection was skipped.
 
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
@@ -62,15 +61,14 @@ impl<'i> Handle<'i> {
 	///
 	/// Slice inputs are typically more efficient to translate than reader
 	/// inputs, but require all input to be loaded into memory in advance. This
-	/// may be inappropriate for an unbounded stream of documents in a format
-	/// that supports streaming translation.
+	/// is typically inappropriate for unbounded streams like standard input.
 	pub fn from_slice(b: &'i [u8]) -> Handle<'i> {
 		Handle(Source::Slice(b))
 	}
 
 	/// Creates a handle for an input reader.
 	///
-	/// Reader inputs enable streaming translation for select input formats,
+	/// Reader inputs enable streaming translation for most input formats,
 	/// allowing xt to translate documents as they appear in the stream without
 	/// buffering more than one document in memory at a time. When translating
 	/// from a format that does not support streaming, xt will buffer the entire
@@ -193,7 +191,7 @@ where
 	}
 }
 
-/// Drops a reader as soon as it first reaches EOF.
+/// A wrapper that drops a reader as soon as it first reaches EOF.
 ///
 /// When used as the first half of a [`Chain`](std::io::Chain), `FusedReader`
 /// cleans up the first reader's resources as soon as the chain moves on to the
@@ -293,7 +291,7 @@ where
 		}
 	}
 
-	/// Returns a slice of all input captured by the reader so far.
+	/// Returns a slice of all captured input, starting from the beginning.
 	fn captured(&self) -> &[u8] {
 		self.prefix.get_ref()
 	}
@@ -308,8 +306,8 @@ where
 		self.prefix.get_ref().len() - offset
 	}
 
-	/// Rewinds the reader so that subsequent reads will produce the source's
-	/// bytes from the beginning.
+	/// Rewinds the reader, so that subsequent reads will produce the captured
+	/// bytes before reading more from the source.
 	fn rewind(&mut self) {
 		self.prefix.set_position(0);
 	}

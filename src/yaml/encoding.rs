@@ -97,7 +97,7 @@ where
 	/// See [`Encoding::detect`] for details of the detection process. Note that
 	/// `from_reader` provides as many prefix bytes to the detector as it needs
 	/// for accurate detection.
-	pub fn from_reader(mut reader: R) -> io::Result<impl Read> {
+	pub(super) fn from_reader(mut reader: R) -> io::Result<impl Read> {
 		let mut prefix = ArrayBuffer::<{ Encoding::DETECT_LEN }>::new();
 		io::copy(
 			&mut (&mut reader).take(Encoding::DETECT_LEN as u64),
