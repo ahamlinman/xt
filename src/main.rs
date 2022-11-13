@@ -25,32 +25,41 @@ use std::process;
 
 use xt::Format;
 
-macro_rules! xt_fail {
-	($path:ident, $fmt:literal $(, $($x:expr),+)?) => {{
-		let _ = writeln!(io::stderr().lock(), concat!("xt error in {}: ", $fmt), $path $(, $($x),+)?);
-		process::exit(1);
+macro_rules! xt_bail {
+	($path:ident, $fmt:literal $(, $($args:tt)* )?) => {{
+		let _ = writeln!(
+			::std::io::stderr().lock(),
+			"xt error in {}: {}",
+			$path,
+			format_args!($fmt $(, $($args)* )?),
+		);
+		::std::process::exit(1);
 	}};
-	($fmt:literal, $($x:expr),*) => {{
-		let _ = writeln!(io::stderr().lock(), concat!("xt error: ", $fmt), $($x),*);
-		process::exit(1);
+	($fmt:literal $(, $($args:tt)* )?) => {{
+		let _ = writeln!(
+			::std::io::stderr().lock(),
+			"xt error: {}",
+			format_args!($fmt $(, $($args)* )?),
+		);
+		::std::process::exit(1);
 	}};
-	($path:ident, $x:expr) => { xt_fail!($path, "{}", $x) };
-	($x:expr) => { xt_fail!("{}", $x) };
+	($path:ident, $x:expr) => { xt_bail!($path, "{}", $x) };
+	($x:expr) => { xt_bail!("{}", $x) };
 }
 
-macro_rules! xt_io_error {
-	(@check_pipe $x:expr) => {
+macro_rules! xt_io_error_bail {
+	(@check $x:expr) => {
 		if is_broken_pipe($x) {
 			exit_for_broken_pipe();
 		}
 	};
-	($path:ident, $x:expr) => {{
-		xt_io_error!(@check_pipe $x);
-		xt_fail!($path, "{}", $x);
+	($path:ident, $err:expr) => {{
+		xt_io_error_bail!(@check $err);
+		xt_bail!($path, "{}", $err);
 	}};
-	($x:expr) => {{
-		xt_io_error!(@check_pipe $x);
-		xt_fail!("{}", $x);
+	($err:expr) => {{
+		xt_io_error_bail!(@check $err);
+		xt_bail!("{}", $err);
 	}};
 }
 
@@ -59,14 +68,17 @@ fn main() {
 		Ok(args) => args,
 		Err(err) => {
 			let mut stderr = io::stderr().lock();
-			let _ = writeln!(stderr, "xt error: {}", err);
+			let _ = writeln!(stderr, "xt error: {err}");
 			write_short_help(stderr);
 			process::exit(1);
 		}
 	};
 
 	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
-		xt_fail!("refusing to output {} to a terminal", args.to);
+		xt_bail!(
+			"refusing to output {format} to a terminal",
+			format = args.to,
+		);
 	}
 
 	let mut stdin_used = false;
@@ -79,10 +91,10 @@ fn main() {
 		InputPaths::paths(args.input_paths.into_iter().map(Into::into))
 	};
 	for path in input_paths {
-		let mut input = path.open().unwrap_or_else(|err| xt_fail!(path, err));
+		let mut input = path.open().unwrap_or_else(|err| xt_bail!(path, err));
 		if let Input::Stdin = input {
 			if stdin_used {
-				xt_fail!("cannot read from stdin more than once");
+				xt_bail!("cannot read from stdin more than once");
 			} else {
 				stdin_used = true;
 			}
@@ -96,10 +108,10 @@ fn main() {
 		};
 
 		if let Err(err) = translator.translate(handle, from) {
-			xt_io_error!(path, err.as_ref());
+			xt_io_error_bail!(path, err.as_ref());
 		}
 		if let Err(err) = translator.flush() {
-			xt_io_error!(&err);
+			xt_io_error_bail!(&err);
 		}
 	}
 }
