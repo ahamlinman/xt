@@ -353,25 +353,25 @@ impl InputPath {
 		let file = File::open(path)?;
 		// (UN)SAFETY: It is Undefined Behavior to modify a mapped file outside
 		// of the process… so we tell users not to do that in the help output.
-		// Sadly, this is NOT a real solution and does NOT provide any actual
-		// safety guarantee. It's a risk we take intentionally in the name of
-		// performance, based on a pragmatic understanding of the failure modes
-		// most likely to appear when the requirement is violated.
+		// This is NOT a real solution and does NOT provide any actual safety
+		// guarantee. It's a risk taken intentionally based on a pragmatic
+		// understanding of the failure modes most likely to appear when the
+		// requirement is violated, in order to improve performance for many
+		// input formats (where translating a slice is more efficient than
+		// translating a reader) while possibly giving the OS smarter memory
+		// management options compared to just reading a file into a buffer.
 		match unsafe { memmap2::MmapOptions::new().populate().map(&file) } {
 			Ok(map) => {
 				// On Unix, make a best-effort attempt to advise the system that
 				// we will access the map sequentially. This has broader support
 				// than MAP_POPULATE.
-				//
-				// TODO: Reconsider MAP_POPULATE entirely. Need to test on Linux.
 				#[cfg(unix)]
 				let _ = map.advise(memmap2::Advice::Sequential);
 				// Per memmap2 docs, it's safe to drop the original file.
 				Ok(Input::Mmap(map))
 			}
-			// If mmap fails, fall back to reading the file normally. Examples
-			// of where this can matter include (but are not limited to) process
-			// substitution and named pipes.
+			// If mmap fails (process substitution, named pipes, etc.), fall
+			// back to reader-based input.
 			Err(_) => Ok(Input::File(file)),
 		}
 	}
