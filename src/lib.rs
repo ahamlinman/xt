@@ -17,6 +17,9 @@
 	// Print macros can panic, and should only be for temporary debugging.
 	clippy::print_stderr,
 	clippy::print_stdout,
+	// The following macros represent incomplete implementation work.
+	clippy::todo,
+	clippy::unimplemented,
 )]
 
 //! The main entrypoint for the xt serialized data translation tool.
