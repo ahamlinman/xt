@@ -43,20 +43,18 @@ mod yaml;
 
 pub use input::Handle;
 
-/// The result produced by a translation.
+/// The result produced by translation.
 ///
 /// There is no useful `Ok` value, as the translator streams its output to a
 /// writer.
 pub type Result = result::Result<(), Error>;
 
-/// An error produced during a translation.
+/// An error produced during translation.
 pub type Error = Box<dyn error::Error>;
 
-/// Translates a single serialized input to serialized output in a different
-/// format.
+/// Translates a single serialized document to a different format.
 ///
-/// When `from` is `None`, xt will attempt to detect the input format using an
-/// unspecified and unstable algorithm.
+/// See [`Translator::translate`].
 pub fn translate<W>(input: Handle<'_>, from: Option<Format>, to: Format, output: W) -> crate::Result
 where
 	W: Write,
@@ -64,7 +62,7 @@ where
 	Translator::new(output, to).translate(input, from)
 }
 
-/// Translates multiple inputs to a single serialized output.
+/// Translates multiple documents to a single serialized output.
 pub struct Translator<W>(Dispatcher<W>)
 where
 	W: Write;
@@ -78,11 +76,11 @@ where
 		Translator(Dispatcher::new(output, to))
 	}
 
-	/// Translates serialized input to serialized output in the translator's
-	/// output format.
+	/// Translates a single serialized document to the translator's output
+	/// format.
 	///
-	/// When `from` is `None`, xt will attempt to detect the input format using an
-	/// unspecified and unstable algorithm.
+	/// When `from` is `None`, xt will attempt to detect the input format using
+	/// an unspecified format detection algorithm.
 	pub fn translate(&mut self, mut input: Handle<'_>, from: Option<Format>) -> crate::Result {
 		let from = match from {
 			Some(format) => format,
@@ -91,7 +89,6 @@ where
 				None => return Err("unable to detect input format".into()),
 			},
 		};
-
 		match from {
 			Format::Json => json::transcode(input, &mut self.0),
 			Format::Yaml => yaml::transcode(input, &mut self.0),
@@ -120,8 +117,7 @@ trait Output {
 	fn flush(&mut self) -> io::Result<()>;
 }
 
-/// An [`Output`] implementation supporting static dispatch based on a known
-/// output format.
+/// An [`Output`] supporting static dispatch based on a known output format.
 enum Dispatcher<W>
 where
 	W: Write,
@@ -187,28 +183,12 @@ where
 
 /// The set of input and output formats supported by xt.
 ///
-/// The feature sets of the supported formats vary along two key dimensions.
-///
-/// Formats supporting **multi-document translation** can represent multiple
-/// independent documents in a single input. For example, xt can translate a
-/// single YAML file with documents separated by `---` markers into a stream of
-/// newline-delimited JSON values. In contrast, single document formats like
-/// TOML can only represent one document per input. When translating multiple
-/// documents to a single document output format (whether from multiple inputs
-/// or a single multi-document input), xt will return an error as it starts to
-/// translate the second document in the stream.
-///
-/// Formats supporting **streaming input** can translate a multi-document input
-/// stream without first buffering the entire stream into memory. This enables
-/// translation of unbounded input sources, such as a program providing input to
-/// xt through a pipe. Formats that do not support streaming must buffer the
-/// entire input stream into memory before translating the first document.
-///
-/// Support for each data format comes largely from external Rust crates, with
-/// minor additional preprocessing from xt for select formats. Note that the
-/// crate selection for each format is **not stable**, and is documented for
-/// informational purposes only.
+/// Support for each format comes largely from external crates, with some
+/// additional preprocessing by xt for select formats. The crate selection for
+/// each format is **not stable**, and is documented for informational purposes
+/// only.
 #[derive(Copy, Clone)]
+#[non_exhaustive]
 pub enum Format {
 	/// The [JSON][json] format as interpreted by [`serde_json`].
 	///
@@ -224,8 +204,8 @@ pub enum Format {
 	Yaml,
 	/// The [TOML][toml] format as interpreted by [`toml`][::toml].
 	///
-	/// This format supports single-document translation only, and does not
-	/// support streaming input.
+	/// This format supports single-document translation only, and as such does
+	/// not support streaming input.
 	///
 	/// [toml]: https://github.com/toml-lang/toml
 	Toml,
