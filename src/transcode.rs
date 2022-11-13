@@ -292,6 +292,18 @@ where
 	}
 }
 
+/// Implements [`de::Visitor`] methods that forward scalar values to a
+/// `Serializer`.
+///
+/// This macro is non-hygienic, and not intended for use outside of this module.
+macro_rules! xt_transcode_impl_forward_visitors {
+	($($name:ident($($arg:ident: $ty:ty)?) => $op:expr;)*) => {
+		$(fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
+			self.forward_scalar($op)
+		})*
+	};
+}
+
 impl<'de, S> de::Visitor<'de> for &mut Visitor<S>
 where
 	S: Serializer,
@@ -302,72 +314,29 @@ where
 		f.write_str("any supported value")
 	}
 
-	fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_unit())
-	}
+	xt_transcode_impl_forward_visitors! {
+		visit_unit() => |ser| ser.serialize_unit();
 
-	fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_bool(v))
-	}
+		visit_bool(v: bool) => |ser| ser.serialize_bool(v);
 
-	fn visit_i8<E: de::Error>(self, v: i8) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_i8(v))
-	}
+		visit_i8(v: i8) => |ser| ser.serialize_i8(v);
+		visit_i16(v: i16) => |ser| ser.serialize_i16(v);
+		visit_i32(v: i32) => |ser| ser.serialize_i32(v);
+		visit_i64(v: i64) => |ser| ser.serialize_i64(v);
+		visit_i128(v: i128) => |ser| ser.serialize_i128(v);
 
-	fn visit_i16<E: de::Error>(self, v: i16) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_i16(v))
-	}
+		visit_u8(v: u8) => |ser| ser.serialize_u8(v);
+		visit_u16(v: u16) => |ser| ser.serialize_u16(v);
+		visit_u32(v: u32) => |ser| ser.serialize_u32(v);
+		visit_u64(v: u64) => |ser| ser.serialize_u64(v);
+		visit_u128(v: u128) => |ser| ser.serialize_u128(v);
 
-	fn visit_i32<E: de::Error>(self, v: i32) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_i32(v))
-	}
+		visit_f32(v: f32) => |ser| ser.serialize_f32(v);
+		visit_f64(v: f64) => |ser| ser.serialize_f64(v);
 
-	fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_i64(v))
-	}
-
-	fn visit_i128<E: de::Error>(self, v: i128) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_i128(v))
-	}
-
-	fn visit_u8<E: de::Error>(self, v: u8) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_u8(v))
-	}
-
-	fn visit_u16<E: de::Error>(self, v: u16) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_u16(v))
-	}
-
-	fn visit_u32<E: de::Error>(self, v: u32) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_u32(v))
-	}
-
-	fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_u64(v))
-	}
-
-	fn visit_u128<E: de::Error>(self, v: u128) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_u128(v))
-	}
-
-	fn visit_f32<E: de::Error>(self, v: f32) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_f32(v))
-	}
-
-	fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_f64(v))
-	}
-
-	fn visit_char<E: de::Error>(self, v: char) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_char(v))
-	}
-
-	fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_str(v))
-	}
-
-	fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-		self.forward_scalar(|ser| ser.serialize_bytes(v))
+		visit_char(v: char) => |ser| ser.serialize_char(v);
+		visit_str(v: &str) => |ser| ser.serialize_str(v);
+		visit_bytes(v: &[u8]) => |ser| ser.serialize_bytes(v);
 	}
 
 	fn visit_seq<A>(self, mut de: A) -> Result<Self::Value, A::Error>
