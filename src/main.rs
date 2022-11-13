@@ -13,6 +13,11 @@
 	clippy::from_over_into,
 	clippy::semicolon_if_nothing_returned,
 )]
+#![warn(
+	// Print macros can panic, and should only be for temporary debugging.
+	clippy::print_stderr,
+	clippy::print_stdout,
+)]
 
 use std::borrow::Cow;
 use std::env;
