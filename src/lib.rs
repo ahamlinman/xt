@@ -28,12 +28,11 @@
 //! in Rust code, consider [`serde_transcode`](https://docs.rs/serde-transcode)
 //! as a more flexible and widely used implementation.
 
-use std::error;
 use std::fmt;
 use std::io::{self, Read, Write};
-use std::result;
 
 mod detect;
+mod error;
 mod input;
 mod json;
 mod msgpack;
@@ -41,14 +40,7 @@ mod toml;
 mod transcode;
 mod yaml;
 
-/// The result produced by translation.
-///
-/// There is no useful `Ok` value, as the translator streams its output to a
-/// writer.
-pub type Result<T> = result::Result<T, Error>;
-
-/// An error produced during translation.
-pub type Error = Box<dyn error::Error>;
+pub use error::{Error, Result};
 
 /// Translates the contents of a single input slice to a different format.
 ///
