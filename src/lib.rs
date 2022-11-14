@@ -41,8 +41,6 @@ mod toml;
 mod transcode;
 mod yaml;
 
-pub use input::Handle;
-
 /// The result produced by translation.
 ///
 /// There is no useful `Ok` value, as the translator streams its output to a
