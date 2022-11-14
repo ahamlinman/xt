@@ -1,4 +1,33 @@
 //! Streaming text encoding support for YAML 1.2 streams.
+//!
+//! xt's needs for text encoding don't overlap especially well with the feature
+//! sets that the popular text encoding crates (`encoding` and `encoding_rs`)
+//! provide. Both of these crates are designed around the WHATWG Encoding
+//! Standard, which has two important consequences:
+//!
+//! 1. Both crates support far more text encodings than we actually need, since
+//!    YAML only requires support for Unicode-based encodings, and not legacy
+//!    code pages or other encodings. A past attempt to integrate `encoding_rs`
+//!    into xt increased the size of the full release binary by about 10%,
+//!    despite the fact that we weren't leveraging its full flexibility. In
+//!    contrast, xt's encoding module increases the binary size by less than 2%.
+//!
+//! 2. Neither crate supports UTF-32. While UTF-32 is an exceptionally rare
+//!    encoding, it is called out as a possibility in the YAML 1.2 spec, and
+//!    as such it's something I'm interested in supporting if possible.
+//!
+//! Beyond these two points, xt's encoder provides a natural [`Read`]-based
+//! interface that integrates easily with xt's other streaming components, which
+//! does not seem to be readily available from the third-party crates.
+//!
+//! Obviously, there is some additional mental load and long-term maintenance
+//! cost associated with implementing this kind of thing from scratch. To help
+//! manage that cost, the design of this module is kept relatively simple: a
+//! UTF-8 encoder operates on an [`Iterator`] of `io::Result<char>`, which is
+//! provided by a UTF-16 or UTF-32 decoder. Endianness is represented at a value
+//! level rather than a type level to reduce the number of type instantiations.
+//! All of the core functionality either directly relies on or is heavily
+//! inspired by the Rust standard library.
 
 use std::cmp::min;
 use std::error::Error;
@@ -294,8 +323,8 @@ where
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// This is based on the implementation of `std::char::DecodeUtf16` from
-		// the standard library, but is reworked for improved error handling and
-		// (hopefully) a bit more readability.
+		// the standard library, but is reworked slightly to better support I/O
+		// error handling and apply some Clippy style suggestions.
 
 		let pos = self.pos;
 		let lead = match self.buf.take() {
