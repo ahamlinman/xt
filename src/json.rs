@@ -3,7 +3,7 @@
 use std::io::{self, BufReader, Read, Write};
 use std::str;
 
-use serde::Deserialize;
+use serde::{de, ser, Deserialize};
 
 use crate::input::{self, Input, Ref};
 use crate::transcode;
@@ -25,12 +25,12 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 
 fn match_input_str(input: &str) -> Result<(), serde_json::Error> {
 	let mut de = serde_json::Deserializer::from_str(input);
-	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+	de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 fn match_input_reader<R: Read>(input: R) -> Result<(), serde_json::Error> {
 	let mut de = serde_json::Deserializer::from_reader(input);
-	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+	de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
@@ -83,8 +83,8 @@ impl<W: Write> Output<W> {
 impl<W: Write> crate::Output for Output<W> {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static,
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static,
 	{
 		let mut ser = serde_json::Serializer::new(&mut self.0);
 		transcode::transcode(&mut ser, de)?;
@@ -94,7 +94,7 @@ impl<W: Write> crate::Output for Output<W> {
 
 	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
-		S: serde::ser::Serialize,
+		S: ser::Serialize,
 	{
 		serde_json::to_writer(&mut self.0, &value)?;
 		writeln!(&mut self.0)?;

@@ -6,7 +6,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 
 use rmp::Marker;
 use rmp_serde::decode::Error::{InvalidDataRead, InvalidMarkerRead};
-use serde::Deserialize;
+use serde::{de, ser, Deserialize};
 
 use crate::input::{self, Input, Ref};
 use crate::transcode;
@@ -54,13 +54,13 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 fn match_input_buffer(input: &[u8]) -> Result<(), rmp_serde::decode::Error> {
 	let mut de = rmp_serde::Deserializer::from_read_ref(input);
 	de.set_max_depth(DEPTH_LIMIT);
-	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+	de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 fn match_input_reader<R: Read>(input: R) -> Result<(), rmp_serde::decode::Error> {
 	let mut de = rmp_serde::Deserializer::new(input);
 	de.set_max_depth(DEPTH_LIMIT);
-	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
+	de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
@@ -101,8 +101,8 @@ impl<W: Write> Output<W> {
 impl<W: Write> crate::Output for Output<W> {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static,
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static,
 	{
 		let mut ser = rmp_serde::Serializer::new(&mut self.0);
 		transcode::transcode(&mut ser, de)?;
@@ -111,7 +111,7 @@ impl<W: Write> crate::Output for Output<W> {
 
 	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
-		S: serde::ser::Serialize,
+		S: ser::Serialize,
 	{
 		let mut ser = rmp_serde::Serializer::new(&mut self.0);
 		value.serialize(&mut ser)?;

@@ -7,10 +7,10 @@ pub type Result<T> = result::Result<T, Error>;
 
 /// An error encountered during translation.
 #[derive(Debug)]
-pub struct Error(Box<dyn StdError + 'static>);
+pub struct Error(Box<dyn StdError + Send + Sync + 'static>);
 
-impl AsRef<dyn StdError> for Error {
-	fn as_ref(&self) -> &(dyn StdError + 'static) {
+impl AsRef<dyn StdError + Send + Sync> for Error {
+	fn as_ref(&self) -> &(dyn StdError + Send + Sync + 'static) {
 		self.0.as_ref()
 	}
 }
@@ -28,7 +28,7 @@ impl Display for Error {
 #[doc(hidden)]
 impl<T> From<T> for Error
 where
-	T: Into<Box<dyn StdError + 'static>>,
+	T: Into<Box<dyn StdError + Send + Sync + 'static>>,
 {
 	fn from(err: T) -> Self {
 		Self(err.into())

@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::io::{self, BufReader, Read, Write};
 use std::str;
 
+use serde::{de, ser};
+
 use crate::input::{self, Input, Ref};
 use crate::transcode;
 
@@ -82,8 +84,8 @@ impl<W: Write> Output<W> {
 impl<W: Write> crate::Output for Output<W> {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static,
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static,
 	{
 		writeln!(&mut self.0, "---")?;
 		let mut ser = serde_yaml::Serializer::new(&mut self.0);
@@ -93,7 +95,7 @@ impl<W: Write> crate::Output for Output<W> {
 
 	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
-		S: serde::ser::Serialize,
+		S: ser::Serialize,
 	{
 		writeln!(&mut self.0, "---")?;
 		serde_yaml::to_writer(&mut self.0, &value)?;

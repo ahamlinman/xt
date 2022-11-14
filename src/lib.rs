@@ -31,6 +31,8 @@
 use std::fmt;
 use std::io::{self, Read, Write};
 
+use serde::{de, ser};
+
 mod detect;
 mod error;
 mod input;
@@ -137,12 +139,12 @@ where
 trait Output {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static;
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static;
 
 	fn transcode_value<S>(&mut self, value: S) -> Result<()>
 	where
-		S: serde::ser::Serialize;
+		S: ser::Serialize;
 
 	fn flush(&mut self) -> io::Result<()>;
 }
@@ -178,8 +180,8 @@ where
 {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static,
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static,
 	{
 		match self {
 			Dispatcher::Json(output) => output.transcode_from(de),
@@ -191,7 +193,7 @@ where
 
 	fn transcode_value<S>(&mut self, value: S) -> Result<()>
 	where
-		S: serde::ser::Serialize,
+		S: ser::Serialize,
 	{
 		match self {
 			Dispatcher::Json(output) => output.transcode_value(value),

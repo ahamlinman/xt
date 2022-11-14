@@ -6,7 +6,7 @@ use std::fmt;
 use std::io::{self, Write};
 use std::str;
 
-use serde::Deserialize;
+use serde::{de, ser, Deserialize};
 
 use crate::input::{self, Ref};
 
@@ -37,7 +37,7 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 	};
 
 	let mut de = ::toml::Deserializer::new(input_str);
-	Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
+	Ok(de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
@@ -63,8 +63,8 @@ impl<W: Write> Output<W> {
 impl<W: Write> crate::Output for Output<W> {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
-		D: serde::de::Deserializer<'de, Error = E>,
-		E: serde::de::Error + 'static,
+		D: de::Deserializer<'de, Error = E>,
+		E: de::Error + Send + Sync + 'static,
 	{
 		// TOML is pretty unique among xt's supported output formats, and
 		// requires some special considerations.
@@ -89,7 +89,7 @@ impl<W: Write> crate::Output for Output<W> {
 
 	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
-		S: serde::ser::Serialize,
+		S: ser::Serialize,
 	{
 		// Of course, all of the above comments apply here as well.
 		self.ensure_one_use()?;

@@ -51,7 +51,7 @@ impl Output for Discard {
 	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
 		D: de::Deserializer<'de, Error = E>,
-		E: de::Error + 'static,
+		E: de::Error + Send + Sync + 'static,
 	{
 		de::IgnoredAny::deserialize(de)?;
 		Ok(())
