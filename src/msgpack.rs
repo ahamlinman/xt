@@ -63,7 +63,7 @@ fn match_input_reader<R: Read>(input: R) -> Result<(), rmp_serde::decode::Error>
 	serde::de::IgnoredAny::deserialize(&mut de).and(Ok(()))
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
 where
 	O: crate::Output,
 {
@@ -99,7 +99,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -109,7 +109,7 @@ impl<W: Write> crate::Output for Output<W> {
 		Ok(())
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> crate::Result
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
 		S: serde::ser::Serialize,
 	{

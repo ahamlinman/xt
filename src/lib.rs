@@ -45,7 +45,7 @@ mod yaml;
 ///
 /// There is no useful `Ok` value, as the translator streams its output to a
 /// writer.
-pub type Result = result::Result<(), Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// An error produced during translation.
 pub type Error = Box<dyn error::Error>;
@@ -53,12 +53,7 @@ pub type Error = Box<dyn error::Error>;
 /// Translates the contents of a single input slice to a different format.
 ///
 /// See [`Translator::translate_slice`].
-pub fn translate_slice<W>(
-	input: &[u8],
-	from: Option<Format>,
-	to: Format,
-	output: W,
-) -> crate::Result
+pub fn translate_slice<W>(input: &[u8], from: Option<Format>, to: Format, output: W) -> Result<()>
 where
 	W: Write,
 {
@@ -68,12 +63,7 @@ where
 /// Translates the contents of a single reader to a different format.
 ///
 /// See [`Translator::translate_reader`].
-pub fn translate_reader<R, W>(
-	input: R,
-	from: Option<Format>,
-	to: Format,
-	output: W,
-) -> crate::Result
+pub fn translate_reader<R, W>(input: R, from: Option<Format>, to: Format, output: W) -> Result<()>
 where
 	R: Read,
 	W: Write,
@@ -105,7 +95,7 @@ where
 	///
 	/// When `from` is `None`, xt will attempt to detect the input format from
 	/// the input itself.
-	pub fn translate_slice(&mut self, input: &[u8], from: Option<Format>) -> crate::Result {
+	pub fn translate_slice(&mut self, input: &[u8], from: Option<Format>) -> Result<()> {
 		self.translate(input::Handle::from_slice(input), from)
 	}
 
@@ -121,7 +111,7 @@ where
 	/// the input itself. The current format detection implementation does this
 	/// by fully reading the contents of a single document into memory before
 	/// starting translation.
-	pub fn translate_reader<R>(&mut self, input: R, from: Option<Format>) -> crate::Result
+	pub fn translate_reader<R>(&mut self, input: R, from: Option<Format>) -> Result<()>
 	where
 		R: Read,
 	{
@@ -129,7 +119,7 @@ where
 	}
 
 	/// Translates a single serialized input to a different format.
-	fn translate(&mut self, mut input: input::Handle<'_>, from: Option<Format>) -> crate::Result {
+	fn translate(&mut self, mut input: input::Handle<'_>, from: Option<Format>) -> Result<()> {
 		let from = match from {
 			Some(format) => format,
 			None => match detect::detect_format(&mut input)? {
@@ -153,12 +143,12 @@ where
 
 /// A trait for output formats to receive their translatable input.
 trait Output {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<()>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static;
 
-	fn transcode_value<S>(&mut self, value: S) -> crate::Result
+	fn transcode_value<S>(&mut self, value: S) -> Result<()>
 	where
 		S: serde::ser::Serialize;
 
@@ -194,7 +184,7 @@ impl<W> Output for &mut Dispatcher<W>
 where
 	W: Write,
 {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> Result<()>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -207,7 +197,7 @@ where
 		}
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> crate::Result
+	fn transcode_value<S>(&mut self, value: S) -> Result<()>
 	where
 		S: serde::ser::Serialize,
 	{

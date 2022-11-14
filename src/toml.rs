@@ -40,7 +40,7 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 	Ok(serde::de::IgnoredAny::deserialize(&mut de).is_ok())
 }
 
-pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
+pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
 where
 	O: crate::Output,
 {
@@ -61,7 +61,7 @@ impl<W: Write> Output<W> {
 }
 
 impl<W: Write> crate::Output for Output<W> {
-	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result
+	fn transcode_from<'de, D, E>(&mut self, de: D) -> crate::Result<()>
 	where
 		D: serde::de::Deserializer<'de, Error = E>,
 		E: serde::de::Error + 'static,
@@ -87,7 +87,7 @@ impl<W: Write> crate::Output for Output<W> {
 		self.output_value(&value)
 	}
 
-	fn transcode_value<S>(&mut self, value: S) -> crate::Result
+	fn transcode_value<S>(&mut self, value: S) -> crate::Result<()>
 	where
 		S: serde::ser::Serialize,
 	{
@@ -103,7 +103,7 @@ impl<W: Write> crate::Output for Output<W> {
 }
 
 impl<W: Write> Output<W> {
-	fn output_value(&mut self, value: &::toml::Value) -> crate::Result {
+	fn output_value(&mut self, value: &::toml::Value) -> crate::Result<()> {
 		// From the spec: "TOML is designed to map unambiguously to a hash
 		// table." xt's other input formats can produce something like a boolean
 		// or array at the top level, which might make xt output an invalid TOML
@@ -120,7 +120,7 @@ impl<W: Write> Output<W> {
 		Ok(())
 	}
 
-	fn ensure_one_use(&mut self) -> crate::Result {
+	fn ensure_one_use(&mut self) -> crate::Result<()> {
 		if self.used {
 			return Err(TomlOutputError::MultiDocument.into());
 		}
