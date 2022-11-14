@@ -3,15 +3,17 @@
 //! This is an awful hack to provide some level of streaming input support atop
 //! `serde_yaml`, which as of this writing requires buffering all input before
 //! parsing it (the convenience methods that parse from readers simply do this
-//! buffering for you). Using the same underlying parser as `serde_yaml`—a
-//! version of libyaml translated from C to Rust—a [`Chunker`] iterates over the
-//! documents in a YAML stream as `String`s, which can be provided one by one to
-//! `serde_yaml` for actual deserialization.
+//! buffering for you). Using the same underlying parser as `serde_yaml` (a Rust
+//! translation of the venerable [libyaml][libyaml]), a [`Chunker`] iterates
+//! over the documents in a YAML stream as `String`s, which can be provided one
+//! by one to `serde_yaml` for actual deserialization.
 //!
 //! I sincerely hope that I will someday have the time and energy to implement
 //! true streaming support in `serde_yaml` itself (unless, of course, someone
-//! beats me to it), and that everything I've learned from this implementation
-//! will serve as a stepping stone toward that.
+//! beats me to it), and that this implementation will serve as a stepping stone
+//! toward that goal.
+//!
+//! [libyaml]: https://pyyaml.org/wiki/LibYAML
 
 use std::error::Error;
 use std::ffi::{c_void, CStr};
