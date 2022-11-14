@@ -7,10 +7,11 @@
   library API remains unstable and not recommended for use outside of xt itself
   at this time, these changes should help to reduce future breakage by limiting
   the exposure of internal implementation details. Specific changes include:
-  - Removing the `Handle` type from xt's public interface, and introducing
-    separate functions for slice and reader translation.
+  - Removing `Handle` from xt's public interface, and introducing separate
+    functions for slice and reader translation.
   - Making `Error` an opaque struct rather than a `Box<dyn Error>` alias.
-  - Parameterizing the `Result` type as `Result<T>`.
+  - Parameterizing `Result` as `Result<T>`.
+  - Marking `Format` as non-exhaustive.
 
 ## v0.14.1 (2022-11-12)
 
