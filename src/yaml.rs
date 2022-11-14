@@ -109,7 +109,7 @@ impl<W: Write> crate::Output for Output<W> {
 
 /// Ensures that YAML input is UTF-8 by validating or converting it.
 ///
-/// See [Encoding::detect] for details on the detection algorithm.
+/// See [Encoding::detect] for details of the detection algorithm.
 fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
 	match Encoding::detect(buf) {
 		Encoding::Utf8 => Ok(Cow::Borrowed(str::from_utf8(buf)?)),
