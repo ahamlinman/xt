@@ -42,13 +42,11 @@
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
 
-/// A container for input to [`xt::translate`][crate::translate].
+/// A container for xt's input.
 ///
-/// xt accepts input from both slices and readers, and will produce consistent
-/// output for a given input regardless of its source. However, xt may optimize
-/// its behavior or provide features depending on the kind of source used. See
-/// [`Handle::from_slice`] and [`Handle::from_reader`] for details.
-pub struct Handle<'i>(Source<'i>);
+/// See the module documentation and [`Translator`](crate::Translator)
+/// documentation for more details.
+pub(crate) struct Handle<'i>(Source<'i>);
 
 /// The private container for the original input a [`Handle`] was created from.
 enum Source<'i> {
@@ -58,22 +56,12 @@ enum Source<'i> {
 
 impl<'i> Handle<'i> {
 	/// Creates a handle for an input slice.
-	///
-	/// Slice inputs are typically more efficient to translate than reader
-	/// inputs, but require all input to be loaded into memory in advance. This
-	/// is typically inappropriate for unbounded streams like standard input.
-	pub fn from_slice(b: &'i [u8]) -> Handle<'i> {
+	pub(crate) fn from_slice(b: &'i [u8]) -> Handle<'i> {
 		Handle(Source::Slice(b))
 	}
 
 	/// Creates a handle for an input reader.
-	///
-	/// Reader inputs enable streaming translation for most input formats,
-	/// allowing xt to translate documents as they appear in the stream without
-	/// buffering more than one document in memory at a time. When translating
-	/// from a format that does not support streaming, xt will buffer the entire
-	/// contents of the reader into memory before starting translation.
-	pub fn from_reader<R>(r: R) -> Handle<'i>
+	pub(crate) fn from_reader<R>(r: R) -> Handle<'i>
 	where
 		R: Read + 'i,
 	{

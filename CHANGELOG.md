@@ -1,3 +1,15 @@
+## Unreleased
+
+### Changed
+
+- **Simplified library interface.** This version of xt includes breaking changes
+  to the library API that the `xt` crate exposes to other Rust code. While the
+  library API remains unstable and not recommended for use outside of xt itself
+  at this time, these changes should help to reduce future breakage by limiting
+  the exposure of internal implementation details. Specifically, the `Handle`
+  type has been removed from xt's public interface, and separate functions have
+  been introduced for slice and reader translation.
+
 ## v0.14.1 (2022-11-12)
 
 ### Changed

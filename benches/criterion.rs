@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use xt::{Format, Handle};
+use xt::Format;
 
 criterion_main!(small, large);
 
@@ -34,8 +34,8 @@ macro_rules! xt_benchmark {
 
 			$(group.bench_function(stringify!($source), |b| {
 				b.iter(|| {
-					xt::translate(
-						xt_benchmark!(@input_handle $source &*input),
+					xt_benchmark!(@translate_fn $source)(
+						&*input,
 						black_box(Some($from)),
 						black_box($to),
 						std::io::sink(),
@@ -46,8 +46,8 @@ macro_rules! xt_benchmark {
 			group.finish();
 		}
 	};
-	(@input_handle buffer $input:expr) => { Handle::from_slice($input) };
-	(@input_handle reader $input:expr) => { Handle::from_reader($input) };
+	(@translate_fn buffer) => { xt::translate_slice };
+	(@translate_fn reader) => { xt::translate_reader };
 }
 
 xt_benchmark! {
@@ -131,8 +131,8 @@ fn load_large_data(format: Format) -> Vec<u8> {
 
 fn load_test_data(input: &[u8], format: Format, capacity: usize) -> Vec<u8> {
 	let mut output = Vec::with_capacity(capacity);
-	xt::translate(
-		Handle::from_reader(zstd::Decoder::new(input).expect("failed to create zstd decoder")),
+	xt::translate_reader(
+		zstd::Decoder::new(input).expect("failed to create zstd decoder"),
 		Some(Format::Msgpack),
 		format,
 		&mut output,

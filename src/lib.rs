@@ -30,7 +30,7 @@
 
 use std::error;
 use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::result;
 
 mod detect;
@@ -41,8 +41,6 @@ mod toml;
 mod transcode;
 mod yaml;
 
-pub use input::Handle;
-
 /// The result produced by translation.
 ///
 /// There is no useful `Ok` value, as the translator streams its output to a
@@ -52,17 +50,38 @@ pub type Result = result::Result<(), Error>;
 /// An error produced during translation.
 pub type Error = Box<dyn error::Error>;
 
-/// Translates a single serialized document to a different format.
+/// Translates the contents of a single input slice to a different format.
 ///
-/// See [`Translator::translate`].
-pub fn translate<W>(input: Handle<'_>, from: Option<Format>, to: Format, output: W) -> crate::Result
+/// See [`Translator::translate_slice`].
+pub fn translate_slice<W>(
+	input: &[u8],
+	from: Option<Format>,
+	to: Format,
+	output: W,
+) -> crate::Result
 where
 	W: Write,
 {
-	Translator::new(output, to).translate(input, from)
+	Translator::new(output, to).translate_slice(input, from)
 }
 
-/// Translates multiple documents to a single serialized output.
+/// Translates the contents of a single reader to a different format.
+///
+/// See [`Translator::translate_reader`].
+pub fn translate_reader<R, W>(
+	input: R,
+	from: Option<Format>,
+	to: Format,
+	output: W,
+) -> crate::Result
+where
+	R: Read,
+	W: Write,
+{
+	Translator::new(output, to).translate_reader(input, from)
+}
+
+/// Translates multiple inputs to a single serialized output.
 pub struct Translator<W>(Dispatcher<W>)
 where
 	W: Write;
@@ -76,12 +95,41 @@ where
 		Translator(Dispatcher::new(output, to))
 	}
 
-	/// Translates a single serialized document to the translator's output
-	/// format.
+	/// Translates the contents of a single input slice to a different format.
 	///
-	/// When `from` is `None`, xt will attempt to detect the input format using
-	/// an unspecified format detection algorithm.
-	pub fn translate(&mut self, mut input: Handle<'_>, from: Option<Format>) -> crate::Result {
+	/// Slice inputs are typically more efficient to translate than reader
+	/// inputs, but require all input to be available in memory in advance. For
+	/// unbounded streams like standard input or non-regular files, consider
+	/// using [`translate_reader`] rather than buffering the entire stream into
+	/// memory.
+	///
+	/// When `from` is `None`, xt will attempt to detect the input format from
+	/// the input itself.
+	pub fn translate_slice(&mut self, input: &[u8], from: Option<Format>) -> crate::Result {
+		self.translate(input::Handle::from_slice(input), from)
+	}
+
+	/// Translates the contents of a single reader to a different format.
+	///
+	/// Reader inputs enable streaming translation for most formats, allowing xt
+	/// to translate documents as they appear in the stream without buffering
+	/// more than one document in memory at a time. When translating from a
+	/// format that does not support streaming, xt will buffer the entire
+	/// contents of the reader into memory before starting translation.
+	///
+	/// When `from` is `None`, xt will attempt to detect the input format from
+	/// the input itself. The current format detection implementation does this
+	/// by fully reading the contents of a single document into memory before
+	/// starting translation.
+	pub fn translate_reader<R>(&mut self, input: R, from: Option<Format>) -> crate::Result
+	where
+		R: Read,
+	{
+		self.translate(input::Handle::from_reader(input), from)
+	}
+
+	/// Translates a single serialized input to a different format.
+	fn translate(&mut self, mut input: input::Handle<'_>, from: Option<Format>) -> crate::Result {
 		let from = match from {
 			Some(format) => format,
 			None => match detect::detect_format(&mut input)? {

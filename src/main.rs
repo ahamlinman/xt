@@ -109,13 +109,12 @@ fn main() {
 		}
 
 		let from = args.from.or_else(|| path.extension_format());
-		let handle = match &mut input {
-			Input::Stdin => xt::Handle::from_reader(io::stdin().lock()),
-			Input::File(file) => xt::Handle::from_reader(file),
-			Input::Mmap(map) => xt::Handle::from_slice(map),
+		let result = match &mut input {
+			Input::Stdin => translator.translate_reader(io::stdin().lock(), from),
+			Input::File(file) => translator.translate_reader(file, from),
+			Input::Mmap(map) => translator.translate_slice(map, from),
 		};
-
-		if let Err(err) = translator.translate(handle, from) {
+		if let Err(err) = result {
 			xt_io_error_bail!(path, err.as_ref());
 		}
 		if let Err(err) = translator.flush() {
