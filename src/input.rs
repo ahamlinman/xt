@@ -454,7 +454,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rewindable_reader_straight_read() {
+	fn capture_reader_straight_read() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
 		let mut result = String::new();
@@ -467,7 +467,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rewinding_rewindable_reader() {
+	fn capture_reader_rewind() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
 		let mut tmp = [0; HALF];
@@ -486,7 +486,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rewindable_reader_capture_to_end() {
+	fn capture_reader_to_end() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 		assert!(matches!(r.capture_to_end(), Ok(_)));
 		assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
@@ -494,7 +494,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rewindable_reader_capture_up_to() {
+	fn capture_reader_up_to() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 		assert!(matches!(r.capture_up_to_size(HALF), Ok(_)));
 		assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));

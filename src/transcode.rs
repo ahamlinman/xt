@@ -99,8 +99,8 @@
 //! may be necessary to maintain their internal invariants. An early version of
 //! xt's transcoder was built around a [`de::Visitor`] that yielded
 //! `Result<S::Ok, S::Error>` rather than `S::Ok` as `serde_transcode` does, and
-//! produced panics on certain kinds of transcoding failures with certain
-//! serializers. This approach also avoids injecting artificial values into the
+//! produced panics on certain kinds of transcoding failures with a particular
+//! deserializer. This approach also avoids injecting artificial values into the
 //! serializer to help back out from a deserializer failure, which could produce
 //! other legitimate errors. For example, if a transcoder encountered an error
 //! deserializing a map value and attempted to serialize a unit (null) value to

@@ -10,12 +10,11 @@
 //! content as translated and output by xt itself, and exhaustively checks all
 //! possible xt invocations—yes, all O(n²) of them—for translating one of those
 //! documents to another (including itself). Besides generating a quadratic
-//! blow-up of test cases, this may impose limitations on the structure and
-//! values of the test inputs within a given set, and may cause some annoyance
-//! if the specific formatting of a given output ever changes. However, I'm not
-//! sure of another approach that would cover this much with this little effort.
-//!
-//! "Little," that is, if you're ready for some fun with macros.
+//! blow-up of test cases using a complex set of macros, this approach imposes
+//! limitations on the structure and values of the test inputs within a given
+//! set, and can cause some annoyance when the specific formatting of a given
+//! output changes. However, it does provide broad coverage with relatively
+//! little effort.
 
 use std::io;
 
@@ -41,8 +40,8 @@ macro_rules! xt_test_all_invocations {
 	($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
 		paste! {
 			xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
-			xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
 			xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
+			xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
 			xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
 		}
 	}
@@ -105,8 +104,8 @@ static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
 
 // Tests multi-document transcoding.
 //
-// The current MessagePack auto detection logic imposes a restriction on these
-// inputs: the root of the first input in the stream must be a map or array.
+// The YAML and MessagePack format detection logic imposes a restriction on
+// these inputs: the first input in the stream must be a map or sequence.
 // Subsequent values may be of any supported type.
 //
 // TOML does not support multi-document transcoding.
@@ -122,11 +121,10 @@ const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 /// Tests the translation of YAML documents from various text encodings.
 ///
 /// YAML 1.2 requires support for the UTF-8, UTF-16, and UTF-32 character
-/// encodings. Because yaml-rust (and by extension serde_yaml) only supports
-/// UTF-8 as of this writing, xt takes care of re-encoding inputs where
-/// necessary. The test inputs cover a reasonable subset of the possible
-/// combinations of code unit size, type of endianness, and presence or lack of
-/// a BOM.
+/// encodings. Because serde_yaml only supports UTF-8 as of this writing, xt
+/// takes care of re-encoding inputs where necessary. The test inputs cover a
+/// reasonable subset of combinations of code unit size, endianness, and
+/// presence or lack of a BOM.
 macro_rules! xt_test_yaml_encodings {
 	($($filename:ident),+ $(,)?) => {
 		paste! {

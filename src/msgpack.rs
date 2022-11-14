@@ -383,14 +383,14 @@ mod tests {
 	];
 
 	#[test]
-	fn test_valid_inputs() {
+	fn valid_input_size() {
 		for input in VALID_INPUTS {
 			assert_eq!(next_value_size(input, DEPTH_LIMIT), Ok(input.len()));
 		}
 	}
 
 	#[test]
-	fn test_truncated_valid_inputs() {
+	fn truncated_valid_input_size() {
 		for input in VALID_INPUTS.iter().filter(|i| i.len() > 1) {
 			for len in 1..(input.len() - 1) {
 				assert_eq!(
@@ -402,7 +402,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_nonsensically_large_input() {
+	fn nonsensically_large_input_size() {
 		// The string "xt," but with a reported length of 2^32-1 bytes.
 		assert_eq!(
 			next_value_size(&hex!("db ff ff ff ff 78 74"), DEPTH_LIMIT),
@@ -411,7 +411,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_excessively_deep_input() {
+	fn excessively_deep_input_size() {
 		// [[true]]
 		assert_eq!(next_value_size(&hex!("91 91 c3"), 3), Ok(3));
 		// [[[true]]]
@@ -422,7 +422,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_invalid_marker() {
+	fn invalid_marker_size() {
 		// <invalid>
 		assert_eq!(
 			next_value_size(&hex!("c1"), DEPTH_LIMIT),
@@ -441,7 +441,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_suffixes_skipped() {
+	fn size_skipping_invalid_suffixes() {
 		// true; <invalid>
 		assert_eq!(next_value_size(&hex!("c3 c1"), DEPTH_LIMIT), Ok(1));
 		// ["xt"]; <invalid>
