@@ -20,17 +20,17 @@ use std::io;
 
 use paste::paste;
 
-use xt::{Format, Handle};
+use xt::Format;
 
 /// Tests a single call to xt::translate against expected output.
-macro_rules! xt_single_test {
-	($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-		#[test]
+macro_rules! xt_basic_tests {
+	($($name:ident: $fn:ident($input:expr, $from:expr, $to:expr) == $expected:expr;)+) => {
+		$(#[test]
 		fn $name() {
 			let mut output = Vec::with_capacity($expected.len());
-			xt::translate($input, $from, $to, &mut output).unwrap();
+			xt::$fn($input, $from, $to, &mut output).unwrap();
 			assert_eq!(&output, $expected);
-		}
+		})+
 	};
 }
 
@@ -39,12 +39,14 @@ macro_rules! xt_single_test {
 macro_rules! xt_test_all_invocations {
 	($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
 		paste! {
-			xt_single_test!([<$name _buffer_detected>], Handle::from_slice($input), None, $to, $expected);
-			xt_single_test!([<$name _buffer_explicit>], Handle::from_slice($input), Some($from), $to, $expected);
-			xt_single_test!([<$name _reader_detected>], Handle::from_reader($input), None, $to, $expected);
-			xt_single_test!([<$name _reader_explicit>], Handle::from_reader($input), Some($from), $to, $expected);
+			xt_basic_tests! {
+				[<$name _slice_detected>]: translate_slice($input, None, $to) == $expected;
+				[<$name _slice_explicit>]: translate_slice($input, Some($from), $to) == $expected;
+				[<$name _reader_detected>]: translate_reader($input, None, $to) == $expected;
+				[<$name _reader_explicit>]: translate_reader($input, Some($from), $to) == $expected;
+			}
 		}
-	}
+	};
 }
 
 /// Exhaustively tests all possible translations between a set of documents.
@@ -132,8 +134,8 @@ macro_rules! xt_test_yaml_encodings {
 			fn [<yaml_encoding_ $filename>]() {
 				static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
 				let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
-				xt::translate(
-					Handle::from_slice(INPUT),
+				xt::translate_slice(
+					INPUT,
 					Some(Format::Yaml),
 					Format::Json,
 					&mut output,
@@ -155,13 +157,7 @@ fn toml_reordering() {
 	const INPUT: &[u8] = include_bytes!("single_reordered.json");
 	const EXPECTED: &str = include_str!("single.toml");
 	let mut output = Vec::with_capacity(EXPECTED.len());
-	xt::translate(
-		Handle::from_slice(INPUT),
-		Some(Format::Json),
-		Format::Toml,
-		&mut output,
-	)
-	.unwrap();
+	xt::translate_slice(INPUT, Some(Format::Json), Format::Toml, &mut output).unwrap();
 	assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
@@ -173,7 +169,7 @@ fn toml_reordering() {
 #[test]
 fn toml_initial_table_detection() {
 	const INPUT: &[u8] = include_bytes!("initial_table.toml");
-	xt::translate(Handle::from_reader(INPUT), None, Format::Json, io::sink()).unwrap();
+	xt::translate_reader(INPUT, None, Format::Json, io::sink()).unwrap();
 }
 
 /// Tests that halting transcoding in the middle of a YAML input does not panic
@@ -185,12 +181,7 @@ fn toml_initial_table_detection() {
 #[test]
 fn yaml_halting_without_panic() {
 	const INPUT: &[u8] = include_bytes!("nullkey.yaml");
-	let _ = xt::translate(
-		Handle::from_slice(INPUT),
-		Some(Format::Yaml),
-		Format::Json,
-		std::io::sink(),
-	);
+	let _ = xt::translate_slice(INPUT, Some(Format::Yaml), Format::Json, std::io::sink());
 }
 
 /// Tests that MessagePack recursion depth limits behave consistently for both
@@ -215,8 +206,8 @@ fn msgpack_depth_limit() {
 	const STACK_SIZE: usize = 8 * 1024 * 1024;
 
 	stacker::grow(STACK_SIZE, || {
-		xt::translate(
-			Handle::from_reader(&input[..]),
+		xt::translate_reader(
+			&input[..],
 			Some(Format::Msgpack),
 			Format::Msgpack,
 			std::io::sink(),
@@ -225,8 +216,8 @@ fn msgpack_depth_limit() {
 	});
 
 	stacker::grow(STACK_SIZE, || {
-		xt::translate(
-			Handle::from_slice(&input[..]),
+		xt::translate_slice(
+			&input[..],
 			Some(Format::Msgpack),
 			Format::Msgpack,
 			std::io::sink(),
