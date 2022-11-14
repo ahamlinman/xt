@@ -42,7 +42,7 @@
 use std::borrow::Cow;
 use std::io::{self, Cursor, Read, Write};
 
-/// A container for input to [`xt::translate`][crate::translate].
+/// A container for xt's input.
 ///
 /// xt accepts input from both slices and readers, and will produce consistent
 /// output for a given input regardless of its source. However, xt may optimize

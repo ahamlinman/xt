@@ -52,18 +52,6 @@ pub type Result = result::Result<(), Error>;
 /// An error produced during translation.
 pub type Error = Box<dyn error::Error>;
 
-/// Translates a single serialized input to a different format.
-///
-/// See [`Translator::translate`].
-#[deprecated(note = "Use `translate_slice` or `translate_reader` instead.")]
-pub fn translate<W>(input: Handle<'_>, from: Option<Format>, to: Format, output: W) -> crate::Result
-where
-	W: Write,
-{
-	#[allow(deprecated)]
-	Translator::new(output, to).translate(input, from)
-}
-
 /// Translates the contents of a single input slice to a different format.
 ///
 /// See [`Translator::translate_slice`].
@@ -120,7 +108,6 @@ where
 	/// When `from` is `None`, xt will attempt to detect the input format from
 	/// the input itself.
 	pub fn translate_slice(&mut self, input: &[u8], from: Option<Format>) -> crate::Result {
-		#[allow(deprecated)]
 		self.translate(input::Handle::from_slice(input), from)
 	}
 
@@ -140,17 +127,11 @@ where
 	where
 		R: Read,
 	{
-		#[allow(deprecated)]
 		self.translate(input::Handle::from_reader(input), from)
 	}
 
 	/// Translates a single serialized input to a different format.
-	#[deprecated(note = "Use `translate_slice` or `translate_reader` instead.")]
-	pub fn translate(
-		&mut self,
-		mut input: input::Handle<'_>,
-		from: Option<Format>,
-	) -> crate::Result {
+	fn translate(&mut self, mut input: input::Handle<'_>, from: Option<Format>) -> crate::Result {
 		let from = match from {
 			Some(format) => format,
 			None => match detect::detect_format(&mut input)? {
