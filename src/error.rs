@@ -1,4 +1,4 @@
-use std::error;
+use std::error::Error as StdError;
 use std::fmt::Display;
 use std::result;
 
@@ -7,10 +7,10 @@ pub type Result<T> = result::Result<T, Error>;
 
 /// An error encountered during translation.
 #[derive(Debug)]
-pub struct Error(Box<dyn error::Error + 'static>);
+pub struct Error(Box<dyn StdError + 'static>);
 
-impl AsRef<dyn error::Error> for Error {
-	fn as_ref(&self) -> &(dyn error::Error + 'static) {
+impl AsRef<dyn StdError> for Error {
+	fn as_ref(&self) -> &(dyn StdError + 'static) {
 		self.0.as_ref()
 	}
 }
@@ -28,7 +28,7 @@ impl Display for Error {
 #[doc(hidden)]
 impl<T> From<T> for Error
 where
-	T: Into<Box<dyn error::Error + 'static>>,
+	T: Into<Box<dyn StdError + 'static>>,
 {
 	fn from(err: T) -> Self {
 		Self(err.into())
