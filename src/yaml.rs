@@ -111,16 +111,15 @@ impl<W: Write> crate::Output for Output<W> {
 ///
 /// See [Encoding::detect] for details of the detection algorithm.
 fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
-	match Encoding::detect(buf) {
-		Encoding::Utf8 => Ok(Cow::Borrowed(str::from_utf8(buf)?)),
-		encoding => {
-			let mut result = String::with_capacity(match encoding {
-				Encoding::Utf8 => unreachable!(),
-				Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
-				Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
-			});
-			Encoder::new(buf, encoding).read_to_string(&mut result)?;
-			Ok(Cow::Owned(result))
-		}
-	}
+	let encoding = Encoding::detect(buf);
+	let start_capacity = match encoding {
+		Encoding::Utf8 => return Ok(Cow::Borrowed(str::from_utf8(buf)?)),
+		// For inputs that require conversion, start with just enough space for
+		// a pure ASCII result.
+		Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
+		Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
+	};
+	let mut result = String::with_capacity(start_capacity);
+	Encoder::new(buf, encoding).read_to_string(&mut result)?;
+	Ok(Cow::Owned(result))
 }
