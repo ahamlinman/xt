@@ -66,6 +66,17 @@ where
 }
 
 /// Translates multiple inputs to a single serialized output.
+///
+/// A `Translator` accepts both slice and reader input. See [`translate_slice`]
+/// and [`translate_reader`] for considerations associated with each kind of
+/// source.
+///
+/// When a `Translator` is used more than once to translate different inputs, it
+/// outputs the logical concatenation of all documents from all inputs as if
+/// they had been presented in a single input. When translating to a format
+/// without multi-document support, translation will fail if the translator
+/// encounters more than one document in the first input, or if the translator
+/// is called a second time with another input.
 pub struct Translator<W>(Dispatcher<W>)
 where
 	W: Write;
@@ -84,8 +95,8 @@ where
 	/// Slice inputs are typically more efficient to translate than reader
 	/// inputs, but require all input to be available in memory in advance. For
 	/// unbounded streams like standard input or non-regular files, consider
-	/// using [`translate_reader`] rather than buffering the entire stream into
-	/// memory.
+	/// using [`translate_reader`] rather than reading the entire stream into
+	/// memory manually.
 	///
 	/// When `from` is `None`, xt will attempt to detect the input format from
 	/// the input itself.
@@ -98,8 +109,8 @@ where
 	/// Reader inputs enable streaming translation for most formats, allowing xt
 	/// to translate documents as they appear in the stream without buffering
 	/// more than one document in memory at a time. When translating from a
-	/// format that does not support streaming, xt will buffer the entire
-	/// contents of the reader into memory before starting translation.
+	/// format that does not support streaming, xt will automatically read the
+	/// entire input into memory before starting translation.
 	///
 	/// When `from` is `None`, xt will attempt to detect the input format from
 	/// the input itself. The current format detection implementation does this
