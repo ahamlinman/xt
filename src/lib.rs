@@ -1,3 +1,13 @@
+//! Translations between serialized data formats.
+//!
+//! **xt is pre-1.0 software with an unstable library API!**
+//!
+//! To convert between serialized data formats in Rust code, consider the
+//! mature, stable, and widely-used [`serde_transcode`][serde-transcode] crate
+//! instead.
+//!
+//! [serde-transcode]: https://docs.rs/serde-transcode
+
 #![deny(
 	// Enforce some additional strictness on unsafe code.
 	unsafe_op_in_unsafe_fn,
@@ -21,12 +31,6 @@
 	clippy::todo,
 	clippy::unimplemented,
 )]
-
-//! The main entrypoint for the xt serialized data translation tool.
-//!
-//! **This interface is not stable!** To convert between serialized data formats
-//! in Rust code, consider [`serde_transcode`](https://docs.rs/serde-transcode)
-//! as a more flexible and widely used implementation.
 
 use std::fmt;
 use std::io::{self, Read, Write};
