@@ -9,6 +9,7 @@
   the exposure of internal implementation details. Specific changes include:
   - Removing the `Handle` type from xt's public interface, and introducing
     separate functions for slice and reader translation.
+  - Making `Error` an opaque struct rather than a `Box<dyn Error>` alias.
   - Parameterizing the `Result` type as `Result<T>`.
 
 ## v0.14.1 (2022-11-12)
