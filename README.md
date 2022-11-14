@@ -51,10 +51,9 @@ xt [-f format] [-t format] [file ...]
 
 Or, run `xt --help` for full usage information.
 
-xt is built to "do one thing well," and tries to maintain a minimal CLI
-interface and feature set. The most common options are `-t` to specify an output
-format other than JSON, and one or more files to read from rather than standard
-input.
+xt is built to "do one thing well," and tries to maintain a minimal interface
+and feature set. The most common options are `-t` to specify an output format
+other than JSON, and one or more files to read from rather than standard input.
 
 Some of xt's notable features include:
 
