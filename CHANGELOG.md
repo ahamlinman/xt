@@ -1,3 +1,11 @@
+## v0.14.3 (2022-11-14)
+
+### Fixed
+
+- **Build failures on Rust 1.59.0.** This release fixes compilation errors on
+  Rust 1.59.0, which is the minimum supported Rust version currently documented
+  in Cargo.toml.
+
 ## v0.14.2 (2022-11-14)
 
 ### Fixed
