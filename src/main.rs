@@ -303,8 +303,8 @@ fn usage_name() -> Cow<'static, str> {
 	if let Some(Ok(name)) = env::args_os().next().map(|s| s.into_string()) {
 		Cow::Owned(name)
 	} else {
-		let pkg_name = env!("CARGO_PKG_NAME");
-		Cow::Borrowed(pkg_name.is_empty().then(|| "xt").unwrap_or(pkg_name))
+		let name = env!("CARGO_PKG_NAME");
+		Cow::Borrowed(if !name.is_empty() { name } else { "xt" })
 	}
 }
 
