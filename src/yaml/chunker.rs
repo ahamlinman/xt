@@ -344,20 +344,16 @@ impl ParserError {
 		// call is not null.
 		unsafe {
 			Self {
-				problem: (!(*parser).problem.is_null()).then(|| {
-					LocatedError::from_parts(
-						(*parser).problem.cast::<c_char>(),
-						(*parser).problem_mark,
-						Some((*parser).problem_offset),
-					)
-				}),
-				context: (!(*parser).context.is_null()).then(|| {
-					LocatedError::from_parts(
-						(*parser).context.cast::<c_char>(),
-						(*parser).context_mark,
-						None,
-					)
-				}),
+				problem: (!(*parser).problem.is_null()).then_some(LocatedError::from_parts(
+					(*parser).problem.cast::<c_char>(),
+					(*parser).problem_mark,
+					Some((*parser).problem_offset),
+				)),
+				context: (!(*parser).context.is_null()).then_some(LocatedError::from_parts(
+					(*parser).context.cast::<c_char>(),
+					(*parser).context_mark,
+					None,
+				)),
 			}
 		}
 	}
