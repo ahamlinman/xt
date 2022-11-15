@@ -190,6 +190,14 @@ fn yaml_halting_without_panic() {
 /// Buffer inputs implement their own depth check on top of rmp_serde's when
 /// they determine the sizes of input values. It should behave consistently with
 /// rmp_serde, which performs the only depth check for reader inputs.
+///
+/// See https://stackoverflow.com/a/42960702 for context around the usage of
+/// `stacker` in this test. Cargo runs tests on secondary threads, which by
+/// default have 2 MiB stacks (per std::thread docs as of writing). This is
+/// apparently too small to properly test the normal depth limit, so we run
+/// these cases with stacks that better approximate a typical main thread.
+/// Unfortunately, `stacker` does not work under Miri.
+#[cfg(not(miri))]
 #[test]
 fn msgpack_depth_limit() {
 	// Magic private constant from msgpack.rs.
@@ -199,10 +207,6 @@ fn msgpack_depth_limit() {
 	let mut input = [0x91_u8; DEPTH_LIMIT];
 	*input.last_mut().unwrap() = 0xc0;
 
-	// See https://stackoverflow.com/a/42960702. Cargo runs tests on secondary
-	// threads, which by default have 2 MiB stacks (per current std::thread docs).
-	// This is apparently too small to properly test our normal depth limit, so we
-	// run these cases with stacks that better approximate a typical main thread.
 	const STACK_SIZE: usize = 8 * 1024 * 1024;
 
 	stacker::grow(STACK_SIZE, || {
