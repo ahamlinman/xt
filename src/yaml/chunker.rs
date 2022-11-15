@@ -19,6 +19,7 @@ use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
+use std::os::raw::c_char;
 use std::ptr;
 
 use unsafe_libyaml::{
@@ -336,13 +337,17 @@ impl ParserError {
 			Self {
 				problem: (!(*parser).problem.is_null()).then(|| {
 					LocatedError::from_parts(
-						(*parser).problem,
+						(*parser).problem.cast::<c_char>(),
 						(*parser).problem_mark,
 						Some((*parser).problem_offset),
 					)
 				}),
 				context: (!(*parser).context.is_null()).then(|| {
-					LocatedError::from_parts((*parser).context, (*parser).context_mark, None)
+					LocatedError::from_parts(
+						(*parser).context.cast::<c_char>(),
+						(*parser).context_mark,
+						None,
+					)
 				}),
 			}
 		}
@@ -382,7 +387,7 @@ impl LocatedError {
 	///
 	/// `description` must be a valid pointer to a valid C string.
 	unsafe fn from_parts(
-		description: *const i8,
+		description: *const c_char,
 		mark: yaml_mark_t,
 		override_offset: Option<u64>,
 	) -> Self {

@@ -1,3 +1,11 @@
+## Unreleased
+
+### Fixed
+
+- **Build failures on Linux.** This release fixes compilation errors on Linux
+  (and potentially other non-macOS systems) that were introduced with the
+  streaming YAML input support in the v0.14.0 release.
+
 ## v0.14.1 (2022-11-12)
 
 ### Changed
