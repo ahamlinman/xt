@@ -1,11 +1,5 @@
 ## Unreleased
 
-### Fixed
-
-- **Build failures on Linux.** This release fixes compilation errors on Linux
-  (and potentially other non-macOS systems) that were introduced with the
-  streaming YAML input support in the v0.14.0 release.
-
 ### Changed
 
 - **Simplified library interface.** This version of xt includes breaking changes
@@ -20,7 +14,17 @@
   - Parameterizing `Result` as `Result<T>`.
   - Marking `Format` as non-exhaustive.
 
+## v0.14.2 (2022-11-14)
+
+### Fixed
+
+- **Build failures on non-macOS systems.** This release fixes compilation errors
+  on some non-macOS systems, particularly Linux systems, that were introduced
+  with the streaming YAML input support in the v0.14.0 release.
+
 ## v0.14.1 (2022-11-12)
+
+_This release has been yanked from crates.io. See the v0.14.2 release notes for details._
 
 ### Changed
 
@@ -31,6 +35,8 @@
   argument parsing errors also include a short usage summary and format list.
 
 ## v0.14.0 (2022-11-10)
+
+_This release has been yanked from crates.io. See the v0.14.2 release notes for details._
 
 ### Added
 
