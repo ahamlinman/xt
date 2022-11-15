@@ -58,7 +58,8 @@ fn main() {
 	let args = match Cli::parse_args() {
 		Ok(args) => args,
 		Err(err) => {
-			let mut stderr = io::stderr().lock();
+			let stderr = io::stderr();
+			let mut stderr = stderr.lock();
 			let _ = writeln!(stderr, "xt error: {}", err);
 			write_short_help(stderr);
 			process::exit(1);
@@ -89,8 +90,9 @@ fn main() {
 		}
 
 		let from = args.from.or_else(|| path.extension_format());
+		let stdin = io::stdin();
 		let handle = match &mut input {
-			Input::Stdin => xt::Handle::from_reader(io::stdin().lock()),
+			Input::Stdin => xt::Handle::from_reader(stdin.lock()),
 			Input::File(file) => xt::Handle::from_reader(file),
 			Input::Mmap(map) => xt::Handle::from_slice(map),
 		};
