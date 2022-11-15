@@ -13,6 +13,8 @@
   - Making `Error` an opaque struct rather than a `Box<dyn Error>` alias.
   - Parameterizing `Result` as `Result<T>`.
   - Marking `Format` as non-exhaustive.
+- **Rust 1.61 or higher is now required to build xt.** This change simplifies
+  parts of the implementation of the xt CLI.
 
 ## v0.14.3 (2022-11-14)
 
