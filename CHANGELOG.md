@@ -1,12 +1,19 @@
 ## Unreleased
 
+### Fixed
+
+- **Build failures on Linux.** This release fixes compilation errors on Linux
+  (and potentially other non-macOS systems) that were introduced with the
+  streaming YAML input support in the v0.14.0 release.
+
 ### Changed
 
 - **Simplified library interface.** This version of xt includes breaking changes
-  to the library API that the `xt` crate exposes to other Rust code. While the
-  library API remains unstable and not recommended for use outside of xt itself
-  at this time, these changes should help to reduce future breakage by limiting
-  the exposure of internal implementation details. Specific changes include:
+  to the library API that the `xt` crate exposes to other Rust code (but not to
+  the interface of the command line tool). While the library API remains
+  unstable and not recommended for use outside of xt itself at this time, these
+  changes should help to reduce future breakage by limiting the exposure of
+  internal implementation details. Specific changes include:
   - Removing `Handle` from xt's public interface, and introducing separate
     functions for slice and reader translation.
   - Making `Error` an opaque struct rather than a `Box<dyn Error>` alias.
