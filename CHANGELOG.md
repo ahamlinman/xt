@@ -14,7 +14,17 @@
   - Parameterizing `Result` as `Result<T>`.
   - Marking `Format` as non-exhaustive.
 
+## v0.14.3 (2022-11-14)
+
+### Fixed
+
+- **Build failures on Rust 1.59.0.** This release fixes compilation errors on
+  Rust 1.59.0, which is the minimum supported Rust version currently documented
+  in Cargo.toml.
+
 ## v0.14.2 (2022-11-14)
+
+_This release has been yanked from crates.io. See the v0.14.3 release notes for details._
 
 ### Fixed
 
@@ -24,7 +34,7 @@
 
 ## v0.14.1 (2022-11-12)
 
-_This release has been yanked from crates.io. See the v0.14.2 release notes for details._
+_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
 
 ### Changed
 
@@ -36,7 +46,7 @@ _This release has been yanked from crates.io. See the v0.14.2 release notes for 
 
 ## v0.14.0 (2022-11-10)
 
-_This release has been yanked from crates.io. See the v0.14.2 release notes for details._
+_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
 
 ### Added
 
