@@ -2,19 +2,19 @@
 
 ### Changed
 
-- **Simplified library interface.** This version of xt includes breaking changes
-  to the library API that the `xt` crate exposes to other Rust code (but not to
-  the interface of the command line tool). While the library API remains
-  unstable and not recommended for use outside of xt itself at this time, these
-  changes should help to reduce future breakage by limiting the exposure of
-  internal implementation details. Specific changes include:
+- **Rust 1.61 or higher is now required to build xt.** This change simplifies
+  parts of the implementation of the xt CLI.
+- **Breaking changes to the library interface.** This version of xt includes
+  breaking changes to the library API that the `xt` crate exposes to other Rust
+  code (**not** to the interface of the command line tool). While the library
+  API remains unstable and not recommended for use outside of xt itself at this
+  time, these changes should help to reduce future breakage by limiting the
+  exposure of internal implementation details. Specific changes include:
   - Removing `Handle` from xt's public interface, and introducing separate
     functions for slice and reader translation.
   - Making `Error` an opaque struct rather than a `Box<dyn Error>` alias.
   - Parameterizing `Result` as `Result<T>`.
   - Marking `Format` as non-exhaustive.
-- **Rust 1.61 or higher is now required to build xt.** This change simplifies
-  parts of the implementation of the xt CLI.
 
 ## v0.14.3 (2022-11-14)
 
