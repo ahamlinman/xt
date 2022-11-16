@@ -6,6 +6,7 @@ env:
 jobs:
   stable-msrv-matrix:
     strategy:
+      fail-fast: false
       matrix:
         runner: [ubuntu-22.04, macos-12, windows-2022]
         toolchain: [stable, 1.61.0]
