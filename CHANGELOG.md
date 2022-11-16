@@ -1,4 +1,4 @@
-## Unreleased
+## v0.15.0 (2022-11-15)
 
 ### Changed
 
