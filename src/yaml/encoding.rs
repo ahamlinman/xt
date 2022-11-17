@@ -768,4 +768,43 @@ mod tests {
 		let err = encoder.read_to_end(&mut vec![]).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
 	}
+
+	#[test]
+	fn arraybuffer_write_read() {
+		const INPUT: &str = "hi 🖥️";
+
+		let mut buf = ArrayBuffer::<10>::new();
+		assert!(buf.write_all(INPUT.as_bytes()).is_ok());
+		assert!(buf.flush().is_ok());
+
+		let mut out = String::new();
+		assert_eq!(buf.read_to_string(&mut out).unwrap(), INPUT.len());
+		assert_eq!(out, INPUT);
+	}
+
+	#[test]
+	fn arraybuffer_set_bufread() {
+		const INPUT: &str = "hello world";
+
+		let mut buf = ArrayBuffer::<{ INPUT.len() }>::new();
+		buf.set(INPUT.as_bytes());
+
+		assert_eq!(buf.fill_buf().unwrap(), INPUT.as_bytes());
+
+		buf.consume("hello ".len());
+		assert_eq!(buf.fill_buf().unwrap(), INPUT["hello ".len()..].as_bytes());
+
+		let mut out = String::new();
+		assert_eq!(buf.read_to_string(&mut out).unwrap(), "world".len());
+		assert_eq!(out, "world");
+	}
+
+	#[test]
+	fn arraybuffer_write_too_big() {
+		const INPUT: &str = "whoops";
+
+		let mut buf = ArrayBuffer::<1>::new();
+		let err = buf.write_all(INPUT.as_bytes()).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::WriteZero);
+	}
 }
