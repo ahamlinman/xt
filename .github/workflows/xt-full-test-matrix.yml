@@ -4,11 +4,11 @@ on: workflow_dispatch
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  unix-stable-msrv-test:
+  stable-msrv-test:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-22.04, macos-12]
+        runner: [ubuntu-22.04, macos-12, windows-2022]
         toolchain: [stable, 1.61.0]
     runs-on: ${{ matrix.runner }}
     steps:
@@ -22,26 +22,6 @@ jobs:
         rustc --version
     - name: cargo test
       run: cargo test
-  # TODO: Integration tests currently fail on Windows due to LF vs. CRLF
-  # inconsistency. Need to find a solution for this, which sadly will be tough
-  # since I don't have a Windows machine of my own right now.
-  windows-stable-msrv-build:
-    strategy:
-      fail-fast: false
-      matrix:
-        toolchain: [stable, 1.61.0]
-    runs-on: windows-2022
-    steps:
-    - name: git checkout
-      uses: actions/checkout@v3
-    - name: rustup toolchain install
-      run: |
-        rustup set profile minimal
-        rustup toolchain install ${{ matrix.toolchain }}
-        rustup default ${{ matrix.toolchain }}
-        rustc --version
-    - name: cargo build
-      run: cargo build
   linux-miri-test:
     runs-on: ubuntu-22.04
     steps:
