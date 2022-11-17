@@ -644,14 +644,17 @@ mod tests {
 		let mut result = vec![];
 		make_encoder().read_to_end(&mut result).unwrap();
 		assert_eq!(std::str::from_utf8(&result), Ok(expected));
-		assert_eq!(io::read_to_string(make_encoder()).unwrap(), expected);
+
+		let mut result = String::new();
+		make_encoder().read_to_string(&mut result).unwrap();
+		assert_eq!(result, expected);
 	}
 
 	#[test]
 	fn encode_invalid_utf16be_unpaired_lead() {
 		let input = &hex!("00 68 00 69 d8 3d 00 0a")[..];
-		let encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
-		let err = io::read_to_string(encoder).unwrap_err();
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
+		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
 
 		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
