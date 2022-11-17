@@ -589,3 +589,61 @@ impl<const SIZE: usize> Write for ArrayBuffer<SIZE> {
 		Ok(())
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	use hex_literal::hex;
+
+	#[test]
+	fn encode_valid_utf16be() {
+		assert_valid_encoding("hello", || {
+			Utf8Encoder::new(Utf16Decoder::new(
+				&hex!("00 68 00 65 00 6c 00 6c 00 6f")[..],
+				Endianness::Big,
+			))
+		});
+	}
+
+	#[test]
+	fn encode_valid_utf16le() {
+		assert_valid_encoding("world", || {
+			Utf8Encoder::new(Utf16Decoder::new(
+				&hex!("77 00 6f 00 72 00 6c 00 64 00")[..],
+				Endianness::Little,
+			))
+		});
+	}
+
+	#[test]
+	fn encode_valid_utf32be() {
+		assert_valid_encoding("hello", || {
+			Utf8Encoder::new(Utf32Decoder::new(
+				&hex!("00 00 00 68 00 00 00 65 00 00 00 6c 00 00 00 6c 00 00 00 6f")[..],
+				Endianness::Big,
+			))
+		});
+	}
+
+	#[test]
+	fn encode_valid_utf32le() {
+		assert_valid_encoding("world", || {
+			Utf8Encoder::new(Utf32Decoder::new(
+				&hex!("77 00 00 00 6f 00 00 00 72 00 00 00 6c 00 00 00 64 00 00 00")[..],
+				Endianness::Little,
+			))
+		});
+	}
+
+	fn assert_valid_encoding<R, F>(expected: &'static str, make_encoder: F)
+	where
+		R: Read,
+		F: Fn() -> R,
+	{
+		let mut result = vec![];
+		make_encoder().read_to_end(&mut result).unwrap();
+		assert_eq!(std::str::from_utf8(&result), Ok(expected));
+		assert_eq!(io::read_to_string(make_encoder()).unwrap(), expected);
+	}
+}
