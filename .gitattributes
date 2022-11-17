@@ -1,0 +1,6 @@
+# Avoid CRLF endings or other changes in test files regardless of global Git
+# settings, to avoid mismatches in the integration tests.
+tests/*.json text eol=lf
+tests/*.yaml text eol=lf
+tests/*.toml text eol=lf
+tests/*.msgpack binary
