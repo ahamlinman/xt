@@ -646,4 +646,42 @@ mod tests {
 		assert_eq!(std::str::from_utf8(&result), Ok(expected));
 		assert_eq!(io::read_to_string(make_encoder()).unwrap(), expected);
 	}
+
+	#[test]
+	fn encode_invalid_utf16be_unpaired_lead() {
+		let input = &hex!("00 68 00 69 d8 3d 00 0a")[..];
+		let encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
+		let err = io::read_to_string(encoder).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+		let err = err
+			.get_ref()
+			.unwrap()
+			.downcast_ref::<EncodingError<u16>>()
+			.unwrap();
+		// TODO: We intentionally say that the "unexpected" code unit is the one
+		// that isn't a trailing surrogate, which is technically correct but
+		// could be more detailed (i.e. we should perhaps say that there's an
+		// unpaired surrogate and give that position instead).
+		assert_eq!(err.unit, 0x0a);
+		assert_eq!(err.pos, 6);
+	}
+
+	#[test]
+	fn encode_invalid_utf16le_unpaired_trail() {
+		let input = &hex!("68 00 69 00 a5 dd 0a 00")[..];
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Little));
+		let err = encoder.read_to_end(&mut vec![]).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+		let err = err
+			.get_ref()
+			.unwrap()
+			.downcast_ref::<EncodingError<u16>>()
+			.unwrap();
+		assert_eq!(err.unit, 0xdda5);
+		assert_eq!(err.pos, 4);
+	}
 }
