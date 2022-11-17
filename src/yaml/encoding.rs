@@ -651,6 +651,46 @@ mod tests {
 	}
 
 	#[test]
+	fn encode_valid_utf16be_small_buffer() {
+		let input = &hex!("00 68 00 65 00 6c 00 6c 00 6f 00 20 d8 3d dd a5")[..];
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
+
+		let mut buf = [0u8; 1];
+		let mut result = vec![];
+		loop {
+			match encoder.read(&mut buf[..]) {
+				Ok(0) => break,
+				Ok(1) => result.extend_from_slice(&buf[..]),
+				Ok(n) => panic!("somehow read {n} bytes into a 1-byte buffer"),
+				Err(err) => panic!("{err}"),
+			}
+		}
+
+		assert_eq!(std::str::from_utf8(&result), Ok("hello 🖥"));
+	}
+
+	#[test]
+	fn encode_valid_utf16le_empty() {
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(io::empty(), Endianness::Little));
+		assert_eq!(encoder.read_to_end(&mut vec![]).unwrap(), 0usize);
+	}
+
+	#[test]
+	fn encode_valid_utf32be_empty() {
+		let mut encoder = Utf8Encoder::new(Utf32Decoder::new(io::empty(), Endianness::Big));
+		assert_eq!(encoder.read_to_end(&mut vec![]).unwrap(), 0usize);
+	}
+
+	#[test]
+	fn encode_to_string_invalid_inside_character() {
+		let input = &hex!("d8 3d dd a5")[..];
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
+		io::copy(&mut (&mut encoder).take(1), &mut io::sink()).unwrap();
+		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+	}
+
+	#[test]
 	fn encode_invalid_utf16be_unpaired_lead() {
 		let input = &hex!("00 68 00 69 d8 3d 00 0a")[..];
 		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
@@ -672,6 +712,14 @@ mod tests {
 	}
 
 	#[test]
+	fn encode_invalid_utf16be_unpaired_lead_eof() {
+		let input = &hex!("00 68 00 69 d8 3d")[..];
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Big));
+		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+	}
+
+	#[test]
 	fn encode_invalid_utf16le_unpaired_trail() {
 		let input = &hex!("68 00 69 00 a5 dd 0a 00")[..];
 		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Little));
@@ -686,5 +734,38 @@ mod tests {
 			.unwrap();
 		assert_eq!(err.unit, 0xdda5);
 		assert_eq!(err.pos, 4);
+	}
+
+	#[test]
+	fn encode_invalid_utf16le_truncated() {
+		let input = &hex!("68 00 69 00 a5")[..];
+		let mut encoder = Utf8Encoder::new(Utf16Decoder::new(input, Endianness::Little));
+		let err = encoder.read_to_end(&mut vec![]).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+	}
+
+	#[test]
+	fn encode_invalid_utf32be_surrogate_value() {
+		let input = &hex!("00 00 00 68 00 00 00 69 00 00 d8 3d 00 00 dd a5")[..];
+		let mut encoder = Utf8Encoder::new(Utf32Decoder::new(input, Endianness::Big));
+		let err = encoder.read_to_end(&mut vec![]).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+		let err = err
+			.get_ref()
+			.unwrap()
+			.downcast_ref::<EncodingError<u32>>()
+			.unwrap();
+		assert_eq!(err.unit, 0xd83d);
+		assert_eq!(err.pos, 8);
+	}
+
+	#[test]
+	fn encode_invalid_utf32le_truncated() {
+		let input = &hex!("68 00 00 00 69 00 00")[..];
+		let mut encoder = Utf8Encoder::new(Utf32Decoder::new(input, Endianness::Little));
+		let err = encoder.read_to_end(&mut vec![]).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
 	}
 }
