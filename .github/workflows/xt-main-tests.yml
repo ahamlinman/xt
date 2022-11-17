@@ -1,0 +1,36 @@
+---
+name: xt Main Tests
+on: workflow_dispatch
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  stable-test-lint:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v3
+    - name: rustup toolchain install
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable --component clippy --component rustfmt
+        rustup default stable
+        rustc --version
+    - name: cargo test
+      run: cargo test
+    - name: cargo clippy
+      run: cargo clippy
+    - name: rustfmt --check
+      run: find src tests benches -name '*.rs' -exec rustfmt --check '{}' +
+  msrv-test:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v3
+    - name: rustup toolchain install
+      run: |
+        rustup set profile minimal
+        rustup toolchain install 1.61.0
+        rustup default 1.61.0
+        rustc --version
+    - name: cargo test
+      run: cargo test
