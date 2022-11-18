@@ -50,7 +50,7 @@ impl Encoding {
 	/// Detects the text encoding of a YAML 1.2 stream based on its leading
 	/// bytes.
 	///
-	/// The detection algorithm is defined in [section 5.2 of the YAML 1.22
+	/// The detection algorithm is defined in [section 5.2 of the YAML 1.2.2
 	/// specification][spec], and relies on the fact that a valid YAML stream
 	/// must begin with either a Unicode byte order mark or an ASCII character.
 	/// Detection behavior for non-YAML inputs is not well-defined.
