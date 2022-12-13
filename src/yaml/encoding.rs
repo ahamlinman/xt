@@ -335,15 +335,17 @@ where
 				Err(err) => return Some(Err(err)),
 			},
 		};
-		if !(0xD800..=0xDFFF).contains(&lead) {
-			// SAFETY: This is not a UTF-16 surrogate, which means that the u16
-			// code unit directly encodes the desired code point.
-			return Some(Ok(unsafe { char::from_u32_unchecked(u32::from(lead)) }));
-		}
-		if lead >= 0xDC00 {
-			// Invalid: a UTF-16 trailing surrogate with no leading surrogate.
-			return Some(Err(EncodingError::new(lead, pos).into()));
-		}
+		match lead {
+			0x0000..=0xD7FF | 0xE000..=0xFFFF => {
+				// SAFETY: This is not a UTF-16 surrogate, which means that the u16
+				// code unit directly encodes the desired code point.
+				return Some(Ok(unsafe { char::from_u32_unchecked(u32::from(lead)) }));
+			}
+			// Leading surrogate; continue on to decode the trailing surrogate.
+			0xD800..=0xDBFF => {}
+			// Trailing surrogate; invalid without a leading surrogate.
+			0xDC00..=0xDFFF => return Some(Err(EncodingError::new(lead, pos).into())),
+		};
 
 		let pos = self.pos;
 		let trail = match self.next_u16() {
@@ -352,14 +354,13 @@ where
 			Err(err) => return Some(Err(err)),
 		};
 		if !(0xDC00..=0xDFFF).contains(&trail) {
-			// Invalid: we needed a trailing surrogate and didn't get one. We'll
-			// try to decode this as a leading code unit on the next iteration.
+			// We needed a trailing surrogate and didn't get one. We'll try to decode
+			// this as a leading code unit on the next iteration.
 			self.buf = Some(trail);
 			return Some(Err(EncodingError::new(trail, pos).into()));
 		}
 
-		// SAFETY: We have confirmed that the two code units form a valid
-		// surrogate pair.
+		// SAFETY: We've checked that the two code units are a valid surrogate pair.
 		Some(Ok(unsafe {
 			char::from_u32_unchecked(
 				0x10000 + (u32::from(lead - 0xD800) << 10 | u32::from(trail - 0xDC00)),
@@ -399,9 +400,9 @@ where
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.source.fill_buf() {
-			Ok(buf) if buf.is_empty() => return None,
 			Err(err) => return Some(Err(err)),
-			_ => {}
+			Ok(buf) if buf.is_empty() => return None,
+			Ok(_) => {}
 		};
 
 		let pos = self.pos;
