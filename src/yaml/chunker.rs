@@ -175,13 +175,11 @@ where
 			let event = unsafe {
 				match Event::from_parser(self.parser) {
 					Ok(event) => event,
-					Err(()) => {
-						return Some(Err((*self.read_state).error.take().unwrap_or_else(|| {
-							io::Error::new(
-								io::ErrorKind::InvalidData,
-								ParserError::from_parser(self.parser),
-							)
-						})))
+					Err(err) => {
+						return Some(Err((*self.read_state)
+							.error
+							.take()
+							.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, err))))
 					}
 				}
 			};
@@ -293,12 +291,13 @@ impl Event {
 	/// # Safety
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
-	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ()> {
+	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ParserError> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 		// SAFETY: libyaml functions are assumed to work correctly. Our caller
 		// is responsible for the validity of `parser`.
 		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
-			return Err(());
+			// SAFETY: Our caller is responsible for the validity of `parser`.
+			return Err(unsafe { ParserError::from_parser(parser) });
 		}
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
