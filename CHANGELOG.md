@@ -1,3 +1,11 @@
+## v0.15.1 (2023-01-10)
+
+### Changed
+
+- This version of xt upgrades locked dependencies to their latest versions, and
+  includes minor implementation changes that are not expected to significantly
+  affect functionality or performance.
+
 ## v0.15.0 (2022-11-15)
 
 ### Changed
