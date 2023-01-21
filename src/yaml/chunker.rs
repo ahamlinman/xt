@@ -267,18 +267,15 @@ pub(super) enum DocumentKind {
 }
 
 impl Document {
+	/// Returns the original text of the document.
+	pub(super) fn content(&self) -> &str {
+		&self.content
+	}
+
 	/// Returns true if the content of the document is a scalar rather than a
 	/// collection (sequence or mapping).
 	pub(super) fn is_scalar(&self) -> bool {
 		matches!(self.kind, DocumentKind::Scalar)
-	}
-}
-
-impl Deref for Document {
-	type Target = str;
-
-	fn deref(&self) -> &Self::Target {
-		&self.content
 	}
 }
 

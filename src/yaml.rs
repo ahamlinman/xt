@@ -66,7 +66,7 @@ where
 		}
 		Input::Reader(r) => {
 			for doc in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
-				output.transcode_from(serde_yaml::Deserializer::from_str(&doc?))?;
+				output.transcode_from(serde_yaml::Deserializer::from_str(doc?.content()))?;
 			}
 		}
 	}
