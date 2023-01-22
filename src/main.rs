@@ -304,18 +304,17 @@ fn usage_name() -> Cow<'static, str> {
 		Cow::Owned(name)
 	} else {
 		let name = env!("CARGO_PKG_NAME");
-		Cow::Borrowed(if !name.is_empty() { name } else { "xt" })
+		Cow::Borrowed(if name.is_empty() { "xt" } else { name })
 	}
 }
 
 /// Returns the full version string for the program (including the crate name)
 /// based on Cargo metadata, or a default if Cargo metadata is unavailable.
 const fn version_string() -> &'static str {
-	let version = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
-	if !version.is_empty() {
-		version
-	} else {
+	if env!("CARGO_PKG_NAME").is_empty() || env!("CARGO_PKG_VERSION").is_empty() {
 		"xt 0.0.0-unknown"
+	} else {
+		concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"))
 	}
 }
 
