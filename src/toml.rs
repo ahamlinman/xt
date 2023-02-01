@@ -86,7 +86,9 @@ impl<W: Write> Output<W> {
 		// We enable the crate's "preserve_order" feature to keep as much of the
 		// original input ordering as we can.
 		if let toml::Value::Table(table) = value {
-			write!(&mut self.w, "{table}").map_err(Into::into)
+			let output = ::toml::to_string_pretty(table)?;
+			self.w.write_all(output.as_bytes())?;
+			Ok(())
 		} else {
 			Err(TomlOutputError::NonTableRoot.into())
 		}
