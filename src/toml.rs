@@ -36,8 +36,8 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 		Err(_) => return Ok(false),
 	};
 
-	let mut de = ::toml::Deserializer::new(input_str);
-	Ok(de::IgnoredAny::deserialize(&mut de).is_ok())
+	let de = ::toml::Deserializer::new(input_str);
+	Ok(de::IgnoredAny::deserialize(de).is_ok())
 }
 
 pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result<()>
@@ -45,8 +45,8 @@ where
 	O: crate::Output,
 {
 	let input: Cow<'_, [u8]> = input.try_into()?;
-	let mut de = ::toml::Deserializer::new(str::from_utf8(&input)?);
-	output.transcode_from(&mut de)
+	let de = ::toml::Deserializer::new(str::from_utf8(&input)?);
+	output.transcode_from(de)
 }
 
 pub(crate) struct Output<W: Write> {
