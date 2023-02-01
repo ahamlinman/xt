@@ -269,7 +269,17 @@ where
 		while let Some(next) = self.next_char() {
 			match next {
 				Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-				Err(err) => return Err(err),
+				Err(err) => {
+					// TODO: The docs say, "if the data in this stream is not
+					// valid UTF-8 then an error is returned and buf is
+					// unchanged." What does that mean for us? Our stream can
+					// never contain invalid UTF-8 since we build it up from
+					// valid chars, but the source stream can contain encoding
+					// issues that are like the moral equivalent of invalid
+					// UTF-8. Is it dishonest that this implementation isn't
+					// leaving buf unchanged on those errors?
+					return Err(err);
+				}
 				Ok(ch) => {
 					buf.push(ch);
 					written += ch.len_utf8();
