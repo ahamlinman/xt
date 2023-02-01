@@ -1,6 +1,6 @@
 [package]
 name = "xt"
-version = "0.15.2-dev"
+version = "0.16.0-dev"
 description = "Translate between serialized data formats"
 repository = "https://github.com/ahamlinman/xt"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
@@ -23,7 +23,7 @@ serde_yaml = "0.9"
 unsafe-libyaml = "0.2"
 
 [dependencies.toml]
-version = "0.5"
+version = "0.7"
 features = ["preserve_order"]
 
 [target.'cfg(unix)'.dependencies]

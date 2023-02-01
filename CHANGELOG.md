@@ -1,3 +1,19 @@
+## Unreleased
+
+### Fixed
+
+- **Issues with TOML input and output.** This version of xt upgrades to the
+  latest version of the third-party `toml` library, which plays a critical role
+  in xt's TOML support. The upgrade fixes a number of potential bugs in the
+  handling of TOML input and output, bringing xt into full compliance with the
+  TOML 1.0 specification.
+
+### Changed
+
+- **Formatting of TOML output.** The `toml` upgrade described above also
+  introduced some changes to the formatting of TOML output, most noticeably by
+  switching from single-quoted strings to double-quoted strings.
+
 ## v0.15.1 (2023-01-10)
 
 ### Changed
