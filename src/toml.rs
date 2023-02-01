@@ -80,17 +80,16 @@ impl<W: Write> Output<W> {
 		// a bit noisier than the one we've historically provided ourselves, so
 		// we instead deserialize into the more general toml::Value and run the
 		// check manually.
-		if !value.is_table() {
-			return Err(TomlOutputError::NonTableRoot.into());
+		//
+		// TOML also requires that non-table values appear before any tables at
+		// a given level of nesting, which the toml crate knows how to handle.
+		// We enable the crate's "preserve_order" feature to keep as much of the
+		// original input ordering as we can.
+		if let toml::Value::Table(table) = value {
+			write!(&mut self.w, "{table}").map_err(Into::into)
+		} else {
+			Err(TomlOutputError::NonTableRoot.into())
 		}
-
-		// toml::Serializer is smart enough to ensure that non-table values
-		// appear before any tables at a given nesting level, as TOML requires.
-		// However, this means that it will probably never be feasible to
-		// serialize directly to a writer.
-		let output_buf = ::toml::to_string_pretty(&value)?;
-		self.w.write_all(output_buf.as_bytes())?;
-		Ok(())
 	}
 }
 
