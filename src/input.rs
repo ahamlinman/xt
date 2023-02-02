@@ -225,7 +225,7 @@ impl<R> GuardedCaptureReader<R>
 where
 	R: Read,
 {
-	/// Returns a new `RewindGuard` containing a new `CaptureReader`.
+	/// Returns a new `GuardedCaptureReader` containing a new `CaptureReader`.
 	fn new(r: R) -> Self {
 		Self(CaptureReader::new(r))
 	}
