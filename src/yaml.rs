@@ -1,7 +1,6 @@
 //! The YAML data format.
 
-use std::borrow::Cow;
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::str;
 
 use serde::{de, ser};
@@ -38,9 +37,31 @@ pub(crate) fn transcode<O>(input: input::Handle, mut output: O) -> crate::Result
 where
 	O: crate::Output,
 {
-	// serde_yaml imposes a couple of interesting limitations on us, which
-	// aren't clear from the documentation alone but are reflected in this
-	// usage.
+	match input.into() {
+		Input::Reader(r) => transcode_reader(BufReader::new(r), output),
+		Input::Slice(b) => match str::from_utf8(&b) {
+			Ok(s) => {
+				for de in serde_yaml::Deserializer::from_str(s) {
+					output.transcode_from(de)?;
+				}
+				Ok(())
+			}
+			Err(_) => {
+				// The reader path supports automatic re-encoding of UTF-16 and
+				// UTF-32 input. See transcode_reader for details.
+				transcode_reader(&*b, output)
+			}
+		},
+	}
+}
+
+fn transcode_reader<R, O>(input: R, mut output: O) -> crate::Result<()>
+where
+	R: BufRead,
+	O: crate::Output,
+{
+	// serde_yaml imposes a couple of interesting limitations us, which aren't
+	// clear from the documentation alone but are reflected in this usage.
 	//
 	// First, while serde_yaml supports creating a Deserializer from a reader,
 	// this actually slurps the entire input into a buffer for parsing. We
@@ -58,17 +79,10 @@ where
 	// streams and at the starts of individual documents in the stream.
 	// However, these cases should be much rarer than that of a single BOM at
 	// the start of a UTF-16 or UTF-32 stream.
-	match input.into() {
-		Input::Slice(b) => {
-			for de in serde_yaml::Deserializer::from_str(&ensure_utf8(&b)?) {
-				output.transcode_from(de)?;
-			}
-		}
-		Input::Reader(r) => {
-			for doc in Chunker::new(Encoder::from_reader(BufReader::new(r))?) {
-				output.transcode_from(serde_yaml::Deserializer::from_str(doc?.content()))?;
-			}
-		}
+	for doc in Chunker::new(Encoder::from_reader(input)?) {
+		let doc = doc?;
+		let de = serde_yaml::Deserializer::from_str(doc.content());
+		output.transcode_from(de)?;
 	}
 	Ok(())
 }
@@ -105,21 +119,4 @@ impl<W: Write> crate::Output for Output<W> {
 	fn flush(&mut self) -> io::Result<()> {
 		self.0.flush()
 	}
-}
-
-/// Ensures that YAML input is UTF-8 by validating or converting it.
-///
-/// See [Encoding::detect] for details of the detection algorithm.
-fn ensure_utf8(buf: &[u8]) -> Result<Cow<'_, str>, crate::Error> {
-	let encoding = Encoding::detect(buf);
-	let start_capacity = match encoding {
-		Encoding::Utf8 => return Ok(Cow::Borrowed(str::from_utf8(buf)?)),
-		// For inputs that require conversion, start with just enough space for
-		// a pure ASCII result.
-		Encoding::Utf16Big | Encoding::Utf16Little => buf.len() / 2,
-		Encoding::Utf32Big | Encoding::Utf32Little => buf.len() / 4,
-	};
-	let mut result = String::with_capacity(start_capacity);
-	Encoder::new(buf, encoding).read_to_string(&mut result)?;
-	Ok(Cow::Owned(result))
 }

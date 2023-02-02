@@ -148,14 +148,6 @@ where
 			EncoderKind::From32(r) => r.read(buf),
 		}
 	}
-
-	fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-		match &mut self.0 {
-			EncoderKind::Passthrough(r) => r.read_to_string(buf),
-			EncoderKind::From16(r) => r.read_to_string(buf),
-			EncoderKind::From32(r) => r.read_to_string(buf),
-		}
-	}
 }
 
 /// The required size of a buffer large enough to encode any `char` as UTF-8,
@@ -254,38 +246,6 @@ where
 			}
 		}
 
-		Ok(written)
-	}
-
-	fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-		if !self.remainder.is_empty() {
-			return Err(io::Error::new(
-				io::ErrorKind::InvalidData,
-				"cannot read to string starting from a partial character boundary",
-			));
-		}
-
-		let mut written = 0;
-		while let Some(next) = self.next_char() {
-			match next {
-				Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-				Err(err) => {
-					// TODO: The docs say, "if the data in this stream is not
-					// valid UTF-8 then an error is returned and buf is
-					// unchanged." What does that mean for us? Our stream can
-					// never contain invalid UTF-8 since we build it up from
-					// valid chars, but the source stream can contain encoding
-					// issues that are like the moral equivalent of invalid
-					// UTF-8. Is it dishonest that this implementation isn't
-					// leaving buf unchanged on those errors?
-					return Err(err);
-				}
-				Ok(ch) => {
-					buf.push(ch);
-					written += ch.len_utf8();
-				}
-			}
-		}
 		Ok(written)
 	}
 }
