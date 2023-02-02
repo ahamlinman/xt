@@ -60,8 +60,9 @@ where
 	R: BufRead,
 	O: crate::Output,
 {
-	// serde_yaml imposes a couple of interesting limitations us, which aren't
-	// clear from the documentation alone but are reflected in this usage.
+	// serde_yaml imposes a couple of interesting limitations on us, which
+	// aren't clear from the documentation alone but are reflected in this
+	// usage.
 	//
 	// First, while serde_yaml supports creating a Deserializer from a reader,
 	// this actually slurps the entire input into a buffer for parsing. We
