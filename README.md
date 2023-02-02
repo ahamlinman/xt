@@ -7,7 +7,7 @@ For example, you can process a set of TOML files with [`jq`][jq]:
 ```sh
 $ xt a/Cargo.lock b/Cargo.lock | jq -r '.package[].name' | sort -u
 aho-corasick
-atty
+anes
 autocfg
 # etc.
 ```

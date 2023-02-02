@@ -31,6 +31,8 @@ use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 
+use is_terminal::IsTerminal;
+
 use xt::Format;
 
 macro_rules! xt_bail {
@@ -82,7 +84,8 @@ fn main() {
 		}
 	};
 
-	if atty::is(atty::Stream::Stdout) && format_is_unsafe_for_terminal(args.to) {
+	let stdout = io::stdout();
+	if stdout.is_terminal() && format_is_unsafe_for_terminal(args.to) {
 		xt_bail!(
 			"refusing to output {format} to a terminal",
 			format = args.to,
@@ -90,7 +93,7 @@ fn main() {
 	}
 
 	let mut stdin_used = false;
-	let mut output = BufWriter::new(io::stdout());
+	let mut output = BufWriter::new(stdout.lock());
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
 	let input_paths = if args.input_paths.is_empty() {
