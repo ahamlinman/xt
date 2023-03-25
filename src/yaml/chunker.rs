@@ -146,10 +146,11 @@ where
 		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
 			Ok(len) => {
 				// SAFETY: We assume that libyaml provides us with a valid
-				// buffer and len, and that the global allocator is not so
-				// fundamentally broken that the buffer allocated by libyaml
-				// overlaps with the buffer owned by read_state. Our caller is
-				// responsible for the validity of read_state in general.
+				// buffer, and that the global allocator is not so fundamentally
+				// broken that the buffer allocated by libyaml overlaps with the
+				// buffer owned by read_state (allocated by the above resize
+				// operation). Our caller is responsible for the validity of
+				// read_state in general.
 				unsafe { ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len) };
 
 				// Note that libyaml's EOF condition is the same as Rust's: set
