@@ -396,6 +396,54 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 	}
 }
 
+/// A [`Serialize`] implementation that outputs the next value produced by a
+/// [`Deserializer`].
+struct Forwarder<'de, D: Deserializer<'de>>(State<D, D::Error>);
+
+impl<'de, D: Deserializer<'de>> Forwarder<'de, D> {
+	fn from(de: D) -> Forwarder<'de, D> {
+		Forwarder(State::new(de))
+	}
+
+	fn forward_to_seed<S, SErr, F>(
+		self,
+		seed_state: &mut State<S, SErr>,
+		op: F,
+	) -> Result<(), D::Error>
+	where
+		F: FnOnce(S, &Self) -> Result<(), SErr>,
+	{
+		let ser = seed_state.take_parent();
+		match op(ser, &self) {
+			Ok(()) => Ok(()),
+			Err(ser_err) => {
+				seed_state.capture_error(self.0.error_source(), ser_err);
+				match self.0.into_error() {
+					Some(de_err) => Err(de_err),
+					None => Err(de::Error::custom(TRANSLATION_FAILED)),
+				}
+			}
+		}
+	}
+}
+
+impl<'de, D: Deserializer<'de>> Serialize for Forwarder<'de, D> {
+	fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+		let de = self.0.take_parent();
+		let mut visitor = Visitor::from(ser);
+		match de.deserialize_any(&mut visitor) {
+			Ok(value) => Ok(value),
+			Err(de_err) => {
+				self.0.capture_error(visitor.0.error_source(), de_err);
+				match visitor.0.into_error() {
+					Some(ser_err) => Err(ser_err),
+					None => Err(ser::Error::custom(TRANSLATION_FAILED)),
+				}
+			}
+		}
+	}
+}
+
 /// Receives the next value in a sequence from a [`de::SeqAccess`] and forwards
 /// it to a [`ser::SerializeSeq`].
 struct SeqSeed<'a, S: SerializeSeq>(State<&'a mut S, S::Error>);
@@ -410,7 +458,8 @@ impl<'de, S: SerializeSeq> DeserializeSeed<'de> for &mut SeqSeed<'_, S> {
 	type Value = ();
 
 	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<(), D::Error> {
-		SerializeNext::forward_seed(&mut self.0, de, |ser, next| ser.serialize_element(next))
+		Forwarder::from(de)
+			.forward_to_seed(&mut self.0, |ser, element| ser.serialize_element(element))
 	}
 }
 
@@ -428,7 +477,7 @@ impl<'de, S: SerializeMap> DeserializeSeed<'de> for &mut KeySeed<'_, S> {
 	type Value = ();
 
 	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<(), D::Error> {
-		SerializeNext::forward_seed(&mut self.0, de, |ser, next| ser.serialize_key(next))
+		Forwarder::from(de).forward_to_seed(&mut self.0, |ser, key| ser.serialize_key(key))
 	}
 }
 
@@ -446,54 +495,6 @@ impl<'de, S: SerializeMap> DeserializeSeed<'de> for &mut ValueSeed<'_, S> {
 	type Value = ();
 
 	fn deserialize<D: Deserializer<'de>>(self, de: D) -> Result<(), D::Error> {
-		SerializeNext::forward_seed(&mut self.0, de, |ser, next| ser.serialize_value(next))
-	}
-}
-
-/// A [`Serialize`] implementation that outputs the next value produced by a
-/// [`Deserializer`].
-struct SerializeNext<'de, D: Deserializer<'de>>(State<D, D::Error>);
-
-impl<'de, D: Deserializer<'de>> SerializeNext<'de, D> {
-	fn from(de: D) -> SerializeNext<'de, D> {
-		SerializeNext(State::new(de))
-	}
-
-	fn forward_seed<S, E, F>(seed_state: &mut State<S, E>, de: D, op: F) -> Result<(), D::Error>
-	where
-		F: FnOnce(S, &Self) -> Result<(), E>,
-	{
-		let ser = seed_state.take_parent();
-		let next = SerializeNext::from(de);
-		match op(ser, &next) {
-			Ok(()) => Ok(()),
-			Err(ser_err) => {
-				seed_state.capture_error(next.0.error_source(), ser_err);
-				match next.0.into_error() {
-					Some(de_err) => Err(de_err),
-					None => Err(de::Error::custom(TRANSLATION_FAILED)),
-				}
-			}
-		}
-	}
-}
-
-impl<'de, D: Deserializer<'de>> Serialize for SerializeNext<'de, D> {
-	fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let de = self.0.take_parent();
-		let mut visitor = Visitor::from(ser);
-		match de.deserialize_any(&mut visitor) {
-			Ok(value) => Ok(value),
-			Err(de_err) => {
-				self.0.capture_error(visitor.0.error_source(), de_err);
-				match visitor.0.into_error() {
-					Some(ser_err) => Err(ser_err),
-					None => Err(ser::Error::custom(TRANSLATION_FAILED)),
-				}
-			}
-		}
+		Forwarder::from(de).forward_to_seed(&mut self.0, |ser, value| ser.serialize_value(value))
 	}
 }
