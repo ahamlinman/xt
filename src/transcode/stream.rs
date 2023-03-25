@@ -274,7 +274,7 @@ impl<S: Serializer> Visitor<S> {
 /// As these methods in the transcoder's visitor have nearly identical
 /// implementations, this eliminates a significant amount of signature-related
 /// boilerplate and makes it easier to focus on the actual mappings.
-macro_rules! xt_transcode_impl_forward_visitors {
+macro_rules! xt_transcode_impl_scalar_visitors {
 	($($name:ident($($arg:ident: $ty:ty)?) => $op:expr;)*) => {
 		$(fn $name<E: ::serde::de::Error>(self, $($arg: $ty)?) -> ::std::result::Result<Self::Value, E> {
 			self.forward_scalar($op)
@@ -310,7 +310,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 		f.write_str("any supported value")
 	}
 
-	xt_transcode_impl_forward_visitors! {
+	xt_transcode_impl_scalar_visitors! {
 		visit_unit() => |ser| ser.serialize_unit();
 
 		visit_bool(v: bool) => |ser| ser.serialize_bool(v);
