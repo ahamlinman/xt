@@ -256,22 +256,32 @@ impl<P, E> State<P, E> {
 	}
 }
 
-/// Receives the next value from a [`Deserializer`] and forwards it to a
-/// [`Serializer`].
+/// A [`de::Visitor`] that receives the next value from a [`Deserializer`] and
+/// forwards it to a [`Serializer`].
 struct Visitor<S: Serializer>(State<S, S::Error>);
 
 impl<S: Serializer> Visitor<S> {
+	// Creates a new visitor that forwards a deserialized value to `ser`.
 	fn new(ser: S) -> Visitor<S> {
 		Visitor(State::new(ser))
 	}
 
-	fn forward_scalar<F, E>(&mut self, op: F) -> Result<S::Ok, E>
+	/// Extracts the serializer from the state so it can be used to serialize a
+	/// scalar value, then captures and maps any serializer error.
+	///
+	/// The only meaningful difference between most of the visitor's methods is
+	/// that they each call a specific [`Serializer`] method depending on the
+	/// type of value the deserializer gave us. This helper provides all of the
+	/// necessary boilerplate to implement the transcoder's error propagation
+	/// strategy, without encoding everything into a macro body that tools like
+	/// rust-analyzer can't meaningfully inspect.
+	fn forward_scalar<F, E>(&mut self, use_serializer: F) -> Result<S::Ok, E>
 	where
 		F: FnOnce(S) -> Result<S::Ok, S::Error>,
 		E: de::Error,
 	{
 		let ser = self.0.take_parent();
-		match op(ser) {
+		match use_serializer(ser) {
 			Ok(value) => Ok(value),
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
@@ -281,13 +291,15 @@ impl<S: Serializer> Visitor<S> {
 	}
 }
 
-/// Implements [`de::Visitor`] methods that forward scalar values to a
-/// `Serializer`.
+/// Implements [`de::Visitor`] methods that simply forward scalar values to the
+/// appropriate method of a [`Serializer`].
 ///
-/// This macro is non-hygienic, and not intended for use outside of this module.
+/// As these methods in the transcoder's visitor have nearly identical
+/// implementations, this eliminates a significant amount of signature-related
+/// boilerplate and makes it easier to focus on the actual mappings.
 macro_rules! xt_transcode_impl_forward_visitors {
 	($($name:ident($($arg:ident: $ty:ty)?) => $op:expr;)*) => {
-		$(fn $name<E: de::Error>(self, $($arg: $ty)?) -> Result<Self::Value, E> {
+		$(fn $name<E: ::serde::de::Error>(self, $($arg: $ty)?) -> ::std::result::Result<Self::Value, E> {
 			self.forward_scalar($op)
 		})*
 	};
