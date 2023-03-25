@@ -142,7 +142,7 @@ where
 		// SAFETY: Our caller is responsible for the validity of read_state.
 		unsafe { (*read_state).buffer.resize(size, 0) };
 
-		// SAFETY: Our caller is responsible for the validity of `read_state`.
+		// SAFETY: Our caller is responsible for the validity of read_state.
 		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
 			Ok(len) => {
 				// SAFETY: We assume that libyaml provides us with a valid
@@ -153,7 +153,7 @@ where
 				unsafe { ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len) };
 
 				// Note that libyaml's EOF condition is the same as Rust's: set
-				// `size_read` to 0 and return success.
+				// size_read to 0 and return success.
 				//
 				// SAFETY: We assume that libyaml provides us with a valid pointer.
 				unsafe { *size_read = len as u64 };
