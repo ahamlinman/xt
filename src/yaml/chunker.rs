@@ -332,10 +332,14 @@ impl Deref for Event {
 	type Target = yaml_event_t;
 
 	fn deref(&self) -> &Self::Target {
-		// SAFETY: This is the only place where this pointer is ever converted
-		// to a reference. It can never alias a &mut to the same data because
-		// we never construct such a &mut in the first place. We expect that the
-		// value was initialized properly when the Event was constructed.
+		// SAFETY: This is the only place where self.0 is ever converted to a
+		// reference. It can never alias a &mut to the same data because we
+		// never construct such a &mut in the first place. The only time we
+		// write through self.0 after the Event is constructed is in Drop, at
+		// which point we have `&mut self` and therefore are confident that all
+		// of these Derefs (with `&self`) have fallen out of scope. We expect
+		// that the value itself was initialized properly when the Event was
+		// constructed.
 		unsafe { &*self.0 }
 	}
 }
@@ -343,13 +347,15 @@ impl Deref for Event {
 impl Drop for Event {
 	fn drop(&mut self) {
 		// SAFETY: We expect that self.0 was initialized properly when the Event
-		// was constructed. Otherwise, this is effectively an FFI call that we
-		// assume is implemented correctly.
+		// was constructed, and that all references obtained from it have fallen
+		// out of scope (see notes in Deref::deref). Otherwise, this is
+		// effectively an FFI call that we assume is implemented correctly.
 		unsafe { yaml_event_delete(self.0) };
 
 		// SAFETY: self.0 was originally obtained using Box::into_raw. The
-		// yaml_event_t was destructed above, which means that it is safe for
-		// Box to free the associated memory.
+		// yaml_event_t was destructed above (as an effectively-FFI type it does
+		// not implement Drop), which means that it is safe for Box to free the
+		// associated memory.
 		unsafe { drop(Box::from_raw(self.0)) };
 	}
 }
