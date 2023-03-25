@@ -128,7 +128,7 @@ where
 	S: Serializer,
 	D: Deserializer<'de>,
 {
-	let mut visitor = Visitor::from(ser);
+	let mut visitor = Visitor::new(ser);
 	match de.deserialize_any(&mut visitor) {
 		Ok(value) => Ok(value),
 		Err(de_err) => match visitor.0.error_source() {
@@ -260,13 +260,11 @@ impl<P, E> State<P, E> {
 /// [`Serializer`].
 struct Visitor<S: Serializer>(State<S, S::Error>);
 
-impl<S: Serializer> From<S> for Visitor<S> {
-	fn from(ser: S) -> Visitor<S> {
+impl<S: Serializer> Visitor<S> {
+	fn new(ser: S) -> Visitor<S> {
 		Visitor(State::new(ser))
 	}
-}
 
-impl<S: Serializer> Visitor<S> {
 	fn forward_scalar<F, E>(&mut self, op: F) -> Result<S::Ok, E>
 	where
 		F: FnOnce(S) -> Result<S::Ok, S::Error>,
@@ -338,7 +336,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 		};
 
 		loop {
-			let mut seed = SeqSeed::from(&mut seq);
+			let mut seed = SeqSeed::new(&mut seq);
 			match de.next_element_seed(&mut seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
@@ -369,7 +367,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 		};
 
 		loop {
-			let mut key_seed = KeySeed::from(&mut map);
+			let mut key_seed = KeySeed::new(&mut map);
 			match de.next_key_seed(&mut key_seed) {
 				Ok(None) => break,
 				Ok(Some(())) => {}
@@ -379,7 +377,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 				}
 			}
 
-			let mut value_seed = ValueSeed::from(&mut map);
+			let mut value_seed = ValueSeed::new(&mut map);
 			if let Err(de_err) = de.next_value_seed(&mut value_seed) {
 				self.0.capture_child_error(value_seed.0);
 				return Err(de_err);
@@ -429,8 +427,8 @@ impl<'de, D: Deserializer<'de>> Forwarder<'de, D> {
 
 impl<'de, D: Deserializer<'de>> Serialize for Forwarder<'de, D> {
 	fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+		let mut visitor = Visitor::new(ser);
 		let de = self.0.take_parent();
-		let mut visitor = Visitor::from(ser);
 		match de.deserialize_any(&mut visitor) {
 			Ok(value) => Ok(value),
 			Err(de_err) => {
@@ -448,8 +446,8 @@ impl<'de, D: Deserializer<'de>> Serialize for Forwarder<'de, D> {
 /// it to a [`ser::SerializeSeq`].
 struct SeqSeed<'a, S: SerializeSeq>(State<&'a mut S, S::Error>);
 
-impl<'a, S: SerializeSeq> From<&'a mut S> for SeqSeed<'a, S> {
-	fn from(ser: &'a mut S) -> SeqSeed<'a, S> {
+impl<'a, S: SerializeSeq> SeqSeed<'a, S> {
+	fn new(ser: &'a mut S) -> SeqSeed<'a, S> {
 		SeqSeed(State::new(ser))
 	}
 }
@@ -467,8 +465,8 @@ impl<'de, S: SerializeSeq> DeserializeSeed<'de> for &mut SeqSeed<'_, S> {
 /// [`ser::SerializeMap`].
 struct KeySeed<'a, S: SerializeMap>(State<&'a mut S, S::Error>);
 
-impl<'a, S: SerializeMap> From<&'a mut S> for KeySeed<'a, S> {
-	fn from(ser: &'a mut S) -> KeySeed<'a, S> {
+impl<'a, S: SerializeMap> KeySeed<'a, S> {
+	fn new(ser: &'a mut S) -> KeySeed<'a, S> {
 		KeySeed(State::new(ser))
 	}
 }
@@ -485,8 +483,8 @@ impl<'de, S: SerializeMap> DeserializeSeed<'de> for &mut KeySeed<'_, S> {
 /// [`ser::SerializeMap`].
 struct ValueSeed<'a, S: SerializeMap>(State<&'a mut S, S::Error>);
 
-impl<'a, S: SerializeMap> From<&'a mut S> for ValueSeed<'a, S> {
-	fn from(ser: &'a mut S) -> ValueSeed<'a, S> {
+impl<'a, S: SerializeMap> ValueSeed<'a, S> {
+	fn new(ser: &'a mut S) -> ValueSeed<'a, S> {
 		ValueSeed(State::new(ser))
 	}
 }
