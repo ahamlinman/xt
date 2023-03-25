@@ -1,3 +1,5 @@
+//! Support for translation between Serde data formats.
+
 mod stream;
 mod value;
 

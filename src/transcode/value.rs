@@ -1,3 +1,6 @@
+//! Non-streaming translation between Serde data formats using zero-copy
+//! deserialization.
+
 use std::borrow::Cow;
 use std::fmt;
 

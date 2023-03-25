@@ -1,7 +1,7 @@
-//! Translation between Serde data formats.
+//! Streaming translation between Serde data formats.
 //!
-//! xt's transcoder is somewhat inspired by the [`serde_transcode`] crate
-//! advertised in the Serde documentation. However, its implementation has
+//! xt's streaming transcoder is somewhat inspired by the [`serde_transcode`]
+//! crate advertised in the Serde documentation. However, its implementation has
 //! diverged significantly to enable the preservation of original (de)serializer
 //! error values, in contrast to `serde_transcode`'s approach of stringifying
 //! errors to meet Serde API requirements.
