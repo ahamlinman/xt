@@ -116,13 +116,36 @@ use serde::de::{self, DeserializeSeed, Deserializer};
 use serde::ser::{self, Serialize, SerializeMap, SerializeSeq, Serializer};
 
 /// The message used to generate generic serializer and deserializer errors.
+///
+/// When transcoding fails due to a serializer error, this message could make
+/// its way into the text of the resulting deserializer error, depending on the
+/// specific deserializer in use.
 const TRANSLATION_FAILED: &str = "translation failed";
 
 /// Transcodes from a Serde `Deserializer` to a Serde `Serializer`.
 ///
-/// The transcoder forwards the output produced by the deserializer directly to
-/// the serializer without collecting it into an intermediate data structure. An
-/// error on either side will halt further transcoding.
+/// The transcoding process forwards values produced by a deserializer directly
+/// to a serializer, without collecting the entire output of the deserializer
+/// into an intermediate data structure.
+///
+/// An error in either the serializer or deserializer will immediately halt
+/// transcoding. See [`Error`] for information about how to interpret a
+/// transcoding error.
+///
+/// # Caveats
+///
+/// - The transcoder does not validate the output of the deserializer in any
+///   meaningful way. For example, it does not impose recursion limits on the
+///   deserialized data, nor does it prevent the deserialization of values that
+///   a particular serializer may not support.
+///
+/// - Transcoding is only possible for self-describing data formats; that is,
+///   formats where the types of values can be determined from the serialized
+///   representation itself.
+///
+/// - While the transcoding process itself does not collect the deserializer's
+///   entire output, certain (de)serializers may do so as part of their
+///   implementation.
 pub(crate) fn transcode<'de, S, D>(ser: S, de: D) -> Result<S::Ok, Error<S::Error, D::Error>>
 where
 	S: Serializer,
