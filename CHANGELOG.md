@@ -1,3 +1,14 @@
+## v0.17.0 (Unreleased)
+
+### Changed
+
+- **Formatting of non-BMP Unicode characters in YAML output.** This version of
+  xt includes updates to an internal YAML support library that result in certain
+  Unicode characters (for example, emoji) being emitted directly rather than as
+  `\UXXXXXXXX` escape sequences. This behavior more closely matches that of
+  other YAML formatting libraries, and should make certain YAML outputs easier
+  to read.
+
 ## v0.16.0 (2023-02-01)
 
 ### Fixed

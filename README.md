@@ -35,7 +35,7 @@ After [installing Rust][install rust] on your system, you can install xt
 [from crates.io][crate] using Cargo:
 
 ```sh
-cargo install xt
+cargo install --locked xt
 ```
 
 [rust]: https://www.rust-lang.org/
