@@ -3,6 +3,7 @@ name: xt Full Test Matrix
 on: workflow_dispatch
 env:
   CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 jobs:
   stable-msrv-test:
     strategy:
