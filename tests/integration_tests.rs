@@ -16,6 +16,7 @@
 //! it does provide broad coverage with relatively little effort.
 
 use std::io;
+use std::str::from_utf8;
 use std::thread;
 
 use rstest::rstest;
@@ -34,13 +35,14 @@ macro_rules! xt_assert_translation {
 		let mut output = Vec::with_capacity(expected.len());
 		$translator(input, $source_format, $to, &mut output).unwrap();
 
-		// Try to assert the UTF-8 conversions of the outputs first, so that
-		// basic differences can be seen more easily in the test output.
-		// TODO: This will be harder to read if only one output is valid UTF-8.
-		assert_eq!(std::str::from_utf8(&output), std::str::from_utf8(expected));
-
-		// Do a final assertion on the actual content so we don't miss anything.
-		assert_eq!(output, expected);
+		if let (Ok(output), Ok(expected)) = (from_utf8(&output), from_utf8(expected)) {
+			// Try to print out readable representations of these values if we
+			// can, instead of just arrays of bytes...
+			assert_eq!(output, expected);
+		} else {
+			// ...but always make sure we at least print *something*.
+			assert_eq!(output, expected);
+		}
 	};
 }
 
