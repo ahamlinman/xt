@@ -156,8 +156,9 @@ fn exit_for_broken_pipe() {
 	// https://stackoverflow.com/a/65760807
 	// https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
 	#[cfg(unix)]
-	// SAFETY: libc is assumed to work correctly. Everything in the block comes
-	// from libc, so there are no Rust invariants to violate.
+	// SAFETY: These are FFI calls to libc, which we assume is implemented
+	// correctly. Because everything in the block comes from libc, there are no
+	// Rust invariants to violate.
 	unsafe {
 		libc::signal(libc::SIGPIPE, libc::SIG_DFL);
 		libc::raise(libc::SIGPIPE);
@@ -349,22 +350,36 @@ impl InputPath {
 			Self::File(path) => File::open(path)?,
 		};
 
-		// (UN)SAFETY: It is Undefined Behavior to modify a mapped file outside
-		// of the process… so we tell users not to do that in the help output.
-		// This is NOT a real solution and does NOT provide any actual safety
-		// guarantee. It's a risk taken intentionally based on a pragmatic
-		// understanding of the failure modes most likely to appear when the
-		// requirement is violated, in order to improve performance for many
-		// input formats (where translating a slice is more efficient than
-		// translating a reader) while possibly giving the OS smarter memory
-		// management options compared to just reading a file into a buffer.
+		// (UN)SAFETY: An Mmap provides access to arbitrary file data as a
+		// &[u8], and it is Undefined Behavior for the data behind a &[u8] to
+		// change. However, this CAN happen if the mapped file is modified
+		// outside of the process.
+		//
+		// Our solution? We tell users not to do that in the help output.
+		//
+		// No, this is NOT a real solution, and does NOT provide any actual
+		// safety guarantee. It's a risk taken intentionally based on a
+		// pragmatic understanding of the failure modes most likely to appear
+		// when the UB is invoked, i.e. that we are significantly more likely to
+		// see xt die from a SIGBUS than we are to see demons *actually* fly out
+		// of somebody's nose (see "Undefined behavior" on Wikipedia for more
+		// about this phenomenon).
+		//
+		// We take this risk because performance testing shows that translating
+		// a slice is often significantly more efficient than translating a
+		// reader, and because a memory map should give the OS smarter memory
+		// management options compared to simply reading the contents of a file
+		// into a buffer, especially when memory is at a premium or the file is
+		// unusually large. However, this justification should be treated with
+		// skepticism, and more research into possible safety enhancements is
+		// likely warranted.
 		if let Ok(map) = unsafe { memmap2::Mmap::map(&file) } {
 			#[cfg(unix)]
 			{
 				// Make a best-effort attempt to advise the system that we will
 				// soon access these pages sequentially. madvise failures on
 				// these two values should not affect the normal functionality
-				// of the mapping.
+				// of the mapping, so we intentionally ignore these Results.
 				let _ = map.advise(memmap2::Advice::Sequential);
 				let _ = map.advise(memmap2::Advice::WillNeed);
 			}

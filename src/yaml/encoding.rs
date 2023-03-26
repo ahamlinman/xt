@@ -307,8 +307,8 @@ where
 		};
 		match lead {
 			0x0000..=0xD7FF | 0xE000..=0xFFFF => {
-				// SAFETY: This is not a UTF-16 surrogate, which means that the u16
-				// code unit directly encodes the desired code point.
+				// SAFETY: This is not a UTF-16 surrogate, which means that the
+				// u16 code unit directly encodes the desired code point.
 				return Some(Ok(unsafe { char::from_u32_unchecked(u32::from(lead)) }));
 			}
 			// Leading surrogate; continue on to decode the trailing surrogate.
@@ -324,13 +324,14 @@ where
 			Err(err) => return Some(Err(err)),
 		};
 		if !(0xDC00..=0xDFFF).contains(&trail) {
-			// We needed a trailing surrogate and didn't get one. We'll try to decode
-			// this as a leading code unit on the next iteration.
+			// We needed a trailing surrogate and didn't get one. We'll try to
+			// decode this as a leading code unit on the next iteration.
 			self.buf = Some(trail);
 			return Some(Err(EncodingError::new(trail, pos).into()));
 		}
 
-		// SAFETY: We've checked that the two code units are a valid surrogate pair.
+		// SAFETY: All of the above checks have confirmed that the two code
+		// units form a valid surrogate pair.
 		Some(Ok(unsafe {
 			char::from_u32_unchecked(
 				0x10000 + (u32::from(lead - 0xD800) << 10 | u32::from(trail - 0xDC00)),
