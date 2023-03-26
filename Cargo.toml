@@ -38,6 +38,10 @@ zstd = "0.12"
 version = "0.4"
 features = ["html_reports"]
 
+[dev-dependencies.rstest]
+version = "0.17"
+default-features = false
+
 [[bench]]
 name = "criterion"
 path = "benches/criterion.rs"

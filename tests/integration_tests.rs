@@ -20,103 +20,123 @@ use std::io;
 use std::thread;
 
 use paste::paste;
+use rstest::rstest;
 
 use xt::Format;
 
-/// Tests a single call to xt::translate against expected output.
-macro_rules! xt_basic_tests {
-	($($name:ident: $fn:ident($input:expr, $from:expr, $to:expr) == $expected:expr;)+) => {
-		$(#[test]
-		fn $name() {
-			let mut output = Vec::with_capacity($expected.len());
-			xt::$fn($input, $from, $to, &mut output).unwrap();
-			assert_eq!(&output, $expected);
-		})+
-	};
+#[rstest]
+fn translate_single_slice_detected(
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+) {
+	let input = get_single_document_input(from);
+	let expected = get_single_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_slice(input, None, to, &mut output).unwrap();
+	assert_eq!(output, expected);
 }
 
-/// Tests that xt produces equivalent translations for all possible invocations
-/// that translate a given input to a given output format.
-macro_rules! xt_test_all_invocations {
-	($name:ident, $input:expr, $from:expr, $to:expr, $expected:expr) => {
-		paste! {
-			xt_basic_tests! {
-				[<$name _slice_detected>]: translate_slice($input, None, $to) == $expected;
-				[<$name _slice_explicit>]: translate_slice($input, Some($from), $to) == $expected;
-				[<$name _reader_detected>]: translate_reader($input, None, $to) == $expected;
-				[<$name _reader_explicit>]: translate_reader($input, Some($from), $to) == $expected;
-			}
-		}
-	};
+#[rstest]
+fn translate_single_slice_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+) {
+	let input = get_single_document_input(from);
+	let expected = get_single_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_slice(input, Some(from), to, &mut output).unwrap();
+	assert_eq!(output, expected);
 }
 
-/// Exhaustively tests all possible translations between a set of documents.
-macro_rules! xt_test_all_combinations {
-	// A: Select the first document as our left side and test it against the
-	//    remaining right sides, or recurse and select the next document as the
-	//    left side.
-	{ $name:ident; ($lf:ident, $lin:expr); $($tail:tt)* } => {
-		xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
-		xt_test_all_combinations!{ $name; $($tail)* }            // => A or D
-	};
-	// B: We have a left side and a right side. Test both possible translation
-	//    directions for that pair, then test the left side against the remaining
-	//    right sides.
-	{ $name:ident; $lf:ident, $lin:expr; ($rf:ident, $rin:expr); $($tail:tt)* } => {
-		paste! {
-			xt_test_all_invocations!([<$name _ $lf:lower _to_ $rf:lower>], $lin, Format::$lf, Format::$rf, $rin);
-			xt_test_all_invocations!([<$name _ $rf:lower _to_ $lf:lower>], $rin, Format::$rf, Format::$lf, $lin);
-		}
-		xt_test_all_combinations!{ $name; $lf, $lin; $($tail)* } // => B or C
-	};
-	// C: We have a left side, but we ran out of right sides. Test the left side
-	//    against itself.
-	{ $name:ident; $lf:ident, $lin:expr; } => {
-		paste! {
-			xt_test_all_invocations!([<$name _ $lf:lower _to_ $lf:lower>], $lin, Format::$lf, Format::$lf, $lin);
-		}
-	};
-	// D: We ran out of possible left sides.
-	{ $name:ident; } => {};
+#[rstest]
+fn translate_single_reader_detected(
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+) {
+	let input = get_single_document_input(from);
+	let expected = get_single_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_reader(input, None, to, &mut output).unwrap();
+	assert_eq!(output, expected);
 }
 
-static SINGLE_JSON_INPUT: &[u8] = include_bytes!("single.json");
-static SINGLE_YAML_INPUT: &[u8] = include_bytes!("single.yaml");
-static SINGLE_TOML_INPUT: &[u8] = include_bytes!("single.toml");
-static SINGLE_MSGPACK_INPUT: &[u8] = include_bytes!("single.msgpack");
-
-// Tests single document transcoding.
-//
-// TOML's limitations impose several restrictions on these inputs:
-//
-// 1. No null values.
-// 2. The root of each input must be a map.
-// 3. The values in the map must appear in an order that TOML can support
-//    (non-tables before tables at a given level of nesting).
-xt_test_all_combinations! {
-	single;
-	(Json, SINGLE_JSON_INPUT);
-	(Yaml, SINGLE_YAML_INPUT);
-	(Toml, SINGLE_TOML_INPUT);
-	(Msgpack, SINGLE_MSGPACK_INPUT);
+#[rstest]
+fn translate_single_reader_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+) {
+	let input = get_single_document_input(from);
+	let expected = get_single_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_reader(input, Some(from), to, &mut output).unwrap();
+	assert_eq!(output, expected);
 }
 
-static MULTI_JSON_INPUT: &[u8] = include_bytes!("multi.json");
-static MULTI_YAML_INPUT: &[u8] = include_bytes!("multi.yaml");
-static MULTI_MSGPACK_INPUT: &[u8] = include_bytes!("multi.msgpack");
+fn get_single_document_input(fmt: Format) -> &'static [u8] {
+	match fmt {
+		Format::Json => include_bytes!("single.json"),
+		Format::Yaml => include_bytes!("single.yaml"),
+		Format::Toml => include_bytes!("single.toml"),
+		Format::Msgpack => include_bytes!("single.msgpack"),
+		fmt => panic!("{fmt} does not have a single-document test case"),
+	}
+}
 
-// Tests multi-document transcoding.
-//
-// The YAML and MessagePack format detection logic imposes a restriction on
-// these inputs: the first input in the stream must be a map or sequence.
-// Subsequent values may be of any supported type.
-//
-// TOML does not support multi-document transcoding.
-xt_test_all_combinations! {
-	multi;
-	(Json, MULTI_JSON_INPUT);
-	(Yaml, MULTI_YAML_INPUT);
-	(Msgpack, MULTI_MSGPACK_INPUT);
+#[rstest]
+fn translate_multi_slice_detected(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	let input = get_multi_document_input(from);
+	let expected = get_multi_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_slice(input, None, to, &mut output).unwrap();
+	assert_eq!(output, expected);
+}
+
+#[rstest]
+fn translate_multi_slice_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	let input = get_multi_document_input(from);
+	let expected = get_multi_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_slice(input, Some(from), to, &mut output).unwrap();
+	assert_eq!(output, expected);
+}
+
+#[rstest]
+fn translate_multi_reader_detected(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	let input = get_multi_document_input(from);
+	let expected = get_multi_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_reader(input, None, to, &mut output).unwrap();
+	assert_eq!(output, expected);
+}
+
+#[rstest]
+fn translate_multi_reader_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	let input = get_multi_document_input(from);
+	let expected = get_multi_document_input(to);
+	let mut output = Vec::with_capacity(expected.len());
+	xt::translate_reader(input, Some(from), to, &mut output).unwrap();
+	assert_eq!(output, expected);
+}
+
+fn get_multi_document_input(fmt: Format) -> &'static [u8] {
+	match fmt {
+		Format::Json => include_bytes!("multi.json"),
+		Format::Yaml => include_bytes!("multi.yaml"),
+		Format::Msgpack => include_bytes!("multi.msgpack"),
+		fmt => panic!("{fmt} does not have a multi-document test case"),
+	}
 }
 
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
