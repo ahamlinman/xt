@@ -361,9 +361,9 @@ impl InputPath {
 		// safety guarantee. It's a risk taken intentionally based on a
 		// pragmatic understanding of the failure modes most likely to appear
 		// when the UB is invoked, i.e. that we are significantly more likely to
-		// see xt die from a SIGBUS than we are to see demons *actually* fly out
-		// of somebody's nose (see "Undefined behavior" on Wikipedia for more
-		// about this phenomenon).
+		// see xt die from a SIGBUS or silently produce invalid output than we
+		// are to see demons *actually* fly out of somebody's nose (see
+		// "Undefined behavior" on Wikipedia for more about this phenomenon).
 		//
 		// We take this risk because performance testing shows that translating
 		// a slice is often significantly more efficient than translating a
