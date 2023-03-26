@@ -31,6 +31,7 @@ libc = "0.2.140"
 
 [dev-dependencies]
 hex-literal = "0.3.4"
+similar-asserts = "1.4.2"
 zstd = "0.12.3"
 
 [dev-dependencies.criterion]

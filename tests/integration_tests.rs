@@ -38,10 +38,10 @@ macro_rules! xt_assert_translation {
 		if let (Ok(output), Ok(expected)) = (from_utf8(&output), from_utf8(expected)) {
 			// Try to print out readable representations of these values if we
 			// can, instead of just arrays of bytes...
-			assert_eq!(output, expected);
+			similar_asserts::assert_eq!(output, expected);
 		} else {
 			// ...but always make sure we at least print *something*.
-			assert_eq!(output, expected);
+			similar_asserts::assert_eq!(output, expected);
 		}
 	};
 }
