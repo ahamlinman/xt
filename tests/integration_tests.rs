@@ -19,7 +19,6 @@
 use std::io;
 use std::thread;
 
-use paste::paste;
 use rstest::rstest;
 
 use xt::Format;
@@ -139,8 +138,6 @@ fn get_multi_document_input(fmt: Format) -> &'static [u8] {
 	}
 }
 
-const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
-
 /// Tests the translation of YAML documents from various text encodings.
 ///
 /// YAML 1.2 requires support for the UTF-8, UTF-16, and UTF-32 character
@@ -148,27 +145,29 @@ const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
 /// takes care of re-encoding inputs where necessary. The test inputs cover a
 /// reasonable subset of combinations of code unit size, endianness, and
 /// presence or lack of a BOM.
-macro_rules! xt_test_yaml_encodings {
-	($($filename:ident),+ $(,)?) => {
-		paste! {
-			$(#[test]
-			fn [<yaml_encoding_ $filename>]() {
-				static INPUT: &[u8] = include_bytes!(concat!(stringify!($filename), ".yaml"));
-				let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
-				xt::translate_slice(
-					INPUT,
-					Some(Format::Yaml),
-					Format::Json,
-					&mut output,
-				)
-				.unwrap();
-				assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
-			})+
-		}
-	};
+#[rstest]
+fn yaml_encoding(
+	#[values("utf16be", "utf16le", "utf32be", "utf32le", "utf16bebom", "utf32lebom")] name: &str,
+) {
+	let input = get_yaml_encoding_input(name);
+	let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
+	xt::translate_slice(input, Some(Format::Yaml), Format::Json, &mut output).unwrap();
+	assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
 }
 
-xt_test_yaml_encodings![utf16be, utf16le, utf32be, utf32le, utf16bebom, utf32lebom];
+const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
+
+fn get_yaml_encoding_input(name: &str) -> &'static [u8] {
+	match name {
+		"utf16be" => include_bytes!("utf16be.yaml"),
+		"utf16le" => include_bytes!("utf16le.yaml"),
+		"utf32be" => include_bytes!("utf32be.yaml"),
+		"utf32le" => include_bytes!("utf32le.yaml"),
+		"utf16bebom" => include_bytes!("utf16bebom.yaml"),
+		"utf32lebom" => include_bytes!("utf32lebom.yaml"),
+		name => panic!("{name} is not a known YAML encoding input"),
+	}
+}
 
 /// Tests that TOML output re-orders inputs as needed to meet TOML-specific
 /// requirements, in particular that all non-table values must appear before any

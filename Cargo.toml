@@ -31,7 +31,6 @@ libc = "0.2"
 
 [dev-dependencies]
 hex-literal = "0.3"
-paste = "1"
 zstd = "0.12"
 
 [dev-dependencies.criterion]

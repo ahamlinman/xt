@@ -939,7 +939,6 @@ dependencies = [
  "lexopt",
  "libc",
  "memmap2",
- "paste",
  "rmp",
  "rmp-serde",
  "rstest",
