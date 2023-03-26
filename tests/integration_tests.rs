@@ -35,13 +35,13 @@ macro_rules! xt_assert_translation {
 		let mut output = Vec::with_capacity(expected.len());
 		$translator(input, $source_format, $to, &mut output).unwrap();
 
-		if let (Ok(output), Ok(expected)) = (from_utf8(&output), from_utf8(expected)) {
+		if let (Ok(expected), Ok(output)) = (from_utf8(expected), from_utf8(&output)) {
 			// Try to print out readable representations of these values if we
 			// can, instead of just arrays of bytes...
-			similar_asserts::assert_eq!(output, expected);
+			similar_asserts::assert_eq!(expected, output);
 		} else {
 			// ...but always make sure we at least print *something*.
-			similar_asserts::assert_eq!(output, expected);
+			similar_asserts::assert_eq!(expected, output);
 		}
 	};
 }
@@ -198,7 +198,7 @@ fn yaml_encoding(
 	let input = get_yaml_encoding_input(name);
 	let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
 	xt::translate_slice(input, Some(Format::Yaml), Format::Json, &mut output).unwrap();
-	assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
+	assert_eq!(Ok(YAML_ENCODING_RESULT), std::str::from_utf8(&output));
 }
 
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
@@ -224,7 +224,7 @@ fn toml_reordering() {
 	const EXPECTED: &str = include_str!("single.toml");
 	let mut output = Vec::with_capacity(EXPECTED.len());
 	xt::translate_slice(INPUT, Some(Format::Json), Format::Toml, &mut output).unwrap();
-	assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
+	assert_eq!(Ok(EXPECTED), std::str::from_utf8(&output));
 }
 
 /// Tests that a TOML input that starts with a table is not accidentally
