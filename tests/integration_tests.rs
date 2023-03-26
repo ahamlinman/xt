@@ -150,6 +150,14 @@ fn translate_multi_reader_explicit(
 	}
 }
 
+/// Returns the single-document test input for a given format.
+///
+/// TOML's limitations impose several restrictions on these inputs:
+///
+/// 1. No null values.
+/// 2. The root of each input must be a map.
+/// 3. The values of the map must be ordered such that all non-map values appear
+///    before any maps at a given depth.
 fn get_single_document_input(fmt: Format) -> &'static [u8] {
 	match fmt {
 		Format::Json => include_bytes!("single.json"),
@@ -160,6 +168,13 @@ fn get_single_document_input(fmt: Format) -> &'static [u8] {
 	}
 }
 
+/// Returns the multi-document test input for a given format.
+///
+/// The YAML and MessagePack format detection logic imposes a restriction on
+/// these inputs: the first input in the stream must be a map or sequence.
+/// Subsequent values may be of any supported type.
+///
+/// TOML does not support multi-document transcoding.
 fn get_multi_document_input(fmt: Format) -> &'static [u8] {
 	match fmt {
 		Format::Json => include_bytes!("multi.json"),
