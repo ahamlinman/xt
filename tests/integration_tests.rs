@@ -10,11 +10,10 @@
 //! content as translated and output by xt itself, and exhaustively checks all
 //! possible xt invocations—yes, all O(n²) of them—for translating one of those
 //! documents to another (including itself). Besides generating a quadratic
-//! blow-up of test cases using a complex set of macros, this approach imposes
-//! limitations on the structure and values of the test inputs within a given
-//! set, and can cause some annoyance when the specific formatting of a given
-//! output changes. However, it does provide broad coverage with relatively
-//! little effort.
+//! blow-up of test cases, this approach imposes limitations on the structure
+//! and values of the test inputs within a given set, and can cause some
+//! annoyance when the specific formatting of a given output changes. However,
+//! it does provide broad coverage with relatively little effort.
 
 use std::io;
 use std::thread;
@@ -23,16 +22,39 @@ use rstest::rstest;
 
 use xt::Format;
 
+macro_rules! xt_assert_translation {
+	(
+		input_source = $input_source:path;
+		translator = $translator:path;
+		translation = $from:expr => $to:expr;
+		source_format = $source_format:expr;
+	) => {
+		let input = $input_source($from);
+		let expected = $input_source($to);
+		let mut output = Vec::with_capacity(expected.len());
+		$translator(input, $source_format, $to, &mut output).unwrap();
+
+		// Try to assert the UTF-8 conversions of the outputs first, so that
+		// basic differences can be seen more easily in the test output.
+		// TODO: This will be harder to read if only one output is valid UTF-8.
+		assert_eq!(std::str::from_utf8(&output), std::str::from_utf8(expected));
+
+		// Do a final assertion on the actual content so we don't miss anything.
+		assert_eq!(output, expected);
+	};
+}
+
 #[rstest]
 fn translate_single_slice_detected(
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
 ) {
-	let input = get_single_document_input(from);
-	let expected = get_single_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_slice(input, None, to, &mut output).unwrap();
-	assert_eq!(output, expected);
+	xt_assert_translation! {
+		input_source = get_single_document_input;
+		translator = xt::translate_slice;
+		translation = from => to;
+		source_format = None;
+	}
 }
 
 #[rstest]
@@ -40,11 +62,12 @@ fn translate_single_slice_explicit(
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
 ) {
-	let input = get_single_document_input(from);
-	let expected = get_single_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_slice(input, Some(from), to, &mut output).unwrap();
-	assert_eq!(output, expected);
+	xt_assert_translation! {
+		input_source = get_single_document_input;
+		translator = xt::translate_slice;
+		translation = from => to;
+		source_format = Some(from);
+	}
 }
 
 #[rstest]
@@ -52,11 +75,12 @@ fn translate_single_reader_detected(
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
 ) {
-	let input = get_single_document_input(from);
-	let expected = get_single_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_reader(input, None, to, &mut output).unwrap();
-	assert_eq!(output, expected);
+	xt_assert_translation! {
+		input_source = get_single_document_input;
+		translator = xt::translate_reader;
+		translation = from => to;
+		source_format = None;
+	}
 }
 
 #[rstest]
@@ -64,11 +88,64 @@ fn translate_single_reader_explicit(
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
 	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
 ) {
-	let input = get_single_document_input(from);
-	let expected = get_single_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_reader(input, Some(from), to, &mut output).unwrap();
-	assert_eq!(output, expected);
+	xt_assert_translation! {
+		input_source = get_single_document_input;
+		translator = xt::translate_reader;
+		translation = from => to;
+		source_format = Some(from);
+	}
+}
+
+#[rstest]
+fn translate_multi_slice_detected(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	xt_assert_translation! {
+		input_source = get_multi_document_input;
+		translator = xt::translate_slice;
+		translation = from => to;
+		source_format = None;
+	}
+}
+
+#[rstest]
+fn translate_multi_slice_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	xt_assert_translation! {
+		input_source = get_multi_document_input;
+		translator = xt::translate_slice;
+		translation = from => to;
+		source_format = Some(from);
+	}
+}
+
+#[rstest]
+fn translate_multi_reader_detected(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	xt_assert_translation! {
+		input_source = get_multi_document_input;
+		translator = xt::translate_reader;
+		translation = from => to;
+		source_format = None;
+	}
+}
+
+#[rstest]
+fn translate_multi_reader_explicit(
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
+	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+) {
+	xt_assert_translation! {
+		input_source = get_multi_document_input;
+		translator = xt::translate_reader;
+		translation = from => to;
+		source_format = Some(from);
+	}
 }
 
 fn get_single_document_input(fmt: Format) -> &'static [u8] {
@@ -79,54 +156,6 @@ fn get_single_document_input(fmt: Format) -> &'static [u8] {
 		Format::Msgpack => include_bytes!("single.msgpack"),
 		fmt => panic!("{fmt} does not have a single-document test case"),
 	}
-}
-
-#[rstest]
-fn translate_multi_slice_detected(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
-) {
-	let input = get_multi_document_input(from);
-	let expected = get_multi_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_slice(input, None, to, &mut output).unwrap();
-	assert_eq!(output, expected);
-}
-
-#[rstest]
-fn translate_multi_slice_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
-) {
-	let input = get_multi_document_input(from);
-	let expected = get_multi_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_slice(input, Some(from), to, &mut output).unwrap();
-	assert_eq!(output, expected);
-}
-
-#[rstest]
-fn translate_multi_reader_detected(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
-) {
-	let input = get_multi_document_input(from);
-	let expected = get_multi_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_reader(input, None, to, &mut output).unwrap();
-	assert_eq!(output, expected);
-}
-
-#[rstest]
-fn translate_multi_reader_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
-) {
-	let input = get_multi_document_input(from);
-	let expected = get_multi_document_input(to);
-	let mut output = Vec::with_capacity(expected.len());
-	xt::translate_reader(input, Some(from), to, &mut output).unwrap();
-	assert_eq!(output, expected);
 }
 
 fn get_multi_document_input(fmt: Format) -> &'static [u8] {
