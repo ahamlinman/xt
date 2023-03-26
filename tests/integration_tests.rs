@@ -198,7 +198,7 @@ fn yaml_encoding(
 	let input = get_yaml_encoding_input(name);
 	let mut output = Vec::with_capacity(YAML_ENCODING_RESULT.len());
 	xt::translate_slice(input, Some(Format::Yaml), Format::Json, &mut output).unwrap();
-	assert_eq!(Ok(YAML_ENCODING_RESULT), std::str::from_utf8(&output));
+	assert_eq!(std::str::from_utf8(&output), Ok(YAML_ENCODING_RESULT));
 }
 
 const YAML_ENCODING_RESULT: &str = concat!(r#"{"xt":"🧑‍💻"}"#, "\n");
@@ -224,7 +224,7 @@ fn toml_reordering() {
 	const EXPECTED: &str = include_str!("single.toml");
 	let mut output = Vec::with_capacity(EXPECTED.len());
 	xt::translate_slice(INPUT, Some(Format::Json), Format::Toml, &mut output).unwrap();
-	assert_eq!(Ok(EXPECTED), std::str::from_utf8(&output));
+	assert_eq!(std::str::from_utf8(&output), Ok(EXPECTED));
 }
 
 /// Tests that a TOML input that starts with a table is not accidentally
