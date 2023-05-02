@@ -24,7 +24,6 @@
 
 use std::borrow::Cow;
 use std::env;
-use std::error;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -34,6 +33,8 @@ use std::process;
 use is_terminal::IsTerminal;
 
 use xt::Format;
+
+mod pipecheck;
 
 macro_rules! xt_bail {
 	($path:ident, $fmt:literal $(, $($args:tt)* )?) => {{
@@ -57,22 +58,6 @@ macro_rules! xt_bail {
 	($x:expr) => { xt_bail!("{}", $x) };
 }
 
-macro_rules! xt_io_error_bail {
-	(@check $x:expr) => {
-		if is_broken_pipe($x) {
-			exit_for_broken_pipe();
-		}
-	};
-	($path:ident, $err:expr) => {{
-		xt_io_error_bail!(@check $err);
-		xt_bail!($path, "{}", $err);
-	}};
-	($err:expr) => {{
-		xt_io_error_bail!(@check $err);
-		xt_bail!("{}", $err);
-	}};
-}
-
 fn main() {
 	let args = match Cli::parse_args() {
 		Ok(args) => args,
@@ -93,7 +78,7 @@ fn main() {
 	}
 
 	let mut stdin_used = false;
-	let mut output = BufWriter::new(stdout.lock());
+	let mut output = pipecheck::Writer::new(BufWriter::new(stdout.lock()));
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
 	let input_paths = if args.input_paths.is_empty() {
@@ -118,55 +103,16 @@ fn main() {
 			Input::Mmap(map) => translator.translate_slice(map, from),
 		};
 		if let Err(err) = result {
-			xt_io_error_bail!(path, err.as_ref());
+			xt_bail!(path, err.as_ref());
 		}
 		if let Err(err) = translator.flush() {
-			xt_io_error_bail!(&err);
+			xt_bail!(&err);
 		}
 	}
 }
 
 fn format_is_unsafe_for_terminal(format: Format) -> bool {
 	matches!(format, Format::Msgpack)
-}
-
-fn is_broken_pipe(err: &(dyn error::Error + 'static)) -> bool {
-	let mut next = Some(err);
-	while let Some(err) = next {
-		if let Some(ioerr) = err.downcast_ref::<io::Error>() {
-			if ioerr.kind() == io::ErrorKind::BrokenPipe {
-				return true;
-			}
-		}
-		next = err.source();
-	}
-	false
-}
-
-fn exit_for_broken_pipe() {
-	// For largely historical reasons, Rust ignores SIGPIPE on Unix(-like)
-	// systems by default and treats writing to a broken pipe exclusively as a
-	// normal I/O error. Dying from SIGPIPE in this case more closely matches
-	// the behavior of a typical Unix command line program. However, we still
-	// come here through the regular error handling path instead of restoring
-	// the default SIGPIPE handler from the start, to ensure that developers on
-	// Unix don't accidentally write non-portable error handling logic.
-	//
-	// https://github.com/rust-lang/rust/issues/62569
-	// https://stackoverflow.com/a/65760807
-	// https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727
-	#[cfg(unix)]
-	// SAFETY: These are FFI calls to libc, which we assume is implemented
-	// correctly. Because everything in the block comes from libc, there are no
-	// Rust invariants to violate.
-	unsafe {
-		libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-		libc::raise(libc::SIGPIPE);
-	}
-
-	// Non-Unix systems fall back to a normal silent exit (and Unix systems
-	// should not reach this line).
-	process::exit(1);
 }
 
 struct Cli {
