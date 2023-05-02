@@ -41,9 +41,9 @@ use std::io::{self, Write};
 ///
 /// For further background on Rust's handling of SIGPIPE, see:
 ///
-/// * <https://github.com/rust-lang/rust/issues/62569>
-/// * <https://stackoverflow.com/a/65760807>
-/// * <https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727>
+/// - <https://github.com/rust-lang/rust/issues/62569>
+/// - <https://stackoverflow.com/a/65760807>
+/// - <https://github.com/BurntSushi/ripgrep/issues/200#issuecomment-616884727>
 pub(crate) struct Writer<W>(W)
 where
 	W: Write;
