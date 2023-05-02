@@ -1,3 +1,14 @@
+## Unreleased
+
+### Fixed
+
+- **Noisy handling of broken pipes.** This version of xt introduces a new, more
+  comprehensive strategy to fully suppress error messages triggered by broken
+  pipes. Previous versions of xt relied on a strategy that had been believed to
+  work based on testing, however it appears that this testing was either
+  inadequate or was invalidated by later changes to the third-party libraries
+  that xt relies on for data format support.
+
 ## v0.17.0 (2023-03-25)
 
 ### Changed
@@ -315,8 +326,11 @@ _This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 releas
   panicked with broken pipe errors when a downstream program like `less` exited
   before reading all of its input, leading to unwanted extraneous output on
   stderr. This version is expected to suppress these errors and exit
-  successfully. (**Note (2022-06-12):** The behavior of exiting successfully is
-  incorrect and is fixed in later versions of the tool.)
+  successfully.
+  - **Note (2022-06-12):** The behavior of exiting successfully is modified in
+    later versions of the tool to behave more like other CLI tools.
+  - **Note (2023-05-01):** Further issues with this initial work were later
+    identified and fixed more comprehensively.
 - **Support for UTF-16 and UTF-32 YAML input.** Previous versions of the tool
   required UTF-8 encoding for all YAML inputs. This version handles all text
   encodings required by the YAML 1.2 specification, with a caveat: while the
