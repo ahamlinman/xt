@@ -67,7 +67,10 @@ fn main() {
 		InputPaths::paths(args.input_paths.into_iter().map(Into::into))
 	};
 	for path in input_paths {
-		let mut input = path.open().unwrap_or_else(|err| xt_bail!(path, err));
+		let mut input = match path.open() {
+			Ok(input) => input,
+			Err(err) => xt_bail_path!(path, "{}", err),
+		};
 		if let Input::Stdin = input {
 			if stdin_used {
 				xt_bail!("cannot read from standard input more than once");
@@ -83,10 +86,10 @@ fn main() {
 			Input::Mmap(map) => translator.translate_slice(map, from),
 		};
 		if let Err(err) = result {
-			xt_bail!(path, err.as_ref());
+			xt_bail_path!(path, "{}", err.as_ref());
 		}
 		if let Err(err) = translator.flush() {
-			xt_bail!(&err);
+			xt_bail!("{}", &err);
 		}
 	}
 }
