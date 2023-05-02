@@ -70,7 +70,7 @@ fn main() {
 		let mut input = path.open().unwrap_or_else(|err| xt_bail!(path, err));
 		if let Input::Stdin = input {
 			if stdin_used {
-				xt_bail!("cannot read from stdin more than once");
+				xt_bail!("cannot read from standard input more than once");
 			} else {
 				stdin_used = true;
 			}
