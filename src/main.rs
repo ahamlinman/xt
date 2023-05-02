@@ -34,29 +34,9 @@ use is_terminal::IsTerminal;
 
 use xt::Format;
 
+#[macro_use]
+mod bail;
 mod pipecheck;
-
-macro_rules! xt_bail {
-	($path:ident, $fmt:literal $(, $($args:tt)* )?) => {{
-		let _ = writeln!(
-			::std::io::stderr().lock(),
-			"xt error in {}: {}",
-			$path,
-			format_args!($fmt $(, $($args)* )?),
-		);
-		::std::process::exit(1);
-	}};
-	($fmt:literal $(, $($args:tt)* )?) => {{
-		let _ = writeln!(
-			::std::io::stderr().lock(),
-			"xt error: {}",
-			format_args!($fmt $(, $($args)* )?),
-		);
-		::std::process::exit(1);
-	}};
-	($path:ident, $x:expr) => { xt_bail!($path, "{}", $x) };
-	($x:expr) => { xt_bail!("{}", $x) };
-}
 
 fn main() {
 	let args = match Cli::parse_args() {
