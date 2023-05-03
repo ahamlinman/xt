@@ -74,9 +74,8 @@ fn main() {
 		if let Input::Stdin = input {
 			if stdin_used {
 				xt_bail!("cannot read from standard input more than once");
-			} else {
-				stdin_used = true;
 			}
+			stdin_used = true;
 		}
 
 		let from = args.from.or_else(|| path.extension_format());
