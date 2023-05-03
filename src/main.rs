@@ -61,10 +61,10 @@ fn main() {
 	let mut output = pipecheck::Writer::new(BufWriter::new(stdout.lock()));
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
-	let input_paths = if args.input_paths.is_empty() {
+	let input_paths = if args.input_pathnames.is_empty() {
 		InputPaths::stdin_only()
 	} else {
-		InputPaths::paths(args.input_paths.into_iter().map(Into::into))
+		InputPaths::paths(args.input_pathnames.into_iter().map(Into::into))
 	};
 	for path in input_paths {
 		let mut input = match path.open() {
@@ -99,7 +99,7 @@ fn format_is_unsafe_for_terminal(format: Format) -> bool {
 }
 
 struct Cli {
-	input_paths: Vec<PathBuf>,
+	input_pathnames: Vec<PathBuf>,
 	from: Option<Format>,
 	to: Format,
 }
@@ -108,7 +108,7 @@ impl Cli {
 	fn parse_args() -> Result<Self, lexopt::Error> {
 		use lexopt::prelude::*;
 
-		let mut input_paths: Vec<PathBuf> = vec![];
+		let mut input_pathnames: Vec<PathBuf> = vec![];
 		let mut from: Option<Format> = None;
 		let mut to: Option<Format> = None;
 
@@ -128,7 +128,7 @@ impl Cli {
 					to = Some(parser.value()?.parse_with(try_parse_format)?);
 				}
 				Value(val) => {
-					input_paths.push(PathBuf::from(val));
+					input_pathnames.push(PathBuf::from(val));
 				}
 				Short('V') | Long("version") => {
 					const VERSION: &str = version_string();
@@ -148,7 +148,7 @@ impl Cli {
 		}
 
 		Ok(Cli {
-			input_paths,
+			input_pathnames,
 			from,
 			to: to.unwrap_or(Format::Json),
 		})
