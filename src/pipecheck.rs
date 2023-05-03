@@ -2,40 +2,38 @@
 
 use std::io::{self, Write};
 
-/// A writer that silently exits the program on broken pipe errors.
+/// A writer that silently terminates the program on broken pipe errors.
 ///
-/// When a `Writer`'s underlying writer returns [`io::ErrorKind::BrokenPipe`] in
-/// response to any [`Write`] method, `Writer` will immediately terminate the
-/// program without returning from the call. On Unix(-like) systems, the program
-/// will terminate as if killed by the default SIGPIPE handler. Otherwise, it
-/// will simply exit with return code 1.
+/// When any call to its underlying writer returns a [`BrokenPipe`](io::ErrorKind::BrokenPipe)
+/// error, a `Writer` will immediately terminate the program without returning
+/// from the call. On Unix(-like) systems, the program will be terminated by a
+/// SIGPIPE signal. Otherwise, it will exit with code 1.
 ///
 /// # Why is this useful?
 ///
 /// A Unix program that writes to a broken pipe will receive a SIGPIPE signal
-/// that, by default, causes it to exit immediately. This can be convenient for
-/// simple CLI tools intended for use in shell pipelines, especially since these
-/// errors are very common and are best handled by exiting silently (unlike most
-/// other errors, including most other I/O errors). However, this behavior can
-/// be problematic for more complex applications, particularly networked servers
-/// that could write to a broken pipe any time a client unexpectedly closes or
-/// drops a connection.
+/// that, by default, terminates it immediately. This can be convenient for
+/// simple CLI tools used in shell pipelines, where this is a common error that
+/// is best handled by exiting silently, unlike most other errors that should be
+/// reported to the user. However, this default can be problematic for more
+/// complex applications, especially networked servers that could write to a
+/// broken pipe any time a client unexpectedly closes or drops a connection.
 ///
 /// Unlike C programs, Rust programs on Unix(-like) systems ignore SIGPIPE by
-/// default, and instead return a normal error value for writes to broken pipes.
-/// While there is debate about this choice, it is not inherently unreasonable,
-/// especially for the sake of compatibility with non-Unix platforms and for the
-/// server use case described above. Unfortunately, experience shows that
-/// real-world Rust libraries do not always propagate I/O errors in a manner
-/// that makes them easy to consistently identify, e.g. by including I/O error
-/// values in error source chains. This can make it difficult to implement the
-/// desirable CLI behavior of exiting silently on broken pipes while loudly
+/// default, and instead return a normal [`Result::Err`] for writes to broken
+/// pipes. While there are good reasons that this is *not* actually a great
+/// default, it provides valuable consistency with non-Unix platforms and is
+/// helpful in the server use case described above. Unfortunately, experience
+/// shows that real-world Rust libraries do not always propagate I/O errors in a
+/// manner that makes them easy to consistently identify, e.g. by including I/O
+/// error values in error source chains. This can make it difficult to implement
+/// the desirable CLI behavior of exiting silently on broken pipes while loudly
 /// reporting other errors.
 ///
 /// `Writer` provides the benefits of the default Unix SIGPIPE behavior in a
 /// more Rust-friendly and cross-platform manner. On Unix(-like) systems in
 /// particular, `Writer` terminates the program using the default SIGPIPE
-/// handler for full consistency with "typical" Unix CLI tools, but without
+/// handler for full consistency with typical Unix CLI tools, but without
 /// modifying global SIGPIPE behavior up front in a way that might conflict with
 /// other use cases.
 ///
