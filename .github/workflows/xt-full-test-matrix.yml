@@ -21,6 +21,8 @@ jobs:
         rustup toolchain install ${{ matrix.toolchain }}
         rustup default ${{ matrix.toolchain }}
         rustc --version
+    - name: cargo check
+      run: cargo check
     - name: cargo test
       run: cargo test
   linux-miri-test:
