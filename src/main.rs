@@ -69,7 +69,7 @@ fn main() {
 	for path in input_paths {
 		let mut input = match path.open() {
 			Ok(input) => input,
-			Err(err) => xt_bail_path!(path, "{}", err),
+			Err(err) => xt_bail_path!(path, "{err}"),
 		};
 		if let Input::Stdin = input {
 			if stdin_used {
@@ -85,10 +85,10 @@ fn main() {
 			Input::Mmap(map) => translator.translate_slice(map, from),
 		};
 		if let Err(err) = result {
-			xt_bail_path!(path, "{}", err.as_ref());
+			xt_bail_path!(path, "{err}");
 		}
 		if let Err(err) = translator.flush() {
-			xt_bail!("{}", &err);
+			xt_bail!("{err}");
 		}
 	}
 }
