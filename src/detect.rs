@@ -78,7 +78,7 @@ impl Output for Discard {
 /// - `does nothing`: Returns `Ok(())` to ignore primitive values.
 /// - `discards $expr`: Serializes `$expr` with the `Discard` serializer to
 ///   recursively discard complex values like sequences and maps.
-/// - `returns Discard`: Returns `Ok(Discard)` to provide access to additional
+/// - `returns $discard`: Returns `Ok($discard)` to provide access to additional
 ///   serializer traits.
 ///
 /// This is admittedly a weird macro, but given the high number of methods and
@@ -100,9 +100,9 @@ macro_rules! xt_detect_impl_discard_methods {
 		}
 		xt_detect_impl_discard_methods! { $($rest)* }
 	};
-	({ $($decl:tt)* } returns Discard; $($rest:tt)*) => {
-		fn $($decl)* -> Result<Discard, Self::Error> {
-			Ok(Discard)
+	({ $($decl:tt)* } returns $discard:path; $($rest:tt)*) => {
+		fn $($decl)* -> Result<$discard, Self::Error> {
+			Ok($discard)
 		}
 		xt_detect_impl_discard_methods! { $($rest)* }
 	};
