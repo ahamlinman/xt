@@ -129,7 +129,7 @@ where
 	pub(super) fn from_reader(mut reader: R) -> io::Result<impl Read> {
 		let mut prefix = ArrayBuffer::<{ Encoding::DETECT_LEN }>::new();
 		io::copy(
-			&mut (&mut reader).take(Encoding::DETECT_LEN as u64),
+			&mut reader.by_ref().take(Encoding::DETECT_LEN as u64),
 			&mut prefix,
 		)?;
 		let encoding = Encoding::detect(prefix.unread());
@@ -657,7 +657,7 @@ mod tests {
 	fn encode_to_string_invalid_inside_character() {
 		let input = &hex!("d8 3d dd a5")[..];
 		let mut encoder = Encoder::new(input, Encoding::Utf16Big);
-		io::copy(&mut (&mut encoder).take(1), &mut io::sink()).unwrap();
+		io::copy(&mut encoder.by_ref().take(1), &mut io::sink()).unwrap();
 		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 	}

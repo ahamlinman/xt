@@ -322,7 +322,7 @@ where
 			return Ok(());
 		}
 
-		let mut take = (&mut self.source).take(needed as u64);
+		let mut take = self.source.by_ref().take(needed as u64);
 		take.read_to_end(self.prefix.get_mut())?;
 		if take.limit() > 0 {
 			self.source_eof = true;
