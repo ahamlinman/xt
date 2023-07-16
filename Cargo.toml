@@ -13,7 +13,7 @@ exclude = ["benches/**"]
 
 [dependencies]
 lexopt = "0.3.0"
-memmap2 = "0.5.10"
+memmap2 = "0.7.1"
 rmp = "0.8.11"
 rmp-serde = "1.1.1"
 serde = "1.0.158"
@@ -34,11 +34,11 @@ similar-asserts = "1.4.2"
 zstd = "0.12.3"
 
 [dev-dependencies.criterion]
-version = "0.4.0"
+version = "0.5.1"
 features = ["html_reports"]
 
 [dev-dependencies.rstest]
-version = "0.17.0"
+version = "0.18.1"
 default-features = false
 
 [[bench]]
