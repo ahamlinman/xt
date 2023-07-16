@@ -617,8 +617,7 @@ mod tests {
 		make_encoder().read_to_end(&mut result).unwrap();
 		assert_eq!(std::str::from_utf8(&result), Ok(expected));
 
-		let mut result = String::new();
-		make_encoder().read_to_string(&mut result).unwrap();
+		let result = io::read_to_string(make_encoder()).unwrap();
 		assert_eq!(result, expected);
 	}
 
@@ -658,15 +657,15 @@ mod tests {
 		let input = &hex!("d8 3d dd a5")[..];
 		let mut encoder = Encoder::new(input, Encoding::Utf16Big);
 		io::copy(&mut encoder.by_ref().take(1), &mut io::sink()).unwrap();
-		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
+		let err = io::read_to_string(encoder).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 	}
 
 	#[test]
 	fn encode_invalid_utf16be_unpaired_lead() {
 		let input = &hex!("00 68 00 69 d8 3d 00 0a")[..];
-		let mut encoder = Encoder::new(input, Encoding::Utf16Big);
-		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
+		let encoder = Encoder::new(input, Encoding::Utf16Big);
+		let err = io::read_to_string(encoder).unwrap_err();
 
 		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
@@ -686,8 +685,8 @@ mod tests {
 	#[test]
 	fn encode_invalid_utf16be_unpaired_lead_eof() {
 		let input = &hex!("00 68 00 69 d8 3d")[..];
-		let mut encoder = Encoder::new(input, Encoding::Utf16Big);
-		let err = encoder.read_to_string(&mut String::new()).unwrap_err();
+		let encoder = Encoder::new(input, Encoding::Utf16Big);
+		let err = io::read_to_string(encoder).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
 	}
 
@@ -749,9 +748,7 @@ mod tests {
 		assert!(buf.write_all(INPUT.as_bytes()).is_ok());
 		assert!(buf.flush().is_ok());
 
-		let mut out = String::new();
-		assert_eq!(buf.read_to_string(&mut out).unwrap(), INPUT.len());
-		assert_eq!(out, INPUT);
+		assert_eq!(io::read_to_string(buf).unwrap(), INPUT);
 	}
 
 	#[test]
@@ -766,9 +763,7 @@ mod tests {
 		buf.consume("hello ".len());
 		assert_eq!(buf.fill_buf().unwrap(), INPUT["hello ".len()..].as_bytes());
 
-		let mut out = String::new();
-		assert_eq!(buf.read_to_string(&mut out).unwrap(), "world".len());
-		assert_eq!(out, "world");
+		assert_eq!(io::read_to_string(buf).unwrap(), "world");
 	}
 
 	#[test]
