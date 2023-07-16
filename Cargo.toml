@@ -1,12 +1,12 @@
 [package]
 name = "xt"
-version = "0.17.2-dev"
+version = "0.18.0-dev"
 description = "Translate between serialized data formats"
 repository = "https://github.com/ahamlinman/xt"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.61.0"
+rust-version = "1.70.0"
 categories = ["command-line-utilities"]
 keywords = ["cli"]
 exclude = ["benches/**"]

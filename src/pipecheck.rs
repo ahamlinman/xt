@@ -67,7 +67,7 @@ where
 		check_for_broken_pipe(self.0.flush())
 	}
 
-	// NOTE: This covers additional trait methods that are stable in Rust 1.61
+	// NOTE: This covers additional trait methods that are stable in Rust 1.70
 	// (xt's MSRV as of this writing). More may be added in the future.
 
 	fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
