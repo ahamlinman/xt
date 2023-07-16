@@ -26,11 +26,9 @@ use std::borrow::Cow;
 use std::env;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process;
-
-use is_terminal::IsTerminal;
 
 use xt::Format;
 

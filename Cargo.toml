@@ -12,7 +12,6 @@ keywords = ["cli"]
 exclude = ["benches/**"]
 
 [dependencies]
-is-terminal = "0.4.5"
 lexopt = "0.3.0"
 memmap2 = "0.5.10"
 rmp = "0.8.11"
