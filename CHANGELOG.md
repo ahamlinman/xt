@@ -1,3 +1,11 @@
+## v0.18.0 (Unreleased)
+
+### Changed
+
+- **Rust 1.70 or higher is required to build xt.** This change enables several
+  third-party dependency updates, along with the removal of some dependencies
+  due to improvements in the Rust standard library.
+
 ## v0.17.1 (2023-05-01)
 
 ### Fixed

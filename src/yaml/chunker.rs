@@ -16,12 +16,11 @@
 //! [libyaml]: https://pyyaml.org/wiki/LibYAML
 
 use std::error::Error;
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_char, c_void, CStr};
 use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
-use std::os::raw::c_char;
 use std::ptr;
 
 use unsafe_libyaml::{

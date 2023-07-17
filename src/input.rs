@@ -445,9 +445,7 @@ mod tests {
 	fn capture_reader_straight_read() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
 
-		let mut result = String::new();
-		assert!(matches!(r.read_to_string(&mut result), Ok(len) if len == DATA.len()));
-		assert_eq!(result, DATA);
+		assert_eq!(io::read_to_string(&mut r).unwrap(), DATA);
 		assert!(r.is_source_eof());
 
 		let (cursor, _) = r.into_inner();
@@ -466,9 +464,7 @@ mod tests {
 
 		r.rewind();
 
-		let mut result = String::new();
-		assert!(matches!(r.read_to_string(&mut result), Ok(len) if len == DATA.len()));
-		assert_eq!(result, DATA);
+		assert_eq!(io::read_to_string(&mut r).unwrap(), DATA);
 		assert_eq!(r.captured(), DATA.as_bytes());
 		assert!(r.is_source_eof());
 	}

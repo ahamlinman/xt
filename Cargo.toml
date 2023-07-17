@@ -1,20 +1,19 @@
 [package]
 name = "xt"
-version = "0.17.2-dev"
+version = "0.18.0-dev"
 description = "Translate between serialized data formats"
 repository = "https://github.com/ahamlinman/xt"
 authors = ["Alex Hamlin <alex@alexhamlin.co>"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.61.0"
+rust-version = "1.70.0"
 categories = ["command-line-utilities"]
 keywords = ["cli"]
 exclude = ["benches/**"]
 
 [dependencies]
-is-terminal = "0.4.5"
 lexopt = "0.3.0"
-memmap2 = "0.5.10"
+memmap2 = "0.7.1"
 rmp = "0.8.11"
 rmp-serde = "1.1.1"
 serde = "1.0.158"
@@ -35,11 +34,11 @@ similar-asserts = "1.4.2"
 zstd = "0.12.3"
 
 [dev-dependencies.criterion]
-version = "0.4.0"
+version = "0.5.1"
 features = ["html_reports"]
 
 [dev-dependencies.rstest]
-version = "0.17.0"
+version = "0.18.1"
 default-features = false
 
 [[bench]]
