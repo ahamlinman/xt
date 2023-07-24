@@ -144,12 +144,32 @@ where
 		// SAFETY: Our caller is responsible for the validity of read_state.
 		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
 			Ok(len) => {
-				// SAFETY: We assume that libyaml provides us with a valid
-				// buffer, and that the global allocator is not so fundamentally
-				// broken that the buffer allocated by libyaml overlaps with the
-				// buffer owned by read_state (allocated by the above resize
-				// operation). Our caller is responsible for the validity of
-				// read_state in general.
+				// Required for soundness, see the `Read::read` documentation.
+				if len > size {
+					// SAFETY: Our caller is responsible for the validity of read_state.
+					unsafe {
+						(*read_state).error =
+							Some(io::Error::new(io::ErrorKind::Other, "misbehaving reader"));
+					}
+					// TODO: We generally treat the unsafe_libyaml code as if we
+					// were doing FFI to libyaml in C, in which case it would be
+					// unsafe to panic and potentially unwind here. However,
+					// it's actually a C to Rust transpilation, which should
+					// mean that unwinding panics are safe, and possibly a
+					// better way to handle this serious of an error, right?
+					return READ_FAILURE;
+				}
+
+				// SAFETY: We assume that libyaml upholds its contract by
+				// providing us with a valid pointer to a buffer into which we
+				// can safely write up to size bytes. The above check guarantees
+				// that len <= size at this point in the code, therefore we can
+				// safely write len bytes into the buffer. The buffer owned by
+				// read_state was allocated and initialized by the resize
+				// operation above, and our caller is responsible for the
+				// validity of read_state in general. We assume that the global
+				// allocator is not so fundamentally broken that the allocations
+				// for the read_state buffer and libyaml buffer overlap.
 				unsafe { ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len) };
 
 				// Note that libyaml's EOF condition is the same as Rust's: set
