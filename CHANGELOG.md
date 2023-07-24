@@ -1,3 +1,26 @@
+## v0.18.1 (2023-07-23)
+
+### Fixed
+
+**Unsoundness in YAML input.** This version of xt fixes the potential for
+out-of-bounds memory writes (i.e. a buffer overflow) when receiving YAML input
+from a `Read::read` implementation that returns a count of read bytes greater
+than the size of the provided buffer.
+
+The author is not currently aware of the xt CLI using a `Read` implementation
+that exhibits such behavior. It is possible for users of the xt library crate
+to invoke the buffer overflow through a suitable `Read` implementation, however
+no real-world users of the xt library other than the xt CLI are currently known
+to the author. It is conceivable that the buffer overflow could have a security
+impact, such as allowing the execution of arbitrary code with the privileges of
+the process in which the xt library is used, however no specific exploits
+demonstrating this possibility are currently known to the author.
+
+Following the release of this version, all releases of xt between v0.14.0 and
+v0.18.0 (inclusive) will be yanked from crates.io. There are currently no plans
+to backport the fix to previous versions, but the author is willing to do so if
+necessary to support users of xt on Rust versions older than v1.70.0.
+
 ## v0.18.0 (2023-07-16)
 
 ### Changed
