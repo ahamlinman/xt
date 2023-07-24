@@ -16,12 +16,15 @@ impact, such as allowing the execution of arbitrary code with the privileges of
 the process in which the xt library is used, however no specific exploits
 demonstrating this possibility are currently known to the author.
 
-Following the release of this version, all releases of xt between v0.14.0 and
-v0.18.0 (inclusive) will be yanked from crates.io. There are currently no plans
-to backport the fix to previous versions, but the author is willing to do so if
-necessary to support users of xt on Rust versions older than v1.70.0.
+All releases of xt between v0.14.0 and v0.18.0 (inclusive) have been yanked
+from crates.io due to their susceptibility to this issue (and potential
+security vulnerability). There are currently no plans to backport the fix to
+previous versions, but the author is willing to do so if necessary to support
+users of xt on Rust versions older than v1.70.0.
 
 ## v0.18.0 (2023-07-16)
+
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Changed
 
@@ -30,6 +33,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
   due to improvements in the Rust standard library.
 
 ## v0.17.1 (2023-05-01)
+
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Fixed
 
@@ -42,6 +47,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
 
 ## v0.17.0 (2023-03-25)
 
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+
 ### Changed
 
 - **Formatting of non-BMP Unicode characters in YAML output.** This version of
@@ -52,6 +59,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
   to read.
 
 ## v0.16.0 (2023-02-01)
+
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Fixed
 
@@ -69,6 +78,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
 
 ## v0.15.1 (2023-01-10)
 
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+
 ### Changed
 
 - This version of xt upgrades locked dependencies to their latest versions, and
@@ -76,6 +87,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
   affect functionality or performance.
 
 ## v0.15.0 (2022-11-15)
+
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Changed
 
@@ -95,6 +108,8 @@ necessary to support users of xt on Rust versions older than v1.70.0.
 
 ## v0.14.3 (2022-11-14)
 
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+
 ### Fixed
 
 - **Build failures on Rust 1.59.0.** This release fixes compilation errors on
@@ -103,7 +118,7 @@ necessary to support users of xt on Rust versions older than v1.70.0.
 
 ## v0.14.2 (2022-11-14)
 
-_This release has been yanked from crates.io. See the v0.14.3 release notes for details._
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Fixed
 
@@ -113,7 +128,7 @@ _This release has been yanked from crates.io. See the v0.14.3 release notes for 
 
 ## v0.14.1 (2022-11-12)
 
-_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Changed
 
@@ -125,7 +140,7 @@ _This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 releas
 
 ## v0.14.0 (2022-11-10)
 
-_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
+_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Added
 
