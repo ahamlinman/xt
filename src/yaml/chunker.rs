@@ -64,17 +64,27 @@ where
 	/// BOMs. Consider using the [`encoding`](super::encoding) module to
 	/// re-encode non-UTF-8 streams.
 	pub(super) fn new(reader: R) -> Self {
+		// TODO: The docs for Box<T> talk about how it asserts uniqueness over
+		// its contents (LLVM noalias), and that using raw pointers derived from
+		// a Box after mutating through it "is not allowed." Miri has never
+		// complained about this usage, but it is quite possible that this usage
+		// is disallowed and could cause problems in the future. This requires
+		// further analysis; serde_yaml defines a special "Owned" pointer type
+		// that might be a useful reference.
 		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
-		// SAFETY: We allocated a valid pointer to an uninitialized
-		// yaml_parser_t above. Manual inspection of the libyaml code confirms
-		// that it will initialize this memory as required.
+
+		// SAFETY: The call to yaml_parser_initialize is unsafe as it is an
+		// FFI-like call to libyaml. From our side, we provide a valid (aligned
+		// and non-null due to its derivation from a Box) pointer to an
+		// allocated (but uninitialized) yaml_parser_t; see above for details.
+		// We expect that libyaml is not so broken that it reads potentially
+		// uninitialized memory during initialization, and cursory manual
+		// inspection of the libyaml code seems to indicate that is the case.
+		// Otherwise, we assume that libyaml is implemented correctly and
+		// satisfies all required safety properties.
 		if unsafe { yaml_parser_initialize(parser.as_mut_ptr()) }.fail {
 			panic!("out of memory for libyaml parser initialization");
 		}
-
-		// NOTE: Nothing after this point is expected to panic or fail, so we
-		// should not need to worry about leaking memory before we have a chance
-		// to construct the return value.
 
 		// NOTE: The cast here is from `*mut MaybeUninit<yaml_parser_t>` to
 		// `*mut yaml_parser_t`. This is effectively a hidden assume_init, but
@@ -83,20 +93,43 @@ where
 		// by yaml_parser_initialize.
 		let parser = Box::into_raw(parser).cast::<yaml_parser_t>();
 
+		// SAFETY: The call to yaml_parser_set_encoding is unsafe as it is an
+		// FFI-like call to libyaml. From our side, we provide a valid pointer
+		// to an allocated and initialized yaml_parser_t; see above for details.
+		// No special invariants are expected in relation to the second
+		// parameter that specifies the text encoding for the input. Otherwise,
+		// we assume that libyaml is implemented correctly and satisfies all
+		// required safety properties.
+		unsafe { yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING) };
+
+		// See below for details.
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader: ChunkReader::new(reader),
 			buffer: vec![],
 			error: None,
 		}));
 
-		// SAFETY: The parser was initialized above, and as required by
-		// Self::read_handler the data pointer given to yaml_parser_set_input
-		// points to a valid ReadState<R>. Otherwise, these are effectively FFI
-		// calls that we assume are implemented correctly.
-		unsafe {
-			yaml_parser_set_input(parser, Self::read_handler, read_state.cast::<c_void>());
-			yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING);
-		}
+		// SAFETY: The call to yaml_parser_set_input is unsafe as it is an
+		// FFI-like call to libyaml. From our side, there are two important
+		// aspects to consider when analyzing the safety of this call.
+		//
+		// First, we provide a valid pointer to an allocated and initialized
+		// yaml_parser_t; see above for details.
+		//
+		// Second, our use of Self::read_handler imposes an additional safety
+		// requirement as noted in the documentation for that function: we must
+		// ensure that the data pointer passed to yaml_parser_set_input along
+		// with the instantiation of that function is a valid pointer to an
+		// initialized ReadState<R>. The validity of the pointer (properly
+		// allocated, aligned, non-null) is guaranteed through its derivation
+		// from a Box, while the proper initialization of the ReadState<R> value
+		// is guaranteed by the Rust compiler (as the type does not impose any
+		// special initialization requirements that Rust cannot safely
+		// represent).
+		//
+		// Otherwise, we assume that libyaml is implemented properly and
+		// satisfies all required safety properties.
+		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state.cast::<c_void>()) };
 
 		Self {
 			parser,
@@ -111,8 +144,10 @@ where
 	///
 	/// # Safety
 	///
-	/// The `data` pointer provided to [`yaml_parser_set_input`] alongside this
-	/// function must be a valid pointer to an initialized `ReadState<R>`.
+	/// When an instantiation of this function with a given `R: Read` is
+	/// provided as the `handler` argument in a call to [`yaml_parser_set_input`],
+	/// the `data` pointer in that call must be a valid pointer to an initialized
+	/// ReadState<R>.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
@@ -122,6 +157,15 @@ where
 		const READ_SUCCESS: i32 = 1;
 		const READ_FAILURE: i32 = 0;
 
+		// NOTE: To limit the potential for any unintended aliasing issues that
+		// could result from the use of a &mut reference, all uses of
+		// `read_state` in this function are done through the raw *mut pointer.
+		// These dereferences are expected to be safe due to the safety
+		// requirements imposed on callers with respect to the read handler's
+		// data pointer, as explained in the function documentation.
+		// Furthermore, all reads and writes to fields within the ReadState<R>
+		// are expected to be safe as we require the caller to properly
+		// initialize this value.
 		let read_state = read_state.cast::<ReadState<R>>();
 
 		// This represents the size of an in-memory buffer, which cannot
@@ -129,24 +173,19 @@ where
 		#[allow(clippy::cast_possible_truncation)]
 		let size = size as usize;
 
-		// Manual review shows that libyaml uses std::alloc::alloc to allocate
-		// the provided buffer, and performs no explicit initialization of its
-		// own. Because std::alloc::alloc does not necessarily initialize
-		// memory, it would be instant Undefined Behavior to form a Rust slice
-		// from this buffer, and even if it weren't it would be unsound to
-		// expose this buffer to a safe Read implementation. To ensure
-		// soundness, we maintain our own initialized buffer for the reader to
-		// populate, then copy that buffer ourselves to libyaml.
-		//
-		// SAFETY: Our caller is responsible for the validity of read_state.
+		// SAFETY: The dereference of read_state is the only unsafe operation;
+		// see the NOTE on read_state.
 		unsafe { (*read_state).buffer.resize(size, 0) };
 
-		// SAFETY: Our caller is responsible for the validity of read_state.
+		// SAFETY: The dereference of read_state is the only unsafe operation;
+		// see the NOTE on read_state.
 		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
 			Ok(len) => {
-				// Required for soundness, see the `Read::read` documentation.
+				// This check is critical for soundness; see the `Read::read`
+				// documentation for details.
 				if len > size {
-					// SAFETY: Our caller is responsible for the validity of read_state.
+					// SAFETY: The dereference of read_state is the only unsafe
+					// operation; see the NOTE on read_state.
 					unsafe {
 						(*read_state).error =
 							Some(io::Error::new(io::ErrorKind::Other, "misbehaving reader"));
@@ -160,30 +199,106 @@ where
 					return READ_FAILURE;
 				}
 
-				// SAFETY: We assume that libyaml upholds its contract by
-				// providing us with a valid pointer to a buffer into which we
-				// can safely write up to size bytes. The above check guarantees
-				// that len <= size at this point in the code, therefore we can
-				// safely write len bytes into the buffer. The buffer owned by
-				// read_state was allocated and initialized by the resize
-				// operation above, and our caller is responsible for the
-				// validity of read_state in general. We assume that the global
-				// allocator is not so fundamentally broken that the allocations
-				// for the read_state buffer and libyaml buffer overlap.
-				unsafe { ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len) };
-
-				// Note that libyaml's EOF condition is the same as Rust's: set
-				// size_read to 0 and return success.
+				// SAFETY: There are two separate unsafe operations to consider
+				// in this block: the dereference and write through read_state,
+				// and the call to ptr::copy_nonoverlapping.
 				//
-				// SAFETY: We assume that libyaml provides us with a valid pointer.
-				unsafe { *size_read = len as u64 };
+				// For an analysis of the safety of the read_state usage, see
+				// the NOTE on the definition of read_state itself.
+				//
+				// To analyze the safety of the call to ptr::copy_nonoverlapping,
+				// we will consider its four documented safety requirements in
+				// turn.
+				//
+				// First: the pointer returned by `(*read_state).buffer.as_ptr()`
+				// must be valid for reads of `len` bytes. We assume that the
+				// call to the safe as_ptr function in the Rust standard library
+				// will return a valid pointer. With respect to the size of the
+				// read, the pointed-to buffer was resized to `size` bytes
+				// through a call to Vec::resize above, and as such we expect
+				// that the pointer will be valid for reads of up to `size`
+				// bytes. Because we return above when `len > size`, we can
+				// guarantee at the point of this call that `len <= size`, and
+				// by extension that a pointer valid for reads of `size` bytes
+				// will also be valid for reads of `len` bytes.
+				//
+				// Second: the `buffer` pointer must be valid for writes of
+				// `len` bytes. This pointer is provided by libyaml along with
+				// the corresponding `size` value, which we expect to represent
+				// the size of the pointed-to buffer, i.e. the maximum number of
+				// bytes for which it is valid to write through the buffer
+				// pointer. In terms of the validity of the pointer, we largely
+				// assume that libyaml behaves correctly, however we do confirm
+				// that the pointer is non-null. In terms of the size of the
+				// write, we once again note that `len <= size`, and that a
+				// pointer valid for writes of `size` bytes should therefore be
+				// valid for writes of `len` bytes.
+				//
+				// Third: Both the source and destination pointers must be
+				// properly aligned. Both are pointers to u8, a type whose size
+				// is guaranteed by definition to be 1 byte (assuming 8-bit
+				// bytes, as I am not aware of Rust supporting platforms using
+				// other byte sizes). Because "the size of a value is always a
+				// multiple of its alignment" (per the "Type Layout" section of
+				// the Rust Reference), 1 must be a (presumably integer)
+				// multiple of the alignment of a u8, which means that the
+				// alignment of a u8 must itself be 1. As such, any non-null u8
+				// pointer must be aligned.
+				//
+				// Fourth: The region of memory beginning at the source pointer
+				// with a size of `len` bytes must not overlap with the region
+				// of memory beginning at the destination pointer with the same
+				// size. We expect the global allocator to satisfy this property
+				// on our behalf, given that the buffer provided by libyaml and
+				// the buffer that we manage within read_state are distinct
+				// allocations.
+				//
+				// TODO: Inspect the libyaml code to fully prove that the buffer
+				// pointer meets all of the validity requirements that are
+				// documented in std::ptr but not explicitly checked here.
+				unsafe {
+					if !buffer.is_null() {
+						ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len);
+					}
+				}
 
-				// SAFETY: Our caller is responsible for the validity of read_state.
+				// SAFETY: size_read is a raw pointer provided by libyaml. We
+				// largely assume that libyaml is implemented such that the
+				// pointer it provides is valid for the write of a single u64,
+				// however we do confirm that the pointer is non-null (similar
+				// to our handling of the buffer pointer above). We do not
+				// assume that the pointed-to memory is initialized or that the
+				// pointer is aligned, even though it actually might be (and
+				// likely is). As such, we assume that it is safe to write a u64
+				// through this pointer using ptr::write_unaligned, but not
+				// necessarily using normal assignment or ptr::write. Note that
+				// as u64 is Copy, it cannot implement Drop, and therefore we do
+				// not expect any kind of leak due to the use of write_unaligned
+				// rather than a normal assignment.
+				//
+				// TODO: Consider inspecting the libyaml code to better
+				// understand the guarantees around this pointer. In particular:
+				// can we guarantee that it is (and always will be, even in
+				// future versions of libyaml) safe to write through this
+				// pointer using normal assignment, or even just ptr::write?
+				unsafe {
+					if !size_read.is_null() {
+						ptr::write_unaligned(size_read, len as u64);
+					}
+				}
+
+				// Note that EOF does not require special handling, as libyaml's
+				// EOF condition is the same as Rust's: report a successful read
+				// of 0 bytes.
+
+				// SAFETY: The dereference of read_state is the only unsafe
+				// operation; see the NOTE on read_state.
 				unsafe { (*read_state).error = None };
 				READ_SUCCESS
 			}
 			Err(err) => {
-				// SAFETY: Our caller is responsible for the validity of read_state.
+				// SAFETY: The dereference of read_state is the only unsafe
+				// operation; see the NOTE on read_state.
 				unsafe { (*read_state).error = Some(err) };
 				READ_FAILURE
 			}
@@ -203,17 +318,23 @@ where
 		}
 
 		loop {
-			// SAFETY: We expect that self.parser and self.read_state were
-			// initialized properly when the Chunker was constructed.
-			let event = unsafe {
-				match Event::from_parser(self.parser) {
-					Ok(event) => event,
-					Err(err) => {
-						return Some(Err((*self.read_state)
-							.error
-							.take()
-							.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, err))))
-					}
+			// SAFETY: The call to Event::from_parser is unsafe as it requires a
+			// valid pointer to an initialized yaml_parser_t. Chunker::new is
+			// expected to handle this for self.parser; see the SAFETY comments
+			// in that function for details.
+			let event = match unsafe { Event::from_parser(self.parser) } {
+				Ok(event) => event,
+				Err(err) => {
+					// SAFETY: The dereference of self.read_state is unsafe.
+					// Chunker::new is expected to initialize both this pointer
+					// and the underlying ReadState<R> properly; see the SAFETY
+					// comments in that function for details.
+					//
+					// TODO: Prove that there is no aliasing between the &mut
+					// taken to the read_state's error here and the &mut taken
+					// to the read_state's error in the read handler.
+					return Some(Err(unsafe { (*self.read_state).error.take() }
+						.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, err))));
 				}
 			};
 
@@ -227,8 +348,12 @@ where
 			// xt's parser-based format detection).
 			match event.type_ {
 				YAML_DOCUMENT_START_EVENT => {
-					// SAFETY: We expect that self.read_state was initialized
-					// properly when the Chunker was constructed.
+					// SAFETY: The dereference of self.read_state is unsafe. See
+					// above for discussion around this.
+					//
+					// TODO: Prove that there is no aliasing between the &mut
+					// taken to the reader here and the &mut taken to the reader
+					// in the read handler.
 					unsafe {
 						let offset = event.start_mark.index;
 						(*self.read_state).reader.trim_to_offset(offset);
@@ -247,10 +372,25 @@ where
 						.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
-					// SAFETY: We expect that self.read_state was initialized
-					// properly when the Chunker was constructed, and that
-					// libyaml has validated that the input is UTF-8 due to the
-					// use of the YAML_UTF8_ENCODING option.
+					// SAFETY: There are two separate unsafe operations to
+					// consider in this block: the dereference of self.read_state,
+					// and the call to String::from_utf8_unchecked.
+					//
+					// See above for analysis of the read_state dereference.
+					//
+					// For the from_utf8_unchecked call, we expect libyaml to
+					// validate that the input is UTF-8 during parsing, due to
+					// us calling yaml_parser_set_encoding with YAML_UTF8_ENCODING
+					// while initializing the parser in Chunker::new. A cursory
+					// inspection of the libyaml code does not reveal any obvious
+					// issues with its handling of UTF-8 encoding errors.
+					//
+					// TODO: Consider inspecting the libyaml code more deeply to
+					// fully prove that it handles invalid UTF-8 correctly. Even
+					// then, it might make sense to just do a checked UTF-8
+					// conversion as a hedge against potential future libyaml
+					// bugs (as unlikely as that sounds), given how fast UTF-8
+					// encoding checks typically are.
 					let content = unsafe {
 						let offset = event.end_mark.index;
 						String::from_utf8_unchecked(
@@ -277,15 +417,23 @@ where
 	R: Read,
 {
 	fn drop(&mut self) {
-		// SAFETY: We expect that self.parser was initialized properly when the
-		// Chunker was constructed. Otherwise, this is effectively an FFI call
-		// that we assume is implemented correctly.
+		// SAFETY: The call to yaml_parser_delete is unsafe as it is an FFI-like
+		// call to libyaml. From our side, we pass a valid pointer to an
+		// initialized yaml_parser_t created in Chunker::new; see the SAFETY
+		// comments in that function for details. We do not make any other calls
+		// to yaml_parser_delete anywhere in this module, thus we are not at
+		// risk of double-freeing any resources associated with the parser.
+		// Otherwise, we assume that libyaml is implemented correctly and
+		// satisfies all required safety properties.
 		unsafe { yaml_parser_delete(self.parser) };
 
-		// SAFETY: These pointers were originally obtained using Box::into_raw.
-		// The yaml_parser_t was destructed above, and the ReadState<T> will be
-		// destructed using Rust's standard Drop semantics before Box frees its
-		// memory.
+		// SAFETY: The calls to Box::from_raw are unsafe. Both of these raw
+		// pointers were originally obtained using Box::into_raw in
+		// Chunker::new, which means that they are expected to satisfy all of
+		// the general safety requirements required to convert them back into
+		// boxes. We do not call Box::from_raw with these pointers at any other
+		// place in the module, nor do we expose these raw pointers outside of
+		// the struct, so we do not expect any risk of a double-free.
 		unsafe {
 			drop(Box::from_raw(self.parser));
 			drop(Box::from_raw(self.read_state));
@@ -328,21 +476,29 @@ impl Event {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ParserError> {
+		// TODO: This pattern is similar to how Chunker::new initializes a
+		// yaml_parser_t, and raises the same questions.
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
-		// SAFETY: Our caller is responsible for the validity of parser. Manual
-		// inspection of the libyaml code confirms that yaml_parser_parse will
-		// initialize the memory behind the event pointer as required.
-		// Otherwise, this is effectively an FFI call that we assume is
-		// implemented correctly.
-		unsafe {
-			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-				return Err(ParserError::from_parser(parser));
-			}
+
+		// SAFETY: The call to yaml_parser_parse is unsafe as it is an FFI-like
+		// call to libyaml. From our side, we provide a valid parser pointer
+		// (due to safety requirements documented for our caller) and a valid
+		// event pointer (to data allocated in a Box, which is expected to meet
+		// Rust's pointer validity requirements). Otherwise, we assume that
+		// libyaml is implemented correctly and satisfies all required safety
+		// properties.
+		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
+			// SAFETY: The call to from_parser is unsafe as the parser pointer
+			// must be a valid pointer to an initialized yaml_parser_t. We
+			// document this requirement for our caller.
+			return Err(unsafe { ParserError::from_parser(parser) });
 		}
 
-		// NOTE: The cast here is from `*mut MaybeUninit<yaml_event_t>` to
-		// `*mut yaml_event_t`. See Chunker::new for notes about why this is
-		// expected to be safe (it is basically the same pattern).
+		// NOTE: This cast from `*mut MaybeUninit<yaml_event_t>` to `*mut
+		// yaml_event_t` is basically a hidden MaybeUninit::assume_init. This is
+		// expected to be safe as MaybeUninit<T> is guaranteed to have the same
+		// size, alignment, and ABI as T (and, of course, because we expect
+		// yaml_parser_parse to initialize the pointed-to memory).
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
 }
@@ -351,30 +507,47 @@ impl Deref for Event {
 	type Target = yaml_event_t;
 
 	fn deref(&self) -> &Self::Target {
-		// SAFETY: This is the only place where self.0 is ever converted to a
-		// reference. It can never alias a &mut to the same data because we
-		// never construct such a &mut in the first place. The only time we
-		// write through self.0 after the Event is constructed is in Drop, at
-		// which point we have `&mut self` and therefore are confident that all
-		// of these Derefs (with `&self`) have fallen out of scope. We expect
-		// that the value itself was initialized properly when the Event was
-		// constructed.
+		// SAFETY: The conversion of the raw pointer self.0 to a shared
+		// reference is unsafe. To analyze the safety of this, we consider the
+		// validity of the pointer and the validity of the returned lifetime,
+		// particularly with respect to possible aliasing.
+		//
+		// With respect to validity of the pointer: Rust defines references as
+		// pointers that are aligned, not null, and point to memory containing a
+		// valid value for the type. The aligned and not null conditions are
+		// satisfied by obtaining the pointer through a Box (using Box::into_raw).
+		// The initialization condition is satisfied by the successful call to
+		// yaml_parser_parse that is required to successfully construct self.
+		//
+		// With respect to the lifetime: The returned reference will have the
+		// same lifetime as &self. We do not destroy or deallocate the
+		// referenced data outside of Drop, so we do not expect any opportunity
+		// for the reference to become invalid while it is live. We do not
+		// reborrow self.0 as &mut anywhere else in the type, so we do not
+		// introduce our own opportunities for aliasing & and &mut. We do not
+		// release the raw self.0 outside of this type, so we do not provide a
+		// clear means for external callers to violate these conditions.
 		unsafe { &*self.0 }
 	}
 }
 
 impl Drop for Event {
 	fn drop(&mut self) {
-		// SAFETY: We expect that self.0 was initialized properly when the Event
-		// was constructed, and that all references obtained from it have fallen
-		// out of scope (see notes in Deref::deref). Otherwise, this is
-		// effectively an FFI call that we assume is implemented correctly.
+		// SAFETY: The call to yaml_event_delete is unsafe as it is an FFI-like
+		// call to libyaml. From our side, we pass a valid pointer to a
+		// yaml_event_t that was initialized when self was constructed. We do
+		// not make any other calls to this function anywhere else in the
+		// module, so we do not expect any risk of a double-free. Otherwise, we
+		// assume that libyaml is implemented correctly and satisfies all
+		// required safety properties.
 		unsafe { yaml_event_delete(self.0) };
 
-		// SAFETY: self.0 was originally obtained using Box::into_raw. The
-		// yaml_event_t was destructed above (as an effectively-FFI type it does
-		// not implement Drop), which means that it is safe for Box to free the
-		// associated memory.
+		// SAFETY: The call to Box::from_raw is unsafe. This raw pointer was
+		// originally obtained using Box::into_raw when self was constructed,
+		// which means that it is expected to satisfy all requirements for
+		// conversion back into a Box. We do not call Box::from_raw with this
+		// pointer anywhere else in the module, nor do we expose the raw pointer
+		// outside of this type, so we do not expect any risk of a double-free.
 		unsafe { drop(Box::from_raw(self.0)) };
 	}
 }
@@ -393,10 +566,22 @@ impl ParserError {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Self {
-		// SAFETY: Our caller is responsible for the validity of parser. As
-		// required by LocatedError::from_parts, we validate that the C-style
-		// description strings provided by libyaml are not null, and otherwise
-		// assume that libyaml provided valid strings.
+		// SAFETY: This is a relatively large unsafe block compared to the rest
+		// of the module, however it really only contains two types of unsafe
+		// operations: the dereferences of the parser pointer, and the calls to
+		// LocatedError::from_parts.
+		//
+		// We expect all dereferences of parser to be safe due to requirements
+		// documented for our callers.
+		//
+		// With respect to the from_parts calls, the unsafety comes from the
+		// requirements on the C string pointer used to construct the error
+		// description. We explicitly validate that each possible description
+		// pointer is non-null before we attempt to construct a LocatedError
+		// with that description. Otherwise, we assume that libyaml is
+		// implemented correctly, such that when these pointers are non-null the
+		// associated strings have proper null terminators and are each
+		// contained within a single allocated object.
 		unsafe {
 			Self {
 				problem: (!(*parser).problem.is_null()).then(|| {
@@ -449,14 +634,22 @@ impl LocatedError {
 	///
 	/// # Safety
 	///
-	/// `description` must be a valid pointer to a valid C string.
+	/// `description` must be a valid pointer to a valid C-style string.
+	/// Specifically: the pointer must be non-null, the string must have a null
+	/// terminator at the end, and the pointer must be valid for reads up to and
+	/// including the terminator (i.e. the entire memory range must be contained
+	/// within a single allocated object).
 	unsafe fn from_parts(
 		description: *const c_char,
 		mark: yaml_mark_t,
 		override_offset: Option<u64>,
 	) -> Self {
 		Self {
-			// SAFETY: Our caller is responsible for the validity of description.
+			// SAFETY: CStr::from_ptr is defined to be unsafe. Its safety
+			// requirements are lifted directly into the safety requirements for
+			// our callers, with the exception of the note about the returned
+			// lifetime (as we copy the CStr into an owned String during this
+			// call).
 			description: unsafe { CStr::from_ptr(description).to_string_lossy().into_owned() },
 			line: mark.line + 1,
 			column: mark.column + 1,
