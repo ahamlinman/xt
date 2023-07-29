@@ -677,3 +677,35 @@ where
 		Ok(len)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn chunker_normal_usage() {
+		const INPUT: &'static str = r#"---
+test: true
+---
+12345
+---
+[list, of strings]
+"#;
+
+		let chunker = Chunker::new(INPUT.as_bytes());
+		let docs = chunker.collect::<Result<Vec<_>, io::Error>>().unwrap();
+
+		let contents = docs.iter().map(|doc| doc.content()).collect::<Vec<_>>();
+		assert_eq!(
+			&contents,
+			&[
+				"---\ntest: true\n",
+				"---\n12345\n",
+				"---\n[list, of strings]\n",
+			]
+		);
+
+		let scalars = docs.iter().map(|doc| doc.is_scalar()).collect::<Vec<_>>();
+		assert_eq!(&scalars, &[false, true, false]);
+	}
+}
