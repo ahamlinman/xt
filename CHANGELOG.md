@@ -1,30 +1,29 @@
 ## v0.18.1 (2023-07-23)
 
-### Fixed
+### Changed
 
-**Unsoundness in YAML input.** This version of xt fixes the potential for
-out-of-bounds memory writes (i.e. a buffer overflow) when receiving YAML input
-from a `Read::read` implementation that returns a count of read bytes greater
-than the size of the provided buffer.
+**Additional soundness checking for YAML input.** This version of xt adds an
+extra internal safety check to prevent future changes to the implementation of
+YAML inputs from introducing a potential out-of-bounds memory write (i.e.
+buffer overflow).
 
-The author is not currently aware of the xt CLI using a `Read` implementation
-that exhibits such behavior. It is possible for users of the xt library crate
-to invoke the buffer overflow through a suitable `Read` implementation, however
-no real-world users of the xt library other than the xt CLI are currently known
-to the author. It is conceivable that the buffer overflow could have a security
-impact, such as allowing the execution of arbitrary code with the privileges of
-the process in which the xt library is used, however no specific exploits
-demonstrating this possibility are currently known to the author.
+Upon the initial release of xt v0.18.1, it was assumed that all previous xt
+releases with streaming YAML input support (v0.14.0 through v0.18.0) could
+exhibit buffer overflows when provided with a broken `Read` implementation that
+reported reading more bytes than the size of the read buffer (note that the xt
+CLI was not known to use such a broken `Read` implementation). These releases
+were yanked from crates.io following the release of v0.18.1.
 
-All releases of xt between v0.14.0 and v0.18.0 (inclusive) have been yanked
-from crates.io due to their susceptibility to this issue (and potential
-security vulnerability). There are currently no plans to backport the fix to
-previous versions, but the author is willing to do so if necessary to support
-users of xt on Rust versions older than v1.70.0.
+Further analysis has demonstrated that it was never actually possible for any
+misbehaving `Read` implementation to trigger the out-of-bounds write, thanks to
+a previously unrecognized bounds check performed elsewhere in a safe Rust
+portion of the implementation. As such, the previously yanked releases have
+been restored to crates.io. Nonetheless, it is recommended that xt users
+upgrade to v0.18.1 or above to take advantage of this additional explicit
+check, along with other improvements to the quality and strictness of unsafe
+code within xt's implementation.
 
 ## v0.18.0 (2023-07-16)
-
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Changed
 
@@ -33,8 +32,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
   due to improvements in the Rust standard library.
 
 ## v0.17.1 (2023-05-01)
-
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Fixed
 
@@ -47,8 +44,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.17.0 (2023-03-25)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
-
 ### Changed
 
 - **Formatting of non-BMP Unicode characters in YAML output.** This version of
@@ -59,8 +54,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
   to read.
 
 ## v0.16.0 (2023-02-01)
-
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Fixed
 
@@ -78,8 +71,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.15.1 (2023-01-10)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
-
 ### Changed
 
 - This version of xt upgrades locked dependencies to their latest versions, and
@@ -87,8 +78,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
   affect functionality or performance.
 
 ## v0.15.0 (2022-11-15)
-
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
 
 ### Changed
 
@@ -108,8 +97,6 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.14.3 (2022-11-14)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
-
 ### Fixed
 
 - **Build failures on Rust 1.59.0.** This release fixes compilation errors on
@@ -118,7 +105,7 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.14.2 (2022-11-14)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+_This release has been yanked from crates.io. See the v0.14.3 release notes for details._
 
 ### Fixed
 
@@ -128,7 +115,7 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.14.1 (2022-11-12)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
 
 ### Changed
 
@@ -140,7 +127,7 @@ _This release has been yanked from crates.io. See the v0.18.1 release notes for 
 
 ## v0.14.0 (2022-11-10)
 
-_This release has been yanked from crates.io. See the v0.18.1 release notes for details._
+_This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 release notes for details._
 
 ### Added
 
