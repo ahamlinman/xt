@@ -708,4 +708,22 @@ test: true
 		let scalars = docs.iter().map(|doc| doc.is_scalar()).collect::<Vec<_>>();
 		assert_eq!(&scalars, &[false, true, false]);
 	}
+
+	#[test]
+	#[should_panic]
+	fn chunker_misbehaving_reader() {
+		let chunker = Chunker::new(MisbehavingReader("---\nevil: true".as_bytes()));
+		let _ = chunker.collect::<Vec<_>>();
+	}
+
+	/// A reader that always reports having read 1 byte more than the length of
+	/// the buffer provided to [`read`](Read::read), regardless of the actual
+	/// size of the underlying read.
+	struct MisbehavingReader<R: Read>(R);
+
+	impl<R: Read> Read for MisbehavingReader<R> {
+		fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+			self.0.read(buf).and(Ok(buf.len() + 1))
+		}
+	}
 }
