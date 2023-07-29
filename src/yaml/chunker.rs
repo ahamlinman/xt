@@ -251,16 +251,17 @@ where
 					}
 				}
 
-				if !size_read.is_null() {
-					// SAFETY: The dereference of `size_read` is unsafe. Since
-					// libyaml provides this pointer, we largely defer to the
-					// LIBYAML SAFETY NOTE. However, as an additional check on
-					// libyaml, we've explicitly validated that `size_read` is
-					// non-null. Note that because `u64: Copy`, and `Drop` is
-					// mutually exclusive with `Copy`, there is no danger of us
-					// dropping uninitialized memory during the assignment.
-					unsafe { *size_read = read_len as u64 };
-
+				// SAFETY: The dereference of `size_read` is unsafe. Since
+				// libyaml provides this pointer, we largely defer to the
+				// LIBYAML SAFETY NOTE. However, as an additional check on
+				// libyaml, we've explicitly validated that `size_read` is
+				// non-null. Note that because `u64: Copy`, and `Drop` is
+				// mutually exclusive with `Copy`, there is no danger of us
+				// dropping uninitialized memory during the assignment.
+				unsafe {
+					if !size_read.is_null() {
+						*size_read = read_len as u64;
+					}
 					// Note that EOF does not require special handling, as
 					// libyaml's EOF condition is the same as Rust's: report a
 					// successful read of 0 bytes.
