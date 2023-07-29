@@ -172,30 +172,33 @@ where
 		const READ_SUCCESS: i32 = 1;
 		const READ_FAILURE: i32 = 0;
 
-		// READ STATE USAGE NOTE: To limit the potential for any unintended
-		// aliasing issues that could result from the use of a &mut reference,
-		// all uses of `read_state` in this function are done through the raw
-		// *mut pointer. These uses are expected to be safe due to requirements
-		// documented for our caller.
-		let read_state = read_state.cast::<ReadState<R>>();
+		// SAFETY: The conversion of the read_state pointer to a &mut is unsafe.
+		// To analyze its safety, we consider the validity of the pointer and
+		// the validity of the resulting lifetime, particularly with respect to
+		// possible aliasing.
+		//
+		// With respect to pointer validity, we lift this requirement to our
+		// caller.
+		//
+		// With respect to the lifetime, the reference will be alive through the
+		// end of this function. Since this binding shadows the original
+		// read_state raw pointer, there should be no possibility for aliasing
+		// access through both the &mut reference and the raw pointer within the
+		// function itself. We assume that libyaml is single-threaded and will
+		// not make concurrent calls to a read handler with the same data
+		// pointer, and defer to the LIBYAML SAFETY NOTE as necessary.
+		let read_state = unsafe { &mut *read_state.cast::<ReadState<R>>() };
 
-		// This represents the size of an in-memory buffer, which cannot
-		// possibly exceed usize::MAX unless libyaml is seriously broken.
-		#[allow(clippy::cast_possible_truncation)]
-		let size = size as usize;
+		let size = usize::try_from(size).unwrap();
+		read_state.buffer.resize(size, 0);
 
-		// SAFETY: The dereference of read_state is unsafe; see READ STATE USAGE NOTE.
-		unsafe { (*read_state).buffer.resize(size, 0) };
-
-		// SAFETY: The dereferences of read_state are unsafe; see READ STATE USAGE NOTE.
-		match unsafe { (*read_state).reader.read(&mut (*read_state).buffer[..]) } {
+		match read_state.reader.read(&mut read_state.buffer[..]) {
 			Ok(len) => {
 				if len > size {
-					// This is critical for soundness, see below. While we
-					// usually treat libyaml calls as if they are FFI, it is
-					// safe to unwind here as unsafe_libyaml is actually pure
-					// Rust code translated from C.
-					panic!("misbehaving reader claims to have read {len} bytes into a {size}-byte buffer");
+					// This is critical for soundness, see below. While we often
+					// treat libyaml as if it's FFI, it's okay to unwind here as
+					// unsafe_libyaml is actually Rust code translated from C.
+					panic!("misbehaving reader claims a {len} byte read into a {size} byte buffer");
 				}
 
 				// SAFETY: There are two separate unsafe operations to consider
@@ -249,7 +252,7 @@ where
 				// allocations.
 				unsafe {
 					if !buffer.is_null() {
-						ptr::copy_nonoverlapping((*read_state).buffer.as_ptr(), buffer, len);
+						ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, len);
 					}
 				}
 
@@ -268,13 +271,11 @@ where
 					// successful read of 0 bytes.
 				}
 
-				// SAFETY: The dereference of read_state is unsafe; see READ STATE USAGE NOTE.
-				unsafe { (*read_state).error = None };
+				read_state.error = None;
 				READ_SUCCESS
 			}
 			Err(err) => {
-				// SAFETY: The dereference of read_state is unsafe; see READ STATE USAGE NOTE.
-				unsafe { (*read_state).error = Some(err) };
+				read_state.error = Some(err);
 				READ_FAILURE
 			}
 		}
