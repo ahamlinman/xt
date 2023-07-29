@@ -166,7 +166,7 @@ where
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
-		size: u64,
+		buffer_size: u64,
 		size_read: *mut u64,
 	) -> i32 {
 		const READ_SUCCESS: i32 = 1;
@@ -189,48 +189,43 @@ where
 		// pointer, and defer to the LIBYAML SAFETY NOTE as necessary.
 		let read_state = unsafe { &mut *read_state.cast::<ReadState<R>>() };
 
-		let size = usize::try_from(size).unwrap();
-		read_state.buffer.resize(size, 0);
+		let buffer_size = usize::try_from(buffer_size).unwrap();
+		read_state.buffer.resize(buffer_size, 0);
 
 		match read_state.reader.read(&mut read_state.buffer[..]) {
-			Ok(len) => {
-				if len > size {
+			Ok(read_len) => {
+				if read_len > buffer_size {
 					// This is critical for soundness, see below. While we often
 					// treat libyaml as if it's FFI, it's okay to unwind here as
 					// unsafe_libyaml is actually Rust code translated from C.
-					panic!("misbehaving reader claims a {len} byte read into a {size} byte buffer");
+					panic!("misbehaving reader claims a {read_len} byte read into a {buffer_size} byte buffer");
 				}
 
-				// SAFETY: There are two separate unsafe operations to consider
-				// in this block: the dereference of read_state, and the call to
-				// ptr::copy_nonoverlapping.
+				// SAFETY: The call to ptr::copy_nonoverlapping is (extremely)
+				// unsafe. To analyze its safety, we'll consider its four
+				// documented safety requirements in turn.
 				//
-				// With respect to the read_state dereference, see READ STATE
-				// USAGE NOTE.
-				//
-				// To analyze the safety of the ptr::copy_nonoverlapping call,
-				// we will consider its four documented safety requirements in
-				// turn.
-				//
-				// First: the pointer returned by `(*read_state).buffer.as_ptr()`
-				// must be valid for reads of `len` bytes. We expect it to be
-				// non-null and live by virtue of pointing to the backing
+				// First: the pointer returned by `read_state.buffer.as_ptr()`
+				// must be valid for reads of `read_len` bytes. We expect it to
+				// be non-null and live by virtue of pointing to the backing
 				// allocation of a live Vec. Since we resized the buffer to
-				// `size` bytes before calling the reader, we expect the pointer
-				// to be valid for reads of `size` bytes. Because we panic when
-				// `len > size`, we can guarantee here that `len <= size`, and
-				// that a pointer valid for reads of `size` bytes is therefore
-				// valid for reads of `len` bytes.
+				// `buffer_size` bytes before calling the reader, we expect the
+				// pointer to be valid for reads of `buffer_size` bytes. Because
+				// we panic when `read_len > buffer_size`, we can guarantee here
+				// that `read_len <= buffer_size`, and that a pointer valid for
+				// reads of `buffer_size` bytes is therefore valid for reads of
+				// `read_len` bytes.
 				//
 				// Second: the `buffer` pointer must be valid for writes of
-				// `len` bytes. This pointer is provided by libyaml, along with
-				// the corresponding `size` that represents the maximum size for
-				// which `buffer` is valid for writes. We note once again that
-				// `len <= size`, and that a pointer valid for writes of `size`
-				// bytes must therefore be valid for writes of `len` bytes. We
-				// otherwise largely defer to the LIBYAML SAFETY NOTE, however
-				// as an additional check on libyaml we explicitly validate that
-				// `buffer` is non-null.
+				// `read_len` bytes. This pointer is provided by libyaml, along
+				// with the corresponding `buffer_size` that represents the
+				// maximum size for which `buffer` is valid for writes. We note
+				// once again that `read_len <= buffer_size`, and that a pointer
+				// valid for writes of `buffer_size` bytes must therefore be
+				// valid for writes of `read_len` bytes. We otherwise largely
+				// defer to the LIBYAML SAFETY NOTE, however as an additional
+				// check on libyaml we explicitly validate that `buffer` is
+				// non-null.
 				//
 				// Third: Both the source and destination pointers must be
 				// properly aligned. The pointee type of both pointers is u8,
@@ -244,15 +239,15 @@ where
 				// u8 pointer must be aligned.
 				//
 				// Fourth: The region of memory beginning at the source pointer
-				// with a size of `len` bytes must not overlap with the region
-				// of memory beginning at the destination pointer with the same
-				// size. We expect the global allocator to satisfy this property
-				// on our behalf, as the buffer provided by libyaml and the
-				// buffer that we manage within the read state are distinct
+				// with a size of `read_len` bytes must not overlap with the
+				// region of memory beginning at the destination pointer with
+				// the same size. We expect the global allocator to satisfy this
+				// property on our behalf, as the buffer provided by libyaml and
+				// the buffer that we manage within the read state are distinct
 				// allocations.
 				unsafe {
 					if !buffer.is_null() {
-						ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, len);
+						ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, read_len);
 					}
 				}
 
@@ -264,7 +259,7 @@ where
 					// non-null. Note that because `u64: Copy`, and `Drop` is
 					// mutually exclusive with `Copy`, there is no danger of us
 					// dropping uninitialized memory during the assignment.
-					unsafe { *size_read = len as u64 };
+					unsafe { *size_read = read_len as u64 };
 
 					// Note that EOF does not require special handling, as
 					// libyaml's EOF condition is the same as Rust's: report a
