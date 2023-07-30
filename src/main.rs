@@ -65,7 +65,7 @@ fn main() {
 		InputPaths::paths(args.input_pathnames.into_iter().map(Into::into))
 	};
 	for path in input_paths {
-		let mut input = match path.open() {
+		let input = match path.open() {
 			Ok(input) => input,
 			Err(err) => xt_bail_path!(path, "{err}"),
 		};
@@ -77,10 +77,10 @@ fn main() {
 		}
 
 		let from = args.from.or_else(|| path.extension_format());
-		let result = match &mut input {
+		let result = match input {
 			Input::Stdin => translator.translate_reader(io::stdin().lock(), from),
 			Input::File(file) => translator.translate_reader(file, from),
-			Input::Mmap(map) => translator.translate_slice(map, from),
+			Input::Mmap(map) => translator.translate_slice(&map, from),
 		};
 		if let Err(err) = result {
 			xt_bail_path!(path, "{err}");
