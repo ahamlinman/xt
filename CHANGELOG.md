@@ -2,10 +2,12 @@
 
 ### Changed
 
-**Additional soundness checking for YAML input.** This version of xt adds an
-extra internal safety check to prevent future changes to the implementation of
-YAML inputs from introducing a potential out-of-bounds memory write (i.e.
-buffer overflow).
+- **Additional soundness checking for YAML input.** This version of xt adds an
+  extra internal safety check to prevent future changes to the implementation of
+  YAML inputs from introducing a potential out-of-bounds memory write (i.e.
+  buffer overflow).
+
+### Note
 
 Upon the initial release of xt v0.18.1, it was assumed that all previous xt
 releases with streaming YAML input support (v0.14.0 through v0.18.0) could
@@ -17,11 +19,11 @@ were yanked from crates.io following the release of v0.18.1.
 Further analysis has demonstrated that it was never actually possible for any
 misbehaving `Read` implementation to trigger the out-of-bounds write, thanks to
 a previously unrecognized bounds check performed elsewhere in a safe Rust
-portion of the implementation. As such, the previously yanked releases have
-been restored to crates.io. Nonetheless, it is recommended that xt users
-upgrade to v0.18.1 or above to take advantage of this additional explicit
-check, along with other improvements to the quality and strictness of unsafe
-code within xt's implementation.
+portion of the implementation. As such, the previously yanked releases have been
+restored to crates.io. Nonetheless, it is recommended that xt users upgrade to
+v0.18.1 or above to take advantage of this additional explicit check, along with
+other improvements to the quality and strictness of unsafe code within xt's
+implementation.
 
 ## v0.18.0 (2023-07-16)
 
