@@ -194,10 +194,15 @@ where
 
 		match read_state.reader.read(&mut read_state.buffer[..]) {
 			Ok(read_len) => {
+				// This is a massively important check for the safety of the
+				// ptr::copy_nonoverlapping call below, since the consequence
+				// would be an out-of-bounds memory write. As of this writing,
+				// the safe ChunkReader implementation actually prevents this
+				// from ever being true, but obviously we aren't going to rely
+				// on that. Note that while we often treat libyaml as if it's
+				// FFI, it's okay to unwind here as unsafe_libyaml is actually
+				// pure Rust code translated from C.
 				if read_len > buffer_size {
-					// This is critical for soundness, see below. While we often
-					// treat libyaml as if it's FFI, it's okay to unwind here as
-					// unsafe_libyaml is actually Rust code translated from C.
 					panic!("misbehaving reader claims a {read_len} byte read into a {buffer_size} byte buffer");
 				}
 
