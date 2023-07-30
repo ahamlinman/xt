@@ -1,29 +1,38 @@
+## Unreleased
+
+### Changed
+
+- This version of xt includes further internal improvements to the handling of
+  YAML input, along with other minor implementation improvements and upgrades of
+  locked dependencies. These changes are not expected to significantly affect
+  functionality or performance.
+  
 ## v0.18.1 (2023-07-23)
 
 ### Changed
 
-- **Additional soundness checking for YAML input.** This version of xt adds an
-  extra internal safety check to prevent future changes to the implementation of
-  YAML inputs from introducing a potential out-of-bounds memory write (i.e.
-  buffer overflow).
+- This version of xt adds an extra internal safety check to prevent future
+  changes to the implementation of YAML inputs from introducing a potential
+  out-of-bounds memory write (i.e. buffer overflow). The change is not expected
+  to significantly affect functionality, performance, or security.
 
 ### Note
 
 Upon the initial release of xt v0.18.1, it was assumed that all previous xt
-releases with streaming YAML input support (v0.14.0 through v0.18.0) could
-exhibit buffer overflows when provided with a broken `Read` implementation that
-reported reading more bytes than the size of the read buffer (note that the xt
-CLI was not known to use such a broken `Read` implementation). These releases
-were yanked from crates.io following the release of v0.18.1.
+releases with streaming YAML input support (v0.14.0 through v0.18.0) were
+susceptible to buffer overflows when provided with a broken `Read`
+implementation that reported reading more bytes than the size of the read buffer
+(note that the xt CLI was not known to use such a broken `Read` implementation).
+These releases were yanked from crates.io following the release of v0.18.1.
 
-Further analysis has demonstrated that it was never actually possible for any
-misbehaving `Read` implementation to trigger the out-of-bounds write, thanks to
-a previously unrecognized bounds check performed elsewhere in a safe Rust
-portion of the implementation. As such, the previously yanked releases have been
-restored to crates.io. Nonetheless, it is recommended that xt users upgrade to
-v0.18.1 or above to take advantage of this additional explicit check, along with
-other improvements to the quality and strictness of unsafe code within xt's
-implementation.
+Upon further analysis, it was discovered that no version of xt was actually
+susceptible to the potential overflow thanks to a previously unrecognized bounds
+check performed elsewhere in a safe Rust portion of the implementation. The
+yanked releases have been restored to crates.io, however the additional safety
+check in v0.18.1 will be maintained to protect against future implementation
+changes. Further in-depth analysis of unsafe parts of xt's YAML implementation
+is planned, and any changes resulting from this work will become available in
+future xt releases.
 
 ## v0.18.0 (2023-07-16)
 
