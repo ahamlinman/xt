@@ -189,6 +189,14 @@ where
 		// pointer, and defer to the LIBYAML SAFETY NOTE as necessary.
 		let read_state = unsafe { &mut *read_state.cast::<ReadState<R>>() };
 
+		// Manual inspection of libyaml has shown that it uses std::alloc::alloc
+		// to allocate the buffer it provides to us, with no initialization of
+		// the buffer's memory. It would be instant Undefined Behavior to create
+		// a Rust slice using this potentially uninitialized memory, and even if
+		// it weren't it would be unsound to expose that memory to a safe Read
+		// implementation, as the Read::read documentation explicitly calls out.
+		// As such, we need our own initialized buffer (maintained across calls
+		// for efficiency) whose contents we can copy into the libyaml buffer.
 		let buffer_size = usize::try_from(buffer_size).unwrap();
 		read_state.buffer.resize(buffer_size, 0);
 
@@ -213,7 +221,7 @@ where
 				// First: the pointer returned by `read_state.buffer.as_ptr()`
 				// must be valid for reads of `read_len` bytes. We expect it to
 				// be non-null and live by virtue of pointing to the backing
-				// allocation of a live Vec. Since we resized the buffer to
+				// allocation of a live Vec<u8>. Since we resized the buffer to
 				// `buffer_size` bytes before calling the reader, we expect the
 				// pointer to be valid for reads of `buffer_size` bytes. Because
 				// we panic when `read_len > buffer_size`, we can guarantee here
@@ -234,14 +242,12 @@ where
 				//
 				// Third: Both the source and destination pointers must be
 				// properly aligned. The pointee type of both pointers is u8,
-				// whose size is guaranteed by definition to be 1 byte (assuming
-				// 8-bit bytes, as I am not aware of Rust supporting platforms
-				// using other byte sizes). Because "the size of a value is
-				// always a multiple of its alignment" (per the "Type Layout"
-				// section of the Rust Reference), 1 must be a (presumably
-				// integer) multiple of the alignment of a u8, which means that
-				// the alignment of a u8 must itself be 1. As such, any non-null
-				// u8 pointer must be aligned.
+				// whose size is guaranteed by definition to be 1 byte. Because
+				// "the size of a value is always a multiple of its alignment"
+				// (per the "Type Layout" section of the Rust Reference), 1 must
+				// be a multiple of the alignment of a u8, which means that the
+				// alignment of a u8 must itself be 1. As such, any non-null u8
+				// pointer is inherently aligned.
 				//
 				// Fourth: The region of memory beginning at the source pointer
 				// with a size of `read_len` bytes must not overlap with the
