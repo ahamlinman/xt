@@ -344,30 +344,15 @@ where
 						.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
-					// SAFETY: There are two separate unsafe operations to
-					// consider in this block: the dereference of self.read_state,
-					// and the call to String::from_utf8_unchecked.
-					//
-					// With respect to self.read_state, see the READ STATE
-					// POINTER NOTE in Chunker::new.
-					//
-					// With respect to from_utf8_unchecked, we expect libyaml to
-					// validate that its input is UTF-8 due to us configuring
-					// the parser with YAML_UTF8_ENCODING in Chunker::new, and
-					// defer to the LIBYAML SAFETY NOTE with respect to the
-					// correctness of that validation (I'll note that I could
-					// not identify any obvious issues with libyaml's handling
-					// of UTF-8 errors in a cursory inspection of its code).
-					// (TODO: Say more about expectations for ChunkReader being
-					// correct.)
-					let content = unsafe {
-						let offset = event.end_mark.index;
-						String::from_utf8_unchecked(
-							(*self.read_state).reader.take_to_offset(offset),
-						)
+					// SAFETY: The dereference of self.read_state is unsafe; see
+					// the READ STATE POINTER NOTE in Chunker::new.
+					let chunk = unsafe {
+						(*self.read_state)
+							.reader
+							.take_to_offset(event.end_mark.index)
 					};
 					self.last_document = Some(Document {
-						content,
+						content: String::from_utf8(chunk).unwrap(),
 						kind: self.current_document_kind.take().unwrap(),
 					});
 				}
