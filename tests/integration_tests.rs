@@ -262,7 +262,14 @@ fn yaml_halting_without_panic() {
 /// default have 2 MiB stacks (per std::thread docs as of writing). This is
 /// apparently too small to properly test the normal depth limit, so we run
 /// these cases with stacks that better approximate a typical main thread.
+///
+/// We ignore this test in Miri. It takes an unusually long time to run, but
+/// provides little value as neither xt nor rmp(-serde) use unsafe code when
+/// decoding MessagePack (at least as of this writing; note that rmp can run
+/// some unsafe code while serializing, and some of it is even known to be
+/// unsound, but xt never hits those code paths).
 #[test]
+#[cfg_attr(miri, ignore)]
 fn msgpack_depth_limit() {
 	// Magic private constant from msgpack.rs.
 	const DEPTH_LIMIT: usize = 1024;
