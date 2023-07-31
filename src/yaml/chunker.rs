@@ -56,6 +56,10 @@ pub(super) struct Chunker<R>
 where
 	R: Read,
 {
+	// Note that anything we need libyaml to access is kept as raw pointers,
+	// since otherwise the uniqueness requirements of Box<T> make it too easy to
+	// violate Stacked Borrows (e.g. pulling a chunk out of self.read_state must
+	// not invalidate the data pointer that libyaml keeps for its read handler).
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
 	last_document: Option<Document>,
@@ -85,13 +89,6 @@ where
 	/// BOMs. Consider using the [`encoding`](super::encoding) module to
 	/// re-encode non-UTF-8 streams.
 	pub(super) fn new(reader: R) -> Self {
-		// TODO: The docs for Box<T> talk about how it asserts uniqueness over
-		// its contents (LLVM noalias), and that using raw pointers derived from
-		// a Box after mutating through it "is not allowed." Miri has never
-		// complained about this usage, but it is quite possible that this usage
-		// is disallowed and could cause problems in the future. This requires
-		// further analysis; serde_yaml defines a special "Owned" pointer type
-		// that might be a useful reference.
 		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 
 		// SAFETY: The call to yaml_parser_initialize is unsafe; see the LIBYAML
@@ -132,8 +129,8 @@ where
 			error: None,
 		}));
 
-		// SAFETY: There are, in a sense, two unsafe operations here: the call
-		// to yaml_parser_set_input, and the passing of the unsafe Self::read_handler
+		// SAFETY: There are, in a sense, two unsafe operations here: calling
+		// yaml_parser_set_input, and passing the unsafe Self::read_handler
 		// function (which is not technically unsafe on its own, but will result
 		// in calls to that unsafe function later on).
 		//
@@ -426,8 +423,6 @@ impl Event {
 	///
 	/// `parser` must be a valid pointer to an initialized [`yaml_parser_t`].
 	unsafe fn from_parser(parser: *mut yaml_parser_t) -> Result<Event, ParserError> {
-		// TODO: This pattern is similar to how Chunker::new initializes a
-		// yaml_parser_t, and raises the same questions.
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 
 		// SAFETY: The call to yaml_parser_parse is unsafe; see the LIBYAML
@@ -441,8 +436,8 @@ impl Event {
 			return Err(unsafe { ParserError::from_parser(parser) });
 		}
 
-		// Again, this pattern is a hidden MaybeUninit::assume_init like in
-		// Chunker::new.
+		// This is effectively a hidden MaybeUninit::assume_init, like when
+		// Chunker::new initializes the parser. See that comment for details.
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
 }
