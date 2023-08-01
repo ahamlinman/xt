@@ -1,11 +1,11 @@
-## Unreleased
+## v0.18.2 (2023-07-31)
 
 ### Changed
 
 - This version of xt includes further internal improvements to the handling of
   YAML input, along with other minor implementation improvements and upgrades of
   locked dependencies. These changes are not expected to significantly affect
-  functionality or performance.
+  functionality, performance, or security.
   
 ## v0.18.1 (2023-07-23)
 
