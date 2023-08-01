@@ -411,17 +411,6 @@ mod tests {
 	}
 
 	#[test]
-	fn excessively_deep_input_size() {
-		// [[true]]
-		assert_eq!(next_value_size(&hex!("91 91 c3"), 3), Ok(3));
-		// [[[true]]]
-		assert_eq!(
-			next_value_size(&hex!("91 91 91 c3"), 3),
-			Err(ReadSizeError::DepthLimitExceeded)
-		);
-	}
-
-	#[test]
 	fn invalid_marker_size() {
 		// <invalid>
 		assert_eq!(
@@ -446,5 +435,50 @@ mod tests {
 		assert_eq!(next_value_size(&hex!("c3 c1"), DEPTH_LIMIT), Ok(1));
 		// ["xt"]; <invalid>
 		assert_eq!(next_value_size(&hex!("91 a2 78 74 c1"), DEPTH_LIMIT), Ok(4));
+	}
+
+	#[test]
+	fn excessively_deep_input_size() {
+		// [[true]]
+		assert_eq!(next_value_size(&hex!("91 91 c3"), 3), Ok(3));
+		// [[[true]]]
+		assert_eq!(
+			next_value_size(&hex!("91 91 91 c3"), 3),
+			Err(ReadSizeError::DepthLimitExceeded)
+		);
+	}
+
+	#[test]
+	#[cfg_attr(miri, ignore)] // Takes unusually long to run, but no unsafe in tested code paths.
+	fn consistent_depth_limits() {
+		// Nested arrays enclosing a null.
+		let mut input = [0x91_u8; DEPTH_LIMIT];
+		*input.last_mut().unwrap() = 0xc0;
+
+		// See https://stackoverflow.com/a/42960702. Cargo runs tests on
+		// secondary threads, which by default have 2 MiB stacks (per
+		// std::thread docs as of writing). This is apparently too small to
+		// properly test the normal depth limit, so we run these cases with
+		// stacks that better approximate a typical main thread.
+		std::thread::Builder::new()
+			.stack_size(8 * 1024 * 1024)
+			.spawn(move || {
+				match_input_buffer(&input[..]).expect("failed to detect buffer");
+				super::transcode(
+					input::Handle::from_slice(&input[..]),
+					super::Output::new(io::sink()),
+				)
+				.expect("failed to translate buffer");
+
+				match_input_reader(&input[..]).expect("failed to detect reader");
+				super::transcode(
+					input::Handle::from_reader(&input[..]),
+					super::Output::new(io::sink()),
+				)
+				.expect("failed to translate reader");
+			})
+			.unwrap()
+			.join()
+			.unwrap();
 	}
 }

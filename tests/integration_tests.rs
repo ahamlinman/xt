@@ -17,7 +17,6 @@
 
 use std::io;
 use std::str::from_utf8;
-use std::thread;
 
 use rstest::rstest;
 
@@ -248,56 +247,4 @@ fn toml_initial_table_detection() {
 fn yaml_halting_without_panic() {
 	const INPUT: &[u8] = include_bytes!("nullkey.yaml");
 	let _ = xt::translate_slice(INPUT, Some(Format::Yaml), Format::Json, std::io::sink());
-}
-
-/// Tests that MessagePack recursion depth limits behave consistently for both
-/// buffer and reader inputs.
-///
-/// Buffer inputs implement their own depth check on top of rmp_serde's when
-/// they determine the sizes of input values. It should behave consistently with
-/// rmp_serde, which performs the only depth check for reader inputs.
-///
-/// See https://stackoverflow.com/a/42960702 for context around the additional
-/// thread used in this test. Cargo runs tests on secondary threads, which by
-/// default have 2 MiB stacks (per std::thread docs as of writing). This is
-/// apparently too small to properly test the normal depth limit, so we run
-/// these cases with stacks that better approximate a typical main thread.
-///
-/// We ignore this test in Miri. It takes an unusually long time to run, but
-/// provides little value as neither xt nor rmp(-serde) use unsafe code when
-/// decoding MessagePack (at least as of this writing; note that rmp can run
-/// some unsafe code while serializing, and some of it is even known to be
-/// unsound, but xt never hits those code paths).
-#[test]
-#[cfg_attr(miri, ignore)]
-fn msgpack_depth_limit() {
-	// Magic private constant from msgpack.rs.
-	const DEPTH_LIMIT: usize = 1024;
-
-	// Nested arrays enclosing a null.
-	let mut input = [0x91_u8; DEPTH_LIMIT];
-	*input.last_mut().unwrap() = 0xc0;
-
-	let builder = thread::Builder::new().stack_size(8 * 1024 * 1024);
-	builder
-		.spawn(move || {
-			xt::translate_reader(
-				&input[..],
-				Some(Format::Msgpack),
-				Format::Msgpack,
-				std::io::sink(),
-			)
-			.expect("reader should have been translated");
-
-			xt::translate_slice(
-				&input[..],
-				Some(Format::Msgpack),
-				Format::Msgpack,
-				std::io::sink(),
-			)
-			.expect("buffer should have been translated");
-		})
-		.unwrap()
-		.join()
-		.unwrap();
 }
