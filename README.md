@@ -43,6 +43,13 @@ cargo install --locked xt
 [install rust]: https://www.rust-lang.org/tools/install
 [crate]: https://crates.io/crates/xt
 
+### NetBSD
+
+On NetBSD a pre-compiled binary is available from the official repositories. To install it, simply run:
+```sh
+pkgin install xt-rs
+```
+
 ## Usage and Features
 
 ```
