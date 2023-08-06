@@ -36,5 +36,7 @@ jobs:
         rustup toolchain install nightly --component miri --allow-downgrade
         rustup default nightly
         rustc --version
+    - name: download nextest
+      run: curl -LsSf https://get.nexte.st/0.9/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
     - name: cargo miri test
-      run: cargo miri test
+      run: cargo miri nextest run -j num-cpus
