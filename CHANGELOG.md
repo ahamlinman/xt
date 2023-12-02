@@ -6,7 +6,7 @@
   YAML input, along with other minor implementation improvements and upgrades of
   locked dependencies. These changes are not expected to significantly affect
   functionality, performance, or security.
-  
+
 ## v0.18.1 (2023-07-23)
 
 ### Changed
