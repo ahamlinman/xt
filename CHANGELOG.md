@@ -1,3 +1,13 @@
+## Unreleased
+
+### Fixed
+
+- **Potential undefined behavior in YAML handling.** This version of xt upgrades
+  to the latest version of the third-party `unsafe-libyaml` library, which plays
+  a critical role in xt's YAML support. The upgrade fixes a memory safety bug on
+  32-bit platforms, which may have caused crashes, incorrect behavior, etc.
+  64-bit platforms are not affected.
+
 ## v0.18.2 (2023-07-31)
 
 ### Changed
