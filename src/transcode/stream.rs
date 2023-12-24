@@ -182,6 +182,9 @@ impl<P, E> State<P, E> {
 		State {
 			parent: Cell::new(Some(parent)),
 			error: Cell::new(None),
+			// Errors are assumed to come from the deserializer by default.
+			// Since the transcoder drives the serializer, it will always know
+			// when it needs to overwrite this.
 			source: Cell::new(ErrorSource::De),
 		}
 	}
@@ -214,11 +217,6 @@ impl<P, E> State<P, E> {
 
 	/// Returns the source (serializer or deserializer) of any error associated
 	/// with this state.
-	///
-	/// Note that this returns [`ErrorSource::De`] if no explicit error or
-	/// source has been captured. Because the transcoder is fully responsible
-	/// for driving the serializer, it will always know when it needs to record
-	/// that an error originated there.
 	fn error_source(&self) -> ErrorSource {
 		self.source.get()
 	}
@@ -242,16 +240,11 @@ impl<S: Serializer> Visitor<S> {
 		Visitor(State::new(ser))
 	}
 
-	/// Extracts the serializer from the state so it can be used to serialize a
-	/// scalar value, then captures and maps any serializer error to a
-	/// deserializer error.
-	///
-	/// The only meaningful difference between most of the visitor's methods is
-	/// that they each call a specific [`Serializer`] method depending on the
-	/// type of value the deserializer gave us. This helper provides all of the
-	/// necessary boilerplate to implement the transcoder's error propagation
-	/// strategy, without encoding everything into a macro body that tools like
-	/// rust-analyzer can't meaningfully inspect.
+	/// Provides the error capturing and mapping boilerplate for all visitor
+	/// methods that handle basic scalar types (booleans, numbers, etc.), where
+	/// the only meaningful difference between methods is which [`Serializer`]
+	/// method they need to call. Having this in a function (rather than inlined
+	/// into a macro body) makes it easier for rust-analyzer et al to inspect.
 	fn forward_scalar<F, E>(&mut self, use_serializer: F) -> Result<S::Ok, E>
 	where
 		F: FnOnce(S) -> Result<S::Ok, S::Error>,
@@ -269,7 +262,7 @@ impl<S: Serializer> Visitor<S> {
 }
 
 /// Implements [`de::Visitor`] methods that simply forward scalar values to the
-/// appropriate method of a [`Serializer`].
+/// appropriate [`Serializer`] method.
 ///
 /// As these methods in the transcoder's visitor have nearly identical
 /// implementations, this eliminates a significant amount of signature-related
@@ -283,12 +276,12 @@ macro_rules! xt_transcode_impl_scalar_visitors {
 }
 
 impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
-	// It's important to note that we do not attempt to implement error
-	// preservation by having the visitor return `Result<S::Ok, S::Error>`,
-	// which might seem at first like the most obvious way to do things.
-	// That approach requires one of two things to happen when the transcoder
-	// encounters a serializer error in the middle of a complex value (sequence
-	// or map), neither of which is ideal:
+	// It's important to note that we don't implement error preservation by
+	// having the visitor return `Result<S::Ok, S::Error>`, which might seem at
+	// first like the obvious way to do things. That approach requires one of
+	// two things to happen when the transcoder encounters a serializer error in
+	// the middle of a complex value (sequence or map), neither of which is
+	// ideal:
 	//
 	// 1. The visitor can try to return the `Result` immediately, without having
 	//    visited the entire map or sequence. My past experience is that this
@@ -420,14 +413,10 @@ impl<'de, D: Deserializer<'de>> Forwarder<'de, D> {
 		Forwarder(State::new(de))
 	}
 
-	/// Extracts a serializer type from the state, forwards the deserializer's
-	/// next value to it, and captures and maps any serializer error to a
-	/// deserializer error.
-	///
-	/// This helper provides most of the necessary boilerplate to implement the
-	/// transcoder's error propagation strategy for the elements of complex
-	/// types, each of which is associated with its own set of Serde traits and
-	/// collection-specific methods (e.g. to distinguish map keys and values).
+	/// Provides the error capturing and mapping boilerplate for a single
+	/// element of a complex type (sequence or map), which is associated with a
+	/// particular Serde trait and collection-specific methods (e.g. to
+	/// distinguish map keys and values).
 	fn serialize_with_seed<S, SErr, F>(
 		self,
 		seed_state: &mut State<S, SErr>,
@@ -437,8 +426,8 @@ impl<'de, D: Deserializer<'de>> Forwarder<'de, D> {
 		F: FnOnce(S, &Self) -> Result<(), SErr>,
 	{
 		let ser = seed_state.take_parent();
-		// REMINDER: &self has interior mutability, so serialization may capture
-		// an error and source into the state at self.0.
+		// NOTE: &self has interior mutability, so serialization may capture an
+		// error and source into the state at self.0.
 		match use_serializer(ser, &self) {
 			Ok(()) => Ok(()),
 			Err(ser_err) => {
