@@ -472,7 +472,7 @@ mod tests {
 	#[test]
 	fn capture_reader_to_end() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
-		assert!(matches!(r.capture_to_end(), Ok(_)));
+		assert!(r.capture_to_end().is_ok());
 		assert_eq!(std::str::from_utf8(r.captured()), Ok(DATA));
 		assert!(r.is_source_eof());
 	}
@@ -480,7 +480,7 @@ mod tests {
 	#[test]
 	fn capture_reader_up_to() {
 		let mut r = CaptureReader::new(Cursor::new(String::from(DATA)));
-		assert!(matches!(r.capture_up_to_size(HALF), Ok(_)));
+		assert!(r.capture_up_to_size(HALF).is_ok());
 		assert_eq!(std::str::from_utf8(r.captured()), Ok(&DATA[..HALF]));
 		assert!(!r.is_source_eof());
 	}

@@ -675,7 +675,7 @@ mod tests {
 
 	#[test]
 	fn chunker_normal_usage() {
-		const INPUT: &'static str = r#"---
+		const INPUT: &str = r#"---
 test: true
 ---
 12345
