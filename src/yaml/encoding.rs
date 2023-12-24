@@ -186,7 +186,7 @@ where
 		} else {
 			self.started = true;
 			match self.source.next() {
-				Some(Ok(ch)) if ch == '\u{FEFF}' => self.source.next(),
+				Some(Ok('\u{FEFF}')) => self.source.next(),
 				next => next,
 			}
 		}

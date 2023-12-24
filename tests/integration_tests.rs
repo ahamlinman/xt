@@ -15,6 +15,8 @@
 //! annoyance when the specific formatting of a given output changes. However,
 //! it does provide broad coverage with relatively little effort.
 
+#![allow(clippy::items_after_test_module)]
+
 use std::io;
 use std::str::from_utf8;
 
