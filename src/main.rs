@@ -43,7 +43,7 @@ fn main() {
 			let mut stderr = io::stderr().lock();
 			let _ = writeln!(stderr, "xt error: {err}");
 			write_short_help(stderr);
-			process::exit(1);
+			process::exit(2);
 		}
 	};
 
