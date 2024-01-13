@@ -51,5 +51,13 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+# The "release-opt" profile may allow the compiler to identify additional size
+# and/or performance optimizations compared to the standard release profile, at
+# the cost of greater compilation time and CPU consumption. You are encouraged
+# to analyze and consider these tradeoffs in the context of your unique
+# environment and use of xt.
+[profile.release-opt]
+inherits = "release"
 lto = true
 codegen-units = 1
