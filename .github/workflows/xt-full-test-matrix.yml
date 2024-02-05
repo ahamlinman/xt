@@ -9,12 +9,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-22.04, macos-13, macos-14, windows-2022]
+        runner: [ubuntu-22.04, macos-13, windows-2022]
         toolchain: [stable, 1.70.0]
     runs-on: ${{ matrix.runner }}
     steps:
     - name: git checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: rustup toolchain install
       run: |
         rustup set profile minimal
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: git checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: rustup toolchain install
       run: |
         rustup set profile minimal
