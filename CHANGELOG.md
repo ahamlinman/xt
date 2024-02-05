@@ -1,3 +1,18 @@
+## v0.19.0 (2024-02-04)
+
+### Changed
+
+- **Exit code for argument errors.** Following a loosely established convention
+  among Unix tools, xt now exits with code 2 for CLI usage errors, retaining
+  code 1 for runtime errors. Previously, xt exited with code 1 for both usage
+  and runtime errors.
+- **Default rustc options for release builds.** Release builds of xt no longer
+  enable link-time optimization or change the rustc `codegen-units` setting by
+  default. These settings have moved to the custom `release-opt` profile, and
+  can be selected with Cargo's `--profile` option in contexts where the relevant
+  tradeoff (more time and CPU during build for a smaller and/or more performant
+  binary) is deemed worthwhile.
+
 ## v0.18.3 (2023-12-24)
 
 ### Fixed
