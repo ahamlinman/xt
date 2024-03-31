@@ -1,0 +1,25 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "hello-world"
+  },
+  "spec": {
+    "template": {
+      "metadata": {
+        "labels": {
+          "job": "hello-world"
+        }
+      },
+      "spec": {
+        "restartPolicy": "Never",
+        "containers": [
+          {
+            "name": "hello-world",
+            "image": "docker.io/library/hello-world:latest"
+          }
+        ]
+      }
+    }
+  }
+}
