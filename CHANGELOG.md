@@ -273,7 +273,16 @@ _This release has been yanked from crates.io. See the v0.14.2 and v0.14.3 releas
   included large binary files used for benchmarking. This version should take
   things back down to a reasonable size.
 
+### Note
+
+On 30 March 2024, following the widespread disclosure of the xz-utils backdoor
+that was obfuscated in part through binary test data, I made the decision to
+formally yank v0.9.0 from crates.io, so that the crate archives for all
+unyanked versions should consist exclusively of human-readable data and code.
+
 ## v0.9.0 (2022-04-24)
+
+_This release has been yanked from crates.io. See the v0.9.1 release notes for details._
 
 ### Added
 
