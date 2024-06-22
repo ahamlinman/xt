@@ -18,7 +18,7 @@ rmp = "0.8.11"
 rmp-serde = "1.1.1"
 serde = "1.0.158"
 serde_json = "1.0.94"
-serde_yaml = "0.9.34+deprecated"
+serde_yaml = "0.9.34"
 unsafe-libyaml = "0.2.11"
 
 [dependencies.toml]
