@@ -1,3 +1,18 @@
+## v0.19.1 (2024-07-25)
+
+### Fixed
+
+- **Potential quadratic behavior in YAML handling.** This version of xt upgrades
+  to the latest version of the third-party `unsafe-libyaml` library, which plays
+  a critical role in xt's YAML support. The upgrade fixes performance issues on
+  YAML documents with unusually deep collection nesting.
+
+### Changed
+
+- This version of xt cleans up some unused code and development dependencies,
+  and upgrades some other locked dependencies. These changes are not expected to
+  significantly affect functionality, performance, or security.
+
 ## v0.19.0 (2024-02-04)
 
 ### Changed
