@@ -96,6 +96,47 @@ or by concatenating other JSON tokens with whitespace.
 .Pp
 Outputs multiple documents concatenated with newlines.
 .
+.It Cm msgpack , m
+A binary format for a superset of data types supported by JSON.
+Default for
+.Dq .msgpack
+files.
+.Pp
+Input multiple documents by concatenating them
+with no intervening markers or padding.
+.Pp
+Outputs multiple documents by concatenating them.
+.Nm
+will refuse to emit
+.Cm msgpack
+output to a terminal.
+.
+.It Cm toml , t
+A human-readable configuration format with INI-like syntax
+that unambiguously maps to a hash table.
+Default for
+.Dq .toml
+files.
+.Pp
+Single document per input or output only.
+.Nm
+will refuse to emit more than one document to a
+.Cm toml
+output.
+.Pp
+TOML is explicitly
+.Em not
+designed to serialize arbitrary data structures,
+and imposes special limitations when used as an output format.
+.Nm
+will refuse to emit a document containing any
+.Dq null
+value,
+or whose root value does not map to a TOML table,
+to a
+.Cm toml
+output.
+.
 .It Cm yaml , y
 A human-readable format with a relatively minimal syntax
 that indicates structure through indentation.
@@ -128,47 +169,6 @@ translate consistently as strings, not booleans.
 .Nm
 does not permit byte order marks in UTF-8 inputs,
 or between documents in UTF-16 and UTF-32 inputs.
-.
-.It Cm toml , t
-A human-readable configuration format with INI-like syntax
-that unambiguously maps to a hash table.
-Default for
-.Dq .toml
-files.
-.Pp
-Single document per input or output only.
-.Nm
-will refuse to emit more than one document to a
-.Cm toml
-output.
-.Pp
-TOML is explicitly
-.Em not
-designed to serialize arbitrary data structures,
-and imposes special limitations when used as an output format.
-.Nm
-will refuse to emit a document containing any
-.Dq null
-value,
-or whose root value does not map to a TOML table,
-to a
-.Cm toml
-output.
-.
-.It Cm msgpack , m
-A binary format for a superset of data types supported by JSON.
-Default for
-.Dq .msgpack
-files.
-.Pp
-Input multiple documents by concatenating them
-with no intervening markers or padding.
-.Pp
-Outputs multiple documents by concatenating them.
-.Nm
-will refuse to emit
-.Cm msgpack
-output to a terminal.
 .El
 .
 .Sh EXIT STATUS
