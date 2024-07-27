@@ -75,11 +75,14 @@ Print version information, then exit.
 .El
 .
 .Ss Formats
+Format names may be specified in full,
+or with a single-character alias.
+.Pp
 Unless otherwise specified,
 .Nm
 exclusively consumes and produces human-readable formats with UTF-8 encoding.
 .Bl -tag -width Ds
-.It Cm json | j
+.It Cm json , j
 A human-readable format derived from JavaScript,
 with near-ubiquitous support across programming languages and tools like
 .Xr jq 1 .
@@ -93,7 +96,7 @@ or by concatenating other JSON tokens with whitespace.
 .Pp
 Outputs multiple documents concatenated with newlines.
 .
-.It Cm yaml | y
+.It Cm yaml , y
 A human-readable format with a relatively minimal syntax
 that indicates structure through indentation.
 Default for
@@ -126,7 +129,7 @@ translate consistently as strings, not booleans.
 does not permit byte order marks in UTF-8 inputs,
 or between documents in UTF-16 and UTF-32 inputs.
 .
-.It Cm toml | t
+.It Cm toml , t
 A human-readable configuration format with INI-like syntax
 that unambiguously maps to a hash table.
 Default for
@@ -152,7 +155,7 @@ to a
 .Cm toml
 output.
 .
-.It Cm msgpack | m
+.It Cm msgpack , m
 A binary format for a superset of data types supported by JSON.
 Default for
 .Dq .msgpack
