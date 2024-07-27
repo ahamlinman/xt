@@ -155,9 +155,9 @@ impl Cli {
 fn try_parse_format(s: &str) -> Result<Format, &'static str> {
 	match s {
 		"j" | "json" => Ok(Format::Json),
-		"y" | "yaml" => Ok(Format::Yaml),
-		"t" | "toml" => Ok(Format::Toml),
 		"m" | "msgpack" => Ok(Format::Msgpack),
+		"t" | "toml" => Ok(Format::Toml),
+		"y" | "yaml" => Ok(Format::Yaml),
 		_ => Err("not a valid format name"),
 	}
 }
@@ -174,7 +174,7 @@ where
 	let _ = write!(
 		w,
 		r#"Usage: {argv0} {USAGE}
-Formats: json, yaml, toml, msgpack
+Formats: json, msgpack, toml, yaml
 Try '{argv0} --help' for more information.
 "#
 	);
@@ -188,42 +188,42 @@ fn print_long_help() {
 		io::stdout().lock(),
 		r#"{VERSION} - Translate between serialized data formats
 
-Usage: {argv0} {USAGE}
+USAGE
+    {argv0} {USAGE}
 
-Options:
-    -f format  Format to convert from  (default: auto-detect)
-    -t format  Format to convert to    (default: json)
+    Without -f, xt detects the format of each input by extension
+    or content inspection.
 
-Flags:
-    -h, --help     Print help information
-    -V, --version  Print version information
+    With no file, or with the special name "-" at any one position,
+    xt translates from standard input.
 
-This version of xt supports the following formats, which may be specified by
-full name or first character (e.g. '-ty' == '-t yaml'):
+OPTIONS
+    -f format      Skip detection and convert every input from the given format
+    -h, --help     Print a usage summary, then exit
+    -t format      Convert to the given format (default: json)
+    -V, --version  Print version information, then exit
 
-     json  Multi-document (self-delineating or whitespace between values).
-           Default for .json input files.
+FORMATS
+    json, j
+        Default for .json files.
+        Multi-document (self-delineating or whitespace between values).
 
-     yaml  Multi-document (with "---" or "..." syntax).
-           Default for .yaml and .yml input files.
+    msgpack, m
+        Default for .msgpack files.
+        Multi-document (naturally self-delineating).
 
-     toml  Single document per stream only.
-           Default for .toml input files.
+    toml, t
+        Default for .toml files.
+        Single document per input or output.
 
-  msgpack  Multi-document (always self-delineating).
-           Default for .msgpack input files.
+    yaml, y
+        Default for .yaml and .yml files.
+        Multi-document (with --- or ... syntax).
 
-When no '-f' option is provided, xt will detect the format of each input from
-its file extension, or by running a format detection algorithm on the input
-stream. Details of the detection algorithm are subject to change.
-
-With no input files, or with the special file name '-', xt translates from
-standard input. With multiple input files, xt outputs the logical concatenation
-of all documents in all input files to a single output stream.
-
-xt does not guarantee that every translation is possible, or lossless, or
-reversible. xt's behavior is undefined if an input file is modified while
-running.
+CAVEATS
+    xt does not guarantee that every translation is possible, or lossless, or
+    reversible. xt's behavior is undefined if an input file is modified while
+    running.
 "#
 	);
 }
@@ -330,9 +330,9 @@ impl InputPath {
 			.as_deref()
 		{
 			Some("json") => Some(Format::Json),
-			Some("yaml" | "yml") => Some(Format::Yaml),
-			Some("toml") => Some(Format::Toml),
 			Some("msgpack") => Some(Format::Msgpack),
+			Some("toml") => Some(Format::Toml),
+			Some("yaml" | "yml") => Some(Format::Yaml),
 			_ => None,
 		}
 	}

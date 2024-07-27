@@ -138,9 +138,9 @@ where
 		};
 		match from {
 			Format::Json => json::transcode(input, &mut self.0),
-			Format::Yaml => yaml::transcode(input, &mut self.0),
-			Format::Toml => toml::transcode(input, &mut self.0),
 			Format::Msgpack => msgpack::transcode(input, &mut self.0),
+			Format::Toml => toml::transcode(input, &mut self.0),
+			Format::Yaml => yaml::transcode(input, &mut self.0),
 		}
 	}
 
@@ -170,9 +170,9 @@ where
 	W: Write,
 {
 	Json(json::Output<W>),
-	Yaml(yaml::Output<W>),
-	Toml(toml::Output<W>),
 	Msgpack(msgpack::Output<W>),
+	Toml(toml::Output<W>),
+	Yaml(yaml::Output<W>),
 }
 
 impl<W> Dispatcher<W>
@@ -182,9 +182,9 @@ where
 	fn new(writer: W, to: Format) -> Dispatcher<W> {
 		match to {
 			Format::Json => Dispatcher::Json(json::Output::new(writer)),
-			Format::Yaml => Dispatcher::Yaml(yaml::Output::new(writer)),
-			Format::Toml => Dispatcher::Toml(toml::Output::new(writer)),
 			Format::Msgpack => Dispatcher::Msgpack(msgpack::Output::new(writer)),
+			Format::Toml => Dispatcher::Toml(toml::Output::new(writer)),
+			Format::Yaml => Dispatcher::Yaml(yaml::Output::new(writer)),
 		}
 	}
 }
@@ -200,9 +200,9 @@ where
 	{
 		match self {
 			Dispatcher::Json(output) => output.transcode_from(de),
-			Dispatcher::Yaml(output) => output.transcode_from(de),
-			Dispatcher::Toml(output) => output.transcode_from(de),
 			Dispatcher::Msgpack(output) => output.transcode_from(de),
+			Dispatcher::Toml(output) => output.transcode_from(de),
+			Dispatcher::Yaml(output) => output.transcode_from(de),
 		}
 	}
 
@@ -212,18 +212,18 @@ where
 	{
 		match self {
 			Dispatcher::Json(output) => output.transcode_value(value),
-			Dispatcher::Yaml(output) => output.transcode_value(value),
-			Dispatcher::Toml(output) => output.transcode_value(value),
 			Dispatcher::Msgpack(output) => output.transcode_value(value),
+			Dispatcher::Toml(output) => output.transcode_value(value),
+			Dispatcher::Yaml(output) => output.transcode_value(value),
 		}
 	}
 
 	fn flush(&mut self) -> io::Result<()> {
 		match self {
 			Dispatcher::Json(output) => output.flush(),
-			Dispatcher::Yaml(output) => output.flush(),
-			Dispatcher::Toml(output) => output.flush(),
 			Dispatcher::Msgpack(output) => output.flush(),
+			Dispatcher::Toml(output) => output.flush(),
+			Dispatcher::Yaml(output) => output.flush(),
 		}
 	}
 }
@@ -243,12 +243,12 @@ pub enum Format {
 	///
 	/// [json]: https://datatracker.ietf.org/doc/html/rfc8259
 	Json,
-	/// The [YAML 1.2][yaml] format as interpreted by [`serde_yaml`].
+	/// The [MessagePack][msgpack] format as interpreted by [`rmp_serde`].
 	///
 	/// This format supports multi-document translation and streaming input.
 	///
-	/// [yaml]: https://yaml.org/spec/1.2.2/
-	Yaml,
+	/// [msgpack]: https://msgpack.org/
+	Msgpack,
 	/// The [TOML][toml] format as interpreted by [`toml`][::toml].
 	///
 	/// This format supports single-document translation only, and as such does
@@ -256,21 +256,21 @@ pub enum Format {
 	///
 	/// [toml]: https://github.com/toml-lang/toml
 	Toml,
-	/// The [MessagePack][msgpack] format as interpreted by [`rmp_serde`].
+	/// The [YAML 1.2][yaml] format as interpreted by [`serde_yaml`].
 	///
 	/// This format supports multi-document translation and streaming input.
 	///
-	/// [msgpack]: https://msgpack.org/
-	Msgpack,
+	/// [yaml]: https://yaml.org/spec/1.2.2/
+	Yaml,
 }
 
 impl fmt::Display for Format {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.write_str(match self {
 			Self::Json => "JSON",
-			Self::Yaml => "YAML",
-			Self::Toml => "TOML",
 			Self::Msgpack => "MessagePack",
+			Self::Toml => "TOML",
+			Self::Yaml => "YAML",
 		})
 	}
 }

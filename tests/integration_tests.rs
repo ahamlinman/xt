@@ -49,8 +49,8 @@ macro_rules! xt_assert_translation {
 
 #[rstest]
 fn translate_single_slice_detected(
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_single_document_input;
@@ -62,8 +62,8 @@ fn translate_single_slice_detected(
 
 #[rstest]
 fn translate_single_slice_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_single_document_input;
@@ -75,8 +75,8 @@ fn translate_single_slice_explicit(
 
 #[rstest]
 fn translate_single_reader_detected(
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_single_document_input;
@@ -88,8 +88,8 @@ fn translate_single_reader_detected(
 
 #[rstest]
 fn translate_single_reader_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Toml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Toml, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_single_document_input;
@@ -101,8 +101,8 @@ fn translate_single_reader_explicit(
 
 #[rstest]
 fn translate_multi_slice_detected(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_multi_document_input;
@@ -114,8 +114,8 @@ fn translate_multi_slice_detected(
 
 #[rstest]
 fn translate_multi_slice_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_multi_document_input;
@@ -127,8 +127,8 @@ fn translate_multi_slice_explicit(
 
 #[rstest]
 fn translate_multi_reader_detected(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_multi_document_input;
@@ -140,8 +140,8 @@ fn translate_multi_reader_detected(
 
 #[rstest]
 fn translate_multi_reader_explicit(
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] from: Format,
-	#[values(Format::Json, Format::Yaml, Format::Msgpack)] to: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] from: Format,
+	#[values(Format::Json, Format::Msgpack, Format::Yaml)] to: Format,
 ) {
 	xt_assert_translation! {
 		input_source = get_multi_document_input;
@@ -162,9 +162,9 @@ fn translate_multi_reader_explicit(
 fn get_single_document_input(fmt: Format) -> &'static [u8] {
 	match fmt {
 		Format::Json => include_bytes!("single.json"),
-		Format::Yaml => include_bytes!("single.yaml"),
-		Format::Toml => include_bytes!("single.toml"),
 		Format::Msgpack => include_bytes!("single.msgpack"),
+		Format::Toml => include_bytes!("single.toml"),
+		Format::Yaml => include_bytes!("single.yaml"),
 		fmt => panic!("{fmt} does not have a single-document test case"),
 	}
 }
@@ -179,8 +179,8 @@ fn get_single_document_input(fmt: Format) -> &'static [u8] {
 fn get_multi_document_input(fmt: Format) -> &'static [u8] {
 	match fmt {
 		Format::Json => include_bytes!("multi.json"),
-		Format::Yaml => include_bytes!("multi.yaml"),
 		Format::Msgpack => include_bytes!("multi.msgpack"),
+		Format::Yaml => include_bytes!("multi.yaml"),
 		fmt => panic!("{fmt} does not have a multi-document test case"),
 	}
 }
