@@ -1,0 +1,214 @@
+.Dd July 26, 2024
+.Dt XT 1
+.Os
+.
+.Sh NAME
+.Nm xt
+.Nd Translate between serialized data formats
+.
+.Sh SYNOPSIS
+.Nm
+.Op Fl f Ar format
+.Op Fl t Ar format
+.Op Ar
+.
+.Sh DESCRIPTION
+.Nm
+translates between the
+JSON, YAML, TOML, and MessagePack
+formats for serialized data.
+.Pp
+.Nm
+detects the format of each
+.Ar file
+by extension or content inspection,
+and translates it to the output format given by
+.Fl t .
+With no
+.Ar file ,
+or with the special name
+.Pa -
+at any one position,
+.Nm
+translates from standard input.
+.Pp
+Given multiple inputs,
+.Nm
+outputs the logical concatenation
+of all documents in all inputs
+to a single output.
+For example:
+.Nm
+can translate one
+.Dq .toml
+file and one
+.Dq .yaml
+file containing two
+.Dq ---
+separated documents into three lines of JSON.
+.Pp
+Given unbounded multi-document input from a pipe,
+.Nm
+continuously translates individual documents with minimal buffering.
+.
+.Ss Options
+.Bl -tag -width Ds
+.It Fl f Ar format
+Skip detection and convert every input from the given
+.Ar format .
+.
+.It Fl t Ar format
+Convert to the given
+.Ar format .
+Defaults to
+.Cm json
+if omitted.
+.El
+.
+.Ss Formats
+Unless otherwise specified,
+.Nm
+exclusively consumes and produces human-readable formats with UTF-8 encoding.
+.Bl -tag -width Ds
+.It Cm json | j
+A human-readable format derived from JavaScript,
+with near-ubiquitous support across programming languages and tools like
+.Xr jq 1 .
+Default for
+.Dq .json
+files.
+.Pp
+Input multiple documents
+by concatenating objects or arrays with optional whitespace,
+or by concatenating other JSON tokens with whitespace.
+.Pp
+Outputs multiple documents concatenated with newlines.
+.
+.It Cm yaml | y
+A human-readable format with a relatively minimal syntax
+that indicates structure through indentation.
+Default for
+.Dq .yaml
+and
+.Dq .yml
+files.
+.Pp
+Input multiple documents using standard
+.Dq ---
+and
+.Dq ...
+delimiters.
+Supports UTF-8, UTF-16, and UTF-32.
+.Pp
+Outputs multiple documents using
+.Dq ---
+delimiters only.
+.Pp
+YAML support in
+.Nm
+is based on a port of LibYAML,
+which supports most (but not all) of YAML 1.2.
+Scalars like
+.Dq on
+and
+.Dq yes
+translate consistently as strings, not booleans.
+.Nm
+does not permit byte order marks in UTF-8 inputs,
+or between documents in UTF-16 and UTF-32 inputs.
+.
+.It Cm toml | t
+A human-readable configuration format with INI-like syntax
+that unambiguously maps to a hash table.
+Default for
+.Dq .toml
+files.
+.Pp
+Single document per input or output only.
+.Nm
+will refuse to emit more than one document to a
+.Cm toml
+output.
+.Pp
+TOML is explicitly
+.Em not
+designed to serialize arbitrary data structures,
+and imposes special limitations when used as an output format.
+.Nm
+will refuse to emit a document containing any
+.Dq null
+value,
+or whose root value does not map to a TOML table,
+to a
+.Cm toml
+output.
+.
+.It Cm msgpack | m
+A binary format for a superset of data types supported by JSON.
+Default for
+.Dq .msgpack
+files.
+.Pp
+Input multiple documents by concatenating them
+with no intervening markers or padding.
+.Pp
+Outputs multiple documents by concatenating them.
+.Nm
+will refuse to emit
+.Cm msgpack
+output to a terminal.
+.El
+.
+.Sh EXIT STATUS
+.Nm
+exits 0 on success,
+1 if a translation error occurs,
+or 2 if given invalid arguments.
+.
+.Sh EXAMPLES
+To translate the file
+.Pa Cargo.toml
+from TOML to JSON:
+.Dl Nm Pa Cargo.toml
+.Pp
+To translate the file
+.Pa config.json
+from JSON to YAML:
+.Dl Nm Fl t Cm yaml Pa config.json
+Equivalently, with the short format alias:
+.Dl Nm Fl ty Pa config.json
+.Pp
+To translate a stream of JSON events from an API endpoint to MessagePack:
+.Dl curl localhost:8080/events | Nm Fl tm No > Pa events.msgpack
+With format detection disabled:
+.Dl curl localhost:8080/events | Nm Fl fj Fl tm No > Pa events.msgpack
+.
+.Sh AUTHORS
+.An Alex Hamlin Aq Mt xt@alexhamlin.co
+.
+.Sh CAVEATS
+.Nm
+does not guarantee that every translation is possible,
+or lossless,
+or reversible.
+The farther you get from the data types JSON supports,
+the more likely you are to encounter failed translations or strange outputs.
+.Pp
+The formatting of human-readable outputs is permanently unstable,
+subject to change,
+and cannot be customized.
+Use of
+.Nm
+as an automatic formatter is inadvisable.
+.Pp
+The content-based format detection algorithm is permanently unstable,
+subject to change as formats are added or updated,
+and may not recognize all valid inputs of a given format.
+.
+.Sh BUGS
+.Nm
+may use
+.Xr mmap 2
+to optimize memory management for input files,
+and may exhibit undefined behavior
+when an input file is modified while running.
