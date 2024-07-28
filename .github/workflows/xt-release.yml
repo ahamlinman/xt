@@ -23,7 +23,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: release-docs
-        path: LICENSES.html
+        path: |
+          doc/RELEASE-README.txt
+          doc/xt.1
+          LICENSES.html
 
   build-binaries-unix:
     strategy:
@@ -71,7 +74,9 @@ jobs:
         gunzip -v ./xt-*/xt.gz
         chmod -vv +x ./xt-*/xt
         for dir in ./xt-*; do
-          cp -v release-docs/LICENSES.html $dir/
+          cp -v release-docs/doc/RELEASE-README.txt $dir/README.txt
+          cp -v release-docs/doc/xt.1 $dir/xt.1
+          cp -v release-docs/LICENSES.html $dir/LICENSES.html
           tar -czvf $dir.tar.gz $dir
         done
         sha256sum xt-*.tar.gz > SHA256SUMS
