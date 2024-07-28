@@ -1,0 +1,7 @@
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+no-clearly-defined = true
+accepted = [
+    "MIT",
+    "BSL-1.0", # Boost, not BUSL
+]

@@ -1,0 +1,42 @@
+{{#*inline "nm"}}xt{{/inline ~}}
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>{{> nm}} Licenses</title>
+	</head>
+
+	<body>
+		<main>
+			<h1>Licenses</h1>
+			<p>
+				All of the source code for {{> nm}} is available under the terms of the
+				<a href="https://opensource.org/osd">open source</a>
+				licenses provided below.
+			</p>
+			<p>
+				The {{> nm}} binary in this release is made available
+				under the same MIT License that covers the source code.
+			</p>
+
+			{{#each licenses}}
+			{{#*inline "cratelink"}}<a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a>{{/inline}}
+			<section>
+				{{# if (eq (len used_by) 1)}}
+					{{#with (lookup used_by 0)}}
+					<h2>{{> cratelink}}</h2>
+					{{/with}}
+					<h4>{{name}}</h4>
+				{{else}}
+					<h2>{{name}} ({{len used_by}} crates)</h2>
+					<ul>
+						{{#each used_by}}
+						<li>{{> cratelink}}</li>
+						{{/each}}
+					</ul>
+				{{/if}}
+				<pre>{{text}}</pre>
+			</section>
+			{{/each}}
+		</main>
+	</body>
+</html>
