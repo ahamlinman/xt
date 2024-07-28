@@ -1,2 +1,4 @@
+/dist
+/doc/LICENSES.html
 /target
 **/*.rs.bk

@@ -7,26 +7,25 @@ on:
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  build-release-docs:
+  build-doc:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Generate LICENSES.html
+    - name: Install cargo-about
       run: |
         version=0.6.2
         slug=cargo-about-$version-x86_64-unknown-linux-musl
         wget https://github.com/EmbarkStudios/cargo-about/releases/download/$version/$slug.tar.gz
         tar -xvf $slug.tar.gz --strip-components=1 $slug/cargo-about
-        ./cargo-about generate about.hbs > LICENSES.html
+        mv cargo-about "$HOME/.cargo/bin/"
+    - name: Generate LICENSES.html
+      run: make doc/LICENSES.html
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: release-docs
-        path: |
-          doc/RELEASE-README.txt
-          doc/xt.1
-          LICENSES.html
+        name: doc
+        path: doc
 
   build-binaries-unix:
     strategy:
@@ -53,48 +52,47 @@ jobs:
         rustc --version
     - name: Build
       run: |
-        cargo build --target ${{ matrix.target }} --profile release-opt
-        gzip -c target/${{ matrix.target }}/release-opt/xt > xt.gz
+        bin=target/${{ matrix.target }}/release-opt/xt
+        make $bin
+        tar -czvf target.tar.gz $bin
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: xt-${{ matrix.target }}
-        path: xt.gz
+        name: target-${{ matrix.target }}
+        path: target.tar.gz
 
   create-release:
-    needs: [build-release-docs, build-binaries-unix]
+    needs: [build-doc, build-binaries-unix]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
+    - name: Checkout
+      uses: actions/checkout@v4
     - name: Download Artifacts
       uses: actions/download-artifact@v4
     - name: Assemble Archives
       run: |
-        gunzip -v ./xt-*/xt.gz
-        chmod -vv +x ./xt-*/xt
-        for dir in ./xt-*; do
-          cp -v release-docs/doc/RELEASE-README.txt $dir/README.txt
-          cp -v release-docs/doc/xt.1 $dir/xt.1
-          cp -v release-docs/LICENSES.html $dir/LICENSES.html
-          tar -czvf $dir.tar.gz $dir
+        for targetdir in ./target-*; do
+          tar -xvf $targetdir/target.tar.gz
+          make dist/xt-${targetdir#./target-}.tar.gz
         done
-        sha256sum xt-*.tar.gz > SHA256SUMS
+        (cd dist && sha256sum xt-*.tar.gz > SHA256SUMS)
     - name: Upload Release Artifacts
       if: startsWith(github.ref, 'refs/heads/')
       uses: actions/upload-artifact@v4
       with:
         name: release
         path: |
-          xt-*.tar.gz
-          SHA256SUMS
+          dist/xt-*.tar.gz
+          dist/SHA256SUMS
     # - name: Create Release
     #   uses: softprops/action-gh-release@v2
     #   if: startsWith(github.ref, 'refs/tags/')
     #   with:
     #     files: |
-    #       xt-*.tar.gz
-    #       SHA256SUMS
+    #       dist/xt-*.tar.gz
+    #       dist/SHA256SUMS
     #     body: >-
     #       **[See the xt CHANGELOG][changelog] for release information.**
 
