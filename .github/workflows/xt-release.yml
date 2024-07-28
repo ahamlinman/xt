@@ -1,0 +1,107 @@
+---
+name: xt Release
+on:
+  workflow_dispatch: {}
+  # push:
+  #   tags: ['v[0-9]+.[0-9]+.[0-9]+']
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  build-release-docs:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Generate LICENSES.html
+      run: |
+        version=0.6.2
+        slug=cargo-about-$version-x86_64-unknown-linux-musl
+        wget https://github.com/EmbarkStudios/cargo-about/releases/download/$version/$slug.tar.gz
+        tar -xvf $slug.tar.gz --strip-components=1 $slug/cargo-about
+        ./cargo-about generate about.hbs > LICENSES.html
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-docs
+        path: LICENSES.html
+
+  build-binaries-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - { target: aarch64-unknown-linux-musl,     runner: ubuntu-22.04 }
+        - { target: armv7-unknown-linux-musleabihf, runner: ubuntu-22.04 }
+        - { target: x86_64-unknown-linux-musl,      runner: ubuntu-22.04 }
+        - { target: aarch64-apple-darwin,           runner: macos-14 }
+        - { target: x86_64-apple-darwin,            runner: macos-14 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      RUSTFLAGS: -C linker=rust-lld
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Download Toolchain
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable
+        rustup default stable
+        rustup target add ${{ matrix.target }}
+        rustc --version
+    - name: Build
+      run: |
+        cargo build --target ${{ matrix.target }} --profile release-opt
+        gzip -c target/${{ matrix.target }}/release-opt/xt > xt.gz
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: xt-${{ matrix.target }}
+        path: xt.gz
+
+  create-release:
+    needs: [build-release-docs, build-binaries-unix]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+    - name: Assemble Archives
+      run: |
+        gunzip -v ./xt-*/xt.gz
+        chmod -vv +x ./xt-*/xt
+        for dir in ./xt-*; do
+          cp -v release-docs/LICENSES.html $dir/
+          tar -czvf $dir.tar.gz $dir
+        done
+        sha256sum xt-*.tar.gz > SHA256SUMS
+    - name: Upload Release Artifacts
+      if: startsWith(github.ref, 'refs/heads/')
+      uses: actions/upload-artifact@v4
+      with:
+        name: release
+        path: |
+          xt-*.tar.gz
+          SHA256SUMS
+    # - name: Create Release
+    #   uses: softprops/action-gh-release@v2
+    #   if: startsWith(github.ref, 'refs/tags/')
+    #   with:
+    #     files: |
+    #       xt-*.tar.gz
+    #       SHA256SUMS
+    #     body: >-
+    #       **[See the xt CHANGELOG][changelog] for release information.**
+
+
+    #       Binary releases of xt are available for select UNIX(-like) platforms
+    #       as attachments to this GitHub Release. They are statically linked (on
+    #       Linux), or link only to the platform's standard libraries (on macOS).
+    #       Before using them, review the [Installation][install] section of the
+    #       xt README. Your platform may support a more robust installation
+    #       mechanism.
+
+
+    #       [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
+
+    #       [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation
