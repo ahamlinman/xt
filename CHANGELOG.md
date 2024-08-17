@@ -5,9 +5,9 @@
 - **A manual page.** This supplements the output of `xt --help` with additional
   detail and usage examples.
 - **macOS and Linux binary releases.** Starting with this release, official
-  binaries for these platforms are now available through GitHub Releases. They
-  will soon be made available through a custom [Homebrew][homebrew] tap; please
-  check back again for details.
+  binaries for these platforms are now available through GitHub Releases, and
+  can be installed through a custom [Homebrew][homebrew] tap. See the README for
+  details.
 
 [homebrew]: https://brew.sh/
 

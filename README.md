@@ -1,6 +1,6 @@
 # xt
 
-xt is a cross-format translator for JSON, YAML, TOML, and MessagePack.
+xt is a cross-format translator for JSON, MessagePack, TOML, and YAML.
 
 For example, you can process a set of TOML files with [`jq`][jq]:
 
@@ -49,6 +49,15 @@ On NetBSD a pre-compiled binary is available from the official repositories. To 
 ```sh
 pkgin install xt-rs
 ```
+
+### Homebrew
+
+On Linux and macOS, the pre-compiled binaries in this repo's GitHub releases can be installed with [Homebrew][homebrew]:
+```sh
+brew install ahamlinman/tap/xt
+```
+
+[homebrew]: https://brew.sh/
 
 ## Usage and Features
 
