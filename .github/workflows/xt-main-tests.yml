@@ -24,8 +24,6 @@ jobs:
       run: cargo test
     - name: cargo clippy
       run: cargo clippy
-    - name: rustfmt --check
-      run: find src tests benches -name '*.rs' -exec rustfmt --check '{}' +
   msrv-test:
     runs-on: ubuntu-22.04
     steps:

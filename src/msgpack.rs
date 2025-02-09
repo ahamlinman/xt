@@ -34,7 +34,8 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 				| Marker::Array16
 				| Marker::Array32
 				| Marker::FixMap(_)
-				| Marker::Map16 | Marker::Map32
+				| Marker::Map16
+				| Marker::Map32
 		)
 	) {
 		return Ok(false);
