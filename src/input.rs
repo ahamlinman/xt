@@ -106,7 +106,7 @@ impl<'i> TryFrom<Handle<'i>> for Cow<'i, [u8]> {
 				let mut r = r.rewind_and_take();
 				r.capture_to_end()?;
 				let (cursor, _) = r.into_inner();
-				return Ok(Cow::Owned(cursor.into_inner()));
+				Ok(Cow::Owned(cursor.into_inner()))
 			}
 		}
 	}
