@@ -51,6 +51,8 @@ use unsafe_libyaml::{
 	YAML_SCALAR_EVENT, YAML_SEQUENCE_START_EVENT, YAML_STREAM_END_EVENT, YAML_UTF8_ENCODING,
 };
 
+use super::chonkster::Parser;
+
 /// An iterator over individual raw documents in a UTF-8-encoded YAML stream.
 pub(super) struct Chunker<R>
 where
@@ -60,8 +62,7 @@ where
 	// since otherwise the uniqueness requirements of Box<T> make it too easy to
 	// violate Stacked Borrows (e.g. pulling a chunk out of self.read_state must
 	// not invalidate the data pointer that libyaml keeps for its read handler).
-	parser: *mut yaml_parser_t,
-	read_state: *mut ReadState<R>,
+	parser: Parser<ChunkReader<R>>,
 	last_document: Option<Document>,
 	current_document_kind: Option<DocumentKind>,
 	stream_ended: bool,
@@ -89,63 +90,8 @@ where
 	/// BOMs. Consider using the [`encoding`](super::encoding) module to
 	/// re-encode non-UTF-8 streams.
 	pub(super) fn new(reader: R) -> Self {
-		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
-
-		// SAFETY: The call to yaml_parser_initialize is unsafe; see the LIBYAML
-		// SAFETY NOTE. The pointer we pass is non-null, dereferenceable,
-		// aligned, and live by virtue of the MaybeUninit being within a live
-		// Box (though the pointed-to memory is uninitialized as we expect
-		// libyaml to initialize it).
-		if unsafe { yaml_parser_initialize(parser.as_mut_ptr()) }.fail {
-			panic!("out of memory for libyaml parser initialization");
-		}
-
-		// PARSER POINTER NOTE: This pointer meets the requirements for
-		// non-initialization libyaml functions defined in the LIBYAML SAFETY
-		// NOTE. It is non-null, aligned, dereferenceable, and live due to its
-		// allocation from a Box. Furthermore, since we did not panic above, we
-		// know that the pointee yaml_parser_t is properly initialized.
-		//
-		// Note that this cast is like a hidden MaybeUninit::assume_init. We
-		// expect this to be fine as MaybeUninit<T> is guaranteed to have the
-		// same layout as T, and because we successfully initialized the value
-		// as mentioned above.
-		let parser = Box::into_raw(parser).cast::<yaml_parser_t>();
-
-		// SAFETY: The call to yaml_parser_set_encoding is unsafe; see the
-		// LIBYAML SAFETY NOTE and PARSER POINTER NOTE. No special invariants
-		// are expected in relation to the u32 enum parameter that specifies the
-		// text encoding of the input.
-		unsafe { yaml_parser_set_encoding(parser, YAML_UTF8_ENCODING) };
-
-		// READ STATE POINTER NOTE: This pointer meets the requirements for
-		// non-initialization libyaml functions defined in the LIBYAML SAFETY
-		// NOTE. It is non-null, aligned, dereferenceable, and live due to its
-		// allocation from a Box. Furthermore, the pointee ReadState is
-		// initialized by Rust before being moved into the Box.
-		let read_state = Box::into_raw(Box::new(ReadState {
-			reader: ChunkReader::new(reader),
-			buffer: vec![],
-			error: None,
-		}));
-
-		// SAFETY: There are, in a sense, two unsafe operations here: calling
-		// yaml_parser_set_input, and passing the unsafe Self::read_handler
-		// function (which is not technically unsafe on its own, but will result
-		// in calls to that unsafe function later on).
-		//
-		// With respect to the yaml_parser_set_input call, see the LIBYAML
-		// SAFETY NOTE and PARSER POINTER NOTE.
-		//
-		// With respect to the use of Self::read_handler, the function is unsafe
-		// as it requires that the data pointer passed to yaml_parser_set_input
-		// is a valid pointer to an initialized ReadState<R>. See the READ STATE
-		// POINTER NOTE for an explanation of how we satisfy this.
-		unsafe { yaml_parser_set_input(parser, Self::read_handler, read_state.cast::<c_void>()) };
-
 		Self {
-			parser,
-			read_state,
+			parser: Parser::new(ChunkReader::new(reader)),
 			last_document: None,
 			current_document_kind: None,
 			stream_ended: false,
@@ -301,14 +247,9 @@ where
 			// SAFETY: The call to Event::from_parser is unsafe, as it requires
 			// a valid pointer to an initialized yaml_parser_t. See the PARSER
 			// POINTER NOTE in Chunker::new.
-			let event = match unsafe { Event::from_parser(self.parser) } {
+			let event = match self.parser.parse() {
 				Ok(event) => event,
-				Err(err) => {
-					// SAFETY: The dereference of self.read_state is unsafe; see
-					// the READ STATE POINTER NOTE in Chunker::new.
-					return Some(Err(unsafe { (*self.read_state).error.take() }
-						.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, err))));
-				}
+				Err(err) => return Some(Err(io::Error::new(io::ErrorKind::InvalidData, err))),
 			};
 
 			// Note that while we chunk the document as soon as we receive a
@@ -323,10 +264,8 @@ where
 				YAML_DOCUMENT_START_EVENT => {
 					// SAFETY: The dereference of self.read_state is unsafe; see
 					// the READ STATE POINTER NOTE in Chunker::new.
-					unsafe {
-						let offset = event.start_mark.index;
-						(*self.read_state).reader.trim_to_offset(offset);
-					}
+					let offset = event.start_mark.index;
+					self.parser.reader_mut().trim_to_offset(offset);
 					self.current_document_kind = None;
 					if let Some(doc) = self.last_document.take() {
 						return Some(Ok(doc));
@@ -343,11 +282,10 @@ where
 				YAML_DOCUMENT_END_EVENT => {
 					// SAFETY: The dereference of self.read_state is unsafe; see
 					// the READ STATE POINTER NOTE in Chunker::new.
-					let chunk = unsafe {
-						(*self.read_state)
-							.reader
-							.take_to_offset(event.end_mark.index)
-					};
+					let chunk = self
+						.parser
+						.reader_mut()
+						.take_to_offset(event.end_mark.index);
 					self.last_document = Some(Document {
 						content: String::from_utf8(chunk).unwrap(),
 						kind: self.current_document_kind.take().unwrap(),
@@ -359,31 +297,6 @@ where
 				}
 				_ => {}
 			};
-		}
-	}
-}
-
-impl<R> Drop for Chunker<R>
-where
-	R: Read,
-{
-	fn drop(&mut self) {
-		// SAFETY: The call to yaml_parser_delete is unsafe; see the LIBYAML
-		// SAFETY NOTE and PARSER POINTER NOTE. We do not make any other calls
-		// to yaml_parser_delete in this module, so we do not expect any double
-		// frees.
-		unsafe { yaml_parser_delete(self.parser) };
-
-		// SAFETY: The calls to Box::from_raw are unsafe. We obtained these
-		// pointers using Box::into_raw, so we expect them to satisfy all
-		// requirements for conversion back into boxes and subsequent
-		// deallocation. We do not call Box::from_raw with these pointers at any
-		// other place in the module, so we do not expect any double frees.
-		// Because we deinitialized the parser above, we do not expect it to
-		// retain any references to the read state that could become invalid.
-		unsafe {
-			drop(Box::from_raw(self.parser));
-			drop(Box::from_raw(self.read_state));
 		}
 	}
 }

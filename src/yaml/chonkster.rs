@@ -16,7 +16,7 @@ use unsafe_libyaml::{
 	yaml_parser_set_input, yaml_parser_t,
 };
 
-struct Parser<R: Read> {
+pub(super) struct Parser<R: Read> {
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
 }
@@ -28,7 +28,7 @@ struct ReadState<R: Read> {
 }
 
 impl<R: Read> Parser<R> {
-	fn new(reader: R) -> Parser<R> {
+	pub(super) fn new(reader: R) -> Parser<R> {
 		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader,
@@ -115,19 +115,28 @@ impl<R: Read> DerefMut for Parser<R> {
 }
 
 impl<R: Read> Parser<R> {
-	fn parse(&mut self) -> Result<Event, ()> {
-		unsafe { Event::new(self) }
+	pub(super) fn reader_mut(&mut self) -> &mut R {
+		unsafe { &mut (*self.read_state).reader }
+	}
+
+	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
+		let result = unsafe { Event::new(self) };
+		match result {
+			Ok(result) => Ok(result),
+			Err(_) => Err(unsafe { (*self.read_state).error.take() }
+				.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "TODO"))),
+		}
 	}
 }
 
-struct Event(*mut yaml_event_t);
+pub(super) struct Event(*mut yaml_event_t);
 
 impl Event {
 	unsafe fn new(parser: &mut yaml_parser_t) -> Result<Event, ()> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 		unsafe {
 			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-				todo!()
+				return Err(());
 			}
 		}
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
