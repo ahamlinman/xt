@@ -171,7 +171,7 @@ struct ParserError {
 }
 
 impl ParserError {
-	unsafe fn new(parser: &mut yaml_parser_t) -> Self {
+	fn new(parser: &mut yaml_parser_t) -> Self {
 		unsafe {
 			Self {
 				problem: (!parser.problem.is_null()).then(|| {
