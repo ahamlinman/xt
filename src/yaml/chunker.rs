@@ -72,14 +72,12 @@ where
 				Err(err) => return Some(Err(io::Error::new(io::ErrorKind::InvalidData, err))),
 			};
 
-			// Note that while we chunk the document as soon as we receive a
-			// DOCUMENT_END event, we don't emit the chunk until the next
-			// DOCUMENT_START or STREAM_END event. libyaml can sometimes parse
-			// what looks like a valid YAML document from a non-YAML input, only
-			// to error out when it looks for the start of the next document.
-			// This is especially problematic when the chunker's output is used
-			// to determine whether an arbitrary input is valid YAML (e.g. in
-			// xt's parser-based format detection).
+			// Note that while we chunk on DOCUMENT_END events, we don't emit
+			// the chunk until the next DOCUMENT_START or STREAM_END. The parser
+			// sometimes sees valid documents in non-YAML inputs, and only fails
+			// when it looks for the start of the next document. This is bad
+			// when the chunker's output determines whether an arbitrary input
+			// is valid YAML (e.g. xt's format detection).
 			match event.event_type() {
 				YAML_DOCUMENT_START_EVENT => {
 					let offset = event.start_offset();
