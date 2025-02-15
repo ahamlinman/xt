@@ -36,6 +36,14 @@ impl<R: Read> Parser<R> {
 			error: None,
 		}));
 
+		// SAFETY: These functions come from libyaml, which we assume is
+		// implemented correctly. Most functions only receive the parser pointer
+		// after we know it's been initialized.
+		//
+		// This configuration will call the unsafe Self::read_handler during
+		// parsing. That function requires the data pointer to be a valid
+		// ReadState<R> pointer, which we've satisfied by initializing it
+		// through a Box above.
 		unsafe {
 			if yaml_parser_initialize(parser.as_mut_ptr()).fail {
 				panic!("out of memory for libyaml parser initialization");
@@ -55,7 +63,7 @@ impl<R: Read> Parser<R> {
 	}
 
 	fn parser_mut(&mut self) -> &mut yaml_parser_t {
-		// SAFETY: There is no other direct use of self.parser outside of Drop,
+		// SAFETY: There is no other dereference of self.parser outside of Drop,
 		// so no way for us to mistakenly alias this. The output lifetime is
 		// bounded by self on return.
 		unsafe { &mut *self.parser }
@@ -84,7 +92,12 @@ impl<R: Read> Parser<R> {
 		})
 	}
 
-	// TODO: Safety section.
+	/// A callback for libyaml to read from a Rust Read impl.
+	///
+	/// # Safety
+	///
+	/// The data pointer provided to yaml_parser_set_input must be a valid
+	/// ReadState<R> pointer.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
@@ -94,6 +107,7 @@ impl<R: Read> Parser<R> {
 		const READ_SUCCESS: i32 = 1;
 		const READ_FAILURE: i32 = 0;
 
+		// Let's knock out this particular class of UB across the board.
 		if read_state.is_null() || buffer.is_null() || size_read.is_null() {
 			return READ_FAILURE;
 		}
@@ -101,15 +115,26 @@ impl<R: Read> Parser<R> {
 		// SAFETY: self.read_state_mut() is the only other dereference of the
 		// read_state; see its comment explaining how it's mutually exclusive
 		// with running the parser. The lifetime here lasts through the end of
-		// this function.
+		// this function, i.e. before the parser is finished.
 		let read_state = unsafe { &mut *read_state.cast::<ReadState<R>>() };
-		let buffer_size = usize::try_from(buffer_size).unwrap();
+
+		// We assume libyaml is implemented correctly, and won't pass a buffer
+		// size larger than can exist in memory. (Since unsafe_libyaml is
+		// actually Rust we could use usize::try_from and unwrap, but panicking
+		// wouldn't be okay in the true FFI scenario I want to model.)
+		#[allow(clippy::cast_possible_truncation)]
+		let buffer_size = buffer_size as usize;
+
+		// libyaml is not guaranteed to initialize its buffer prior to the first
+		// read. It would be instant Undefined Behavior to slice that buffer,
+		// and unsound to expose it to a safe Read impl, so we need to bounce
+		// reads through a buffer we control.
 		read_state.buffer.resize(buffer_size, 0);
 
 		match read_state.reader.read(&mut read_state.buffer[..]) {
 			Ok(read_len) if read_len <= buffer_size => {
 				// SAFETY: copy_nonoverlapping is VERY dangerous, so let's walk
-				// through its 4 safety requirements:
+				// through its 4 requirements:
 				//
 				// 1. read_state.buffer.as_ptr() must be valid for reads of
 				//    read_len bytes. We resize that to buffer_size above, and
@@ -120,16 +145,17 @@ impl<R: Read> Parser<R> {
 				//    read_len <= buffer_size, and otherwise trust libyaml to
 				//    pass us valid arguments.
 				//
-				// 3. Both pointers must be aligned. They're u8 pointers, so
-				//    inherently aligned because "The size of a value is always
-				//    a multiple of its alignment." (The Rust Reference § 10.3).
+				// 3. Both pointers must be aligned. They're u8 pointers, so are
+				//    inherently aligned because "the size of a value is always
+				//    a multiple of its alignment" (The Rust Reference § 10.3).
 				//
 				// 4. The memory regions can't overlap. We control the
-				//    read_state buffer, so the only way libyaml is overlapping
-				//    with us is if the global allocator is truly busted.
+				//    read_state buffer, so the only way libyaml's can overlap
+				//    is if the global allocator is truly busted.
 				//
 				// As far as the *size_read write, we're again trusting libyaml
-				// to pass valid arguments.
+				// to pass valid arguments. Note that libyaml's EOF condition is
+				// the same as Rust's: report a successful 0 byte read.
 				unsafe {
 					ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, read_len);
 					*size_read = read_len as u64;
@@ -197,9 +223,9 @@ impl Event {
 
 impl Drop for Event {
 	fn drop(&mut self) {
-		// SAFETY: Event::new panics if libyaml fails to initialize the event,
-		// so we know it's logically valid here. The pointer originally came
-		// from a Box, so it's safe to deallocate that way.
+		// SAFETY: Event::new returns an error if libyaml fails to initialize
+		// the event, so we know it's logically valid here. The pointer
+		// originally came from a Box, so it's safe to deallocate that way.
 		unsafe {
 			yaml_event_delete(self.0);
 			drop(Box::from_raw(self.0));
@@ -217,8 +243,9 @@ impl ParserError {
 	fn new(parser: &mut yaml_parser_t) -> Self {
 		let (problem, context);
 
-		// SAFETY: CStr::from_ptr documents its need for valid C strings, and we
-		// assume that libyaml is implemented correctly in that respect.
+		// SAFETY: CStr::from_ptr documents its expectations for valid C
+		// strings, and we assume libyaml is implemented correctly in that
+		// respect.
 		unsafe {
 			problem = (!parser.problem.is_null()).then(|| {
 				CStr::from_ptr(parser.problem)
