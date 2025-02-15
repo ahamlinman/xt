@@ -18,7 +18,7 @@
 use std::io::{self, Read};
 use std::mem;
 
-use super::chonkster::{
+use super::parser::{
 	Parser, YAML_DOCUMENT_END_EVENT, YAML_DOCUMENT_START_EVENT, YAML_MAPPING_START_EVENT,
 	YAML_SCALAR_EVENT, YAML_SEQUENCE_START_EVENT, YAML_STREAM_END_EVENT,
 };

@@ -8,10 +8,10 @@ use serde::{de, ser};
 use crate::input::{self, Input, Ref};
 use crate::transcode;
 
-#[allow(dead_code, clippy::undocumented_unsafe_blocks, clippy::todo)]
-mod chonkster;
 mod chunker;
 mod encoding;
+#[allow(dead_code, clippy::undocumented_unsafe_blocks, clippy::todo)]
+mod parser;
 
 use self::chunker::Chunker;
 use self::encoding::{Encoder, Encoding};
