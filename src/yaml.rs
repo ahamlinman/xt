@@ -10,7 +10,6 @@ use crate::transcode;
 
 mod chunker;
 mod encoding;
-mod parser;
 
 use self::chunker::Chunker;
 use self::encoding::{Encoder, Encoding};
