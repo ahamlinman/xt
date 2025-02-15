@@ -7,19 +7,15 @@ use std::ffi::{c_void, CStr};
 use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::MaybeUninit;
-use std::ops::Deref;
 use std::ptr;
 
 use unsafe_libyaml::{
-	yaml_encoding_t::YAML_UTF8_ENCODING, yaml_event_delete, yaml_event_t, yaml_mark_t,
-	yaml_parser_delete, yaml_parser_initialize, yaml_parser_parse, yaml_parser_set_encoding,
-	yaml_parser_set_input, yaml_parser_t,
+	yaml_encoding_t::YAML_UTF8_ENCODING, yaml_event_delete, yaml_event_t, yaml_event_type_t,
+	yaml_mark_t, yaml_parser_delete, yaml_parser_initialize, yaml_parser_parse,
+	yaml_parser_set_encoding, yaml_parser_set_input, yaml_parser_t,
 };
 
-pub(super) use unsafe_libyaml::{
-	YAML_DOCUMENT_END_EVENT, YAML_DOCUMENT_START_EVENT, YAML_MAPPING_START_EVENT,
-	YAML_SCALAR_EVENT, YAML_SEQUENCE_START_EVENT, YAML_STREAM_END_EVENT,
-};
+pub(super) use unsafe_libyaml::yaml_event_type_t::*;
 pub(super) struct Parser<R: Read> {
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
@@ -130,20 +126,26 @@ pub(super) struct Event(*mut yaml_event_t);
 impl Event {
 	fn new(parser: &mut yaml_parser_t) -> Result<Event, ParserError> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
-		unsafe {
-			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-				return Err(ParserError::new(parser));
-			}
+		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
+			return Err(ParserError::new(parser));
 		}
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
-}
 
-impl Deref for Event {
-	type Target = yaml_event_t;
-
-	fn deref(&self) -> &Self::Target {
+	fn event(&self) -> &yaml_event_t {
 		unsafe { &*self.0 }
+	}
+
+	pub(super) fn event_type(&self) -> yaml_event_type_t {
+		self.event().type_
+	}
+
+	pub(super) fn start_offset(&self) -> u64 {
+		self.event().start_mark.index
+	}
+
+	pub(super) fn end_offset(&self) -> u64 {
+		self.event().end_mark.index
 	}
 }
 

@@ -80,9 +80,9 @@ where
 			// This is especially problematic when the chunker's output is used
 			// to determine whether an arbitrary input is valid YAML (e.g. in
 			// xt's parser-based format detection).
-			match event.type_ {
+			match event.event_type() {
 				YAML_DOCUMENT_START_EVENT => {
-					let offset = event.start_mark.index;
+					let offset = event.start_offset();
 					self.parser.reader_mut().trim_to_offset(offset);
 					self.current_document_kind = None;
 					if let Some(doc) = self.last_document.take() {
@@ -98,10 +98,7 @@ where
 						.get_or_insert(DocumentKind::Collection);
 				}
 				YAML_DOCUMENT_END_EVENT => {
-					let chunk = self
-						.parser
-						.reader_mut()
-						.take_to_offset(event.end_mark.index);
+					let chunk = self.parser.reader_mut().take_to_offset(event.end_offset());
 					self.last_document = Some(Document {
 						content: String::from_utf8(chunk).unwrap(),
 						kind: self.current_document_kind.take().unwrap(),
