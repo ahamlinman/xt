@@ -69,11 +69,11 @@ impl<R: Read> Parser<R> {
 	}
 
 	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
-		Event::new(self.parser_mut()).map_err(|_| {
+		Event::new(self.parser_mut()).map_err(|err| {
 			self.read_state_mut()
 				.error
 				.take()
-				.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "TODO"))
+				.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, err))
 		})
 	}
 
@@ -128,11 +128,11 @@ impl<R: Read> Drop for Parser<R> {
 pub(super) struct Event(*mut yaml_event_t);
 
 impl Event {
-	fn new(parser: &mut yaml_parser_t) -> Result<Event, ()> {
+	fn new(parser: &mut yaml_parser_t) -> Result<Event, ParserError> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 		unsafe {
 			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
-				return Err(());
+				return Err(ParserError::new(parser));
 			}
 		}
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))

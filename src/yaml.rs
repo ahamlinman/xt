@@ -10,7 +10,7 @@ use crate::transcode;
 
 mod chunker;
 mod encoding;
-#[allow(dead_code, clippy::undocumented_unsafe_blocks, clippy::todo)]
+#[allow(clippy::undocumented_unsafe_blocks)]
 mod parser;
 
 use self::chunker::Chunker;
