@@ -35,6 +35,7 @@ impl<R: Read> Parser<R> {
 			buffer: vec![],
 			error: None,
 		}));
+
 		unsafe {
 			if yaml_parser_initialize(parser.as_mut_ptr()).fail {
 				panic!("out of memory for libyaml parser initialization");
@@ -46,6 +47,7 @@ impl<R: Read> Parser<R> {
 				read_state.cast::<c_void>(),
 			);
 		};
+
 		Parser {
 			parser: Box::into_raw(parser).cast::<yaml_parser_t>(),
 			read_state,
@@ -53,10 +55,19 @@ impl<R: Read> Parser<R> {
 	}
 
 	fn parser_mut(&mut self) -> &mut yaml_parser_t {
+		// SAFETY: There is no other direct use of self.parser outside of Drop,
+		// so no way for us to mistakenly alias this. The output lifetime is
+		// bounded by self on return.
 		unsafe { &mut *self.parser }
 	}
 
 	fn read_state_mut(&mut self) -> &mut ReadState<R> {
+		// SAFETY: The only other dereference of self.read_state outside of Drop
+		// is in read_handler, when we pull it out of libyaml's data pointer.
+		// Assuming libyaml is single-threaded and we have no other aliasing
+		// bugs, our &mut self guarantees that nobody is running the parser
+		// (and, by extension, read_handler) right now. The output lifetime is
+		// bounded by self on return.
 		unsafe { &mut *self.read_state }
 	}
 
