@@ -84,7 +84,7 @@ impl<R: Read> Parser<R> {
 	}
 
 	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
-		Event::new(self.parser_mut()).map_err(|err| {
+		Event::parse_next(self.parser_mut()).map_err(|err| {
 			self.read_state_mut()
 				.error
 				.take()
@@ -188,47 +188,42 @@ impl<R: Read> Drop for Parser<R> {
 	}
 }
 
-pub(super) struct Event(*mut yaml_event_t);
+pub(super) struct Event(yaml_event_t);
 
 impl Event {
-	fn new(parser: &mut yaml_parser_t) -> Result<Event, ParserError> {
-		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
-		// SAFETY: yaml_parser_parse is FFI-ish, so unsafe to call. We assume
-		// the yaml_parser_t is logically valid and that libyaml is implemented
-		// correctly.
-		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
-			return Err(ParserError::new(parser));
+	fn parse_next(parser: &mut yaml_parser_t) -> Result<Event, ParserError> {
+		let mut event = MaybeUninit::uninit();
+		// SAFETY: We assume yaml_parser_parse is implemented correctly, and
+		// logically initializes the event when it succeeds. If it fails, we
+		// simply drop the MaybeUninit when we return the error.
+		unsafe {
+			if yaml_parser_parse(parser, event.as_mut_ptr()).ok {
+				Ok(Event(event.assume_init()))
+			} else {
+				Err(ParserError::new(parser))
+			}
 		}
-		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
-	}
-
-	fn event(&self) -> yaml_event_t {
-		// SAFETY: Event::new returns an error if libyaml fails to initialize
-		// the event value, so we know it's logically valid here.
-		unsafe { *self.0 }
 	}
 
 	pub(super) fn event_type(&self) -> yaml_event_type_t {
-		self.event().type_
+		self.0.type_
 	}
 
 	pub(super) fn start_offset(&self) -> u64 {
-		self.event().start_mark.index
+		self.0.start_mark.index
 	}
 
 	pub(super) fn end_offset(&self) -> u64 {
-		self.event().end_mark.index
+		self.0.end_mark.index
 	}
 }
 
 impl Drop for Event {
 	fn drop(&mut self) {
-		// SAFETY: Event::new returns an error if libyaml fails to initialize
-		// the event, so we know it's logically valid here. The pointer
-		// originally came from a Box, so it's safe to deallocate that way.
+		// SAFETY: Event::parse_next returns an error if libyaml fails to
+		// initialize the event, so we know it's logically valid here.
 		unsafe {
-			yaml_event_delete(self.0);
-			drop(Box::from_raw(self.0));
+			yaml_event_delete(&mut self.0);
 		};
 	}
 }
