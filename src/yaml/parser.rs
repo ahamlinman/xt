@@ -83,7 +83,7 @@ impl<R: Read> Parser<R> {
 		&mut self.read_state_mut().reader
 	}
 
-	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
+	pub(super) fn next_event(&mut self) -> Result<Event, io::Error> {
 		Event::parse_next(self.parser_mut()).map_err(|err| {
 			self.read_state_mut()
 				.error

@@ -67,7 +67,7 @@ where
 		}
 
 		loop {
-			let event = match self.parser.parse() {
+			let event = match self.parser.next_event() {
 				Ok(event) => event,
 				Err(err) => return Some(Err(io::Error::new(io::ErrorKind::InvalidData, err))),
 			};
