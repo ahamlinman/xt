@@ -28,7 +28,7 @@ pub(super) struct Parser<R: Read> {
 
 struct ReadState<R: Read> {
 	reader: R,
-	buffer: Vec<u8>,
+	bouncer: Vec<u8>,
 	error: Option<io::Error>,
 }
 
@@ -37,7 +37,7 @@ impl<R: Read> Parser<R> {
 		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader,
-			buffer: vec![],
+			bouncer: vec![],
 			error: None,
 		}));
 
@@ -134,14 +134,14 @@ impl<R: Read> Parser<R> {
 		// read. It would be instant Undefined Behavior to slice that buffer,
 		// and unsound to expose it to a safe Read impl, so we need to bounce
 		// reads through a buffer we control.
-		read_state.buffer.resize(buffer_size, 0);
+		read_state.bouncer.resize(buffer_size, 0);
 
-		match read_state.reader.read(&mut read_state.buffer[..]) {
+		match read_state.reader.read(&mut read_state.bouncer[..]) {
 			Ok(read_len) if read_len <= buffer_size => {
 				// SAFETY: copy_nonoverlapping is VERY dangerous, so let's walk
 				// through its 4 requirements:
 				//
-				// 1. read_state.buffer.as_ptr() must be valid for reads of
+				// 1. read_state.bouncer.as_ptr() must be valid for reads of
 				//    read_len bytes. We resize that to buffer_size above, and
 				//    our match guard guarantees read_len <= buffer_size, so
 				//    we're good.
@@ -155,14 +155,14 @@ impl<R: Read> Parser<R> {
 				//    a multiple of its alignment" (The Rust Reference § 10.3).
 				//
 				// 4. The memory regions can't overlap. We control the
-				//    read_state buffer, so the only way libyaml's can overlap
-				//    is if the global allocator is truly busted.
+				//    bounce buffer, so the only way libyaml's can overlap is if
+				//    the global allocator is truly busted.
 				//
 				// As far as the *size_read write, we're again trusting libyaml
 				// to pass valid arguments. Note that libyaml's EOF condition is
 				// the same as Rust's: report a successful 0 byte read.
 				unsafe {
-					ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, read_len);
+					ptr::copy_nonoverlapping(read_state.bouncer.as_ptr(), buffer, read_len);
 					*size_read = read_len as u64;
 				}
 				read_state.error = None;
