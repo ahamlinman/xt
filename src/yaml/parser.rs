@@ -3,11 +3,11 @@
 //! the future.
 
 use std::error::Error;
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_void, CStr};
 use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::MaybeUninit;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::ptr;
 
 use unsafe_libyaml::{
@@ -56,6 +56,27 @@ impl<R: Read> Parser<R> {
 		}
 	}
 
+	fn parser_mut(&mut self) -> &mut yaml_parser_t {
+		unsafe { &mut *self.parser }
+	}
+
+	fn read_state_mut(&mut self) -> &mut ReadState<R> {
+		unsafe { &mut *self.read_state }
+	}
+
+	pub(super) fn reader_mut(&mut self) -> &mut R {
+		&mut self.read_state_mut().reader
+	}
+
+	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
+		Event::new(self.parser_mut()).map_err(|_| {
+			self.read_state_mut()
+				.error
+				.take()
+				.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "TODO"))
+		})
+	}
+
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
@@ -82,12 +103,12 @@ impl<R: Read> Parser<R> {
 				read_state.error = None;
 				READ_SUCCESS
 			}
-			Err(err) => {
-				read_state.error = Some(err);
+			Ok(_) => {
+				read_state.error = Some(io::Error::new(io::ErrorKind::Other, "misbehaving reader"));
 				READ_FAILURE
 			}
-			_ => {
-				read_state.error = Some(io::Error::new(io::ErrorKind::Other, "misbehaving reader"));
+			Err(err) => {
+				read_state.error = Some(err);
 				READ_FAILURE
 			}
 		}
@@ -104,39 +125,10 @@ impl<R: Read> Drop for Parser<R> {
 	}
 }
 
-impl<R: Read> Deref for Parser<R> {
-	type Target = yaml_parser_t;
-
-	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.parser }
-	}
-}
-
-impl<R: Read> DerefMut for Parser<R> {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { &mut *self.parser }
-	}
-}
-
-impl<R: Read> Parser<R> {
-	pub(super) fn reader_mut(&mut self) -> &mut R {
-		unsafe { &mut (*self.read_state).reader }
-	}
-
-	pub(super) fn parse(&mut self) -> Result<Event, io::Error> {
-		let result = unsafe { Event::new(self) };
-		match result {
-			Ok(result) => Ok(result),
-			Err(_) => Err(unsafe { (*self.read_state).error.take() }
-				.unwrap_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "TODO"))),
-		}
-	}
-}
-
 pub(super) struct Event(*mut yaml_event_t);
 
 impl Event {
-	unsafe fn new(parser: &mut yaml_parser_t) -> Result<Event, ()> {
+	fn new(parser: &mut yaml_parser_t) -> Result<Event, ()> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
 		unsafe {
 			if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
@@ -172,23 +164,31 @@ struct ParserError {
 
 impl ParserError {
 	fn new(parser: &mut yaml_parser_t) -> Self {
+		let (problem, context);
 		unsafe {
-			Self {
-				problem: (!parser.problem.is_null()).then(|| {
-					LocatedError::from_parts(
-						parser.problem.cast::<c_char>(),
-						parser.problem_mark,
-						Some(parser.problem_offset),
-					)
-				}),
-				context: (!parser.context.is_null()).then(|| {
-					LocatedError::from_parts(
-						parser.context.cast::<c_char>(),
-						parser.context_mark,
-						None,
-					)
-				}),
-			}
+			problem = (!parser.problem.is_null()).then(|| {
+				CStr::from_ptr(parser.problem)
+					.to_string_lossy()
+					.into_owned()
+			});
+			context = (!parser.context.is_null()).then(|| {
+				CStr::from_ptr(parser.context)
+					.to_string_lossy()
+					.into_owned()
+			});
+		}
+
+		Self {
+			problem: problem.map(|description| {
+				LocatedError::from_parts(
+					description,
+					parser.problem_mark,
+					Some(parser.problem_offset),
+				)
+			}),
+			context: context.map(|description| {
+				LocatedError::from_parts(description, parser.context_mark, None)
+			}),
 		}
 	}
 }
@@ -216,13 +216,9 @@ struct LocatedError {
 }
 
 impl LocatedError {
-	unsafe fn from_parts(
-		description: *const c_char,
-		mark: yaml_mark_t,
-		override_offset: Option<u64>,
-	) -> Self {
+	fn from_parts(description: String, mark: yaml_mark_t, override_offset: Option<u64>) -> Self {
 		Self {
-			description: unsafe { CStr::from_ptr(description).to_string_lossy().into_owned() },
+			description,
 			line: mark.line + 1,
 			column: mark.column + 1,
 			offset: match mark.index > 0 {
