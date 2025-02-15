@@ -16,6 +16,10 @@ use unsafe_libyaml::{
 	yaml_parser_set_input, yaml_parser_t,
 };
 
+pub(super) use unsafe_libyaml::{
+	YAML_DOCUMENT_END_EVENT, YAML_DOCUMENT_START_EVENT, YAML_MAPPING_START_EVENT,
+	YAML_SCALAR_EVENT, YAML_SEQUENCE_START_EVENT, YAML_STREAM_END_EVENT,
+};
 pub(super) struct Parser<R: Read> {
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
