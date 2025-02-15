@@ -84,6 +84,7 @@ impl<R: Read> Parser<R> {
 		})
 	}
 
+	// TODO: Safety section.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,
@@ -97,12 +98,38 @@ impl<R: Read> Parser<R> {
 			return READ_FAILURE;
 		}
 
+		// SAFETY: self.read_state_mut() is the only other dereference of the
+		// read_state; see its comment explaining how it's mutually exclusive
+		// with running the parser. The lifetime here lasts through the end of
+		// this function.
 		let read_state = unsafe { &mut *read_state.cast::<ReadState<R>>() };
 		let buffer_size = usize::try_from(buffer_size).unwrap();
 		read_state.buffer.resize(buffer_size, 0);
 
 		match read_state.reader.read(&mut read_state.buffer[..]) {
 			Ok(read_len) if read_len <= buffer_size => {
+				// SAFETY: copy_nonoverlapping is VERY dangerous, so let's walk
+				// through its 4 safety requirements:
+				//
+				// 1. read_state.buffer.as_ptr() must be valid for reads of
+				//    read_len bytes. We resize that to buffer_size above, and
+				//    our match guard guarantees read_len <= buffer_size, so
+				//    we're good.
+				//
+				// 2. buffer must be valid for writes of read_len bytes. We know
+				//    read_len <= buffer_size, and otherwise trust libyaml to
+				//    pass us valid arguments.
+				//
+				// 3. Both pointers must be aligned. They're u8 pointers, so
+				//    inherently aligned because "The size of a value is always
+				//    a multiple of its alignment." (The Rust Reference § 10.3).
+				//
+				// 4. The memory regions can't overlap. We control the
+				//    read_state buffer, so the only way libyaml is overlapping
+				//    with us is if the global allocator is truly busted.
+				//
+				// As far as the *size_read write, we're again trusting libyaml
+				// to pass valid arguments.
 				unsafe {
 					ptr::copy_nonoverlapping(read_state.buffer.as_ptr(), buffer, read_len);
 					*size_read = read_len as u64;
@@ -124,6 +151,9 @@ impl<R: Read> Parser<R> {
 
 impl<R: Read> Drop for Parser<R> {
 	fn drop(&mut self) {
+		// SAFETY: Parser::new panics if libyaml fails to initialize the parser,
+		// so we know it's logically valid here. Both of the pointers originally
+		// came from Boxes, so are safe to deallocate that way.
 		unsafe {
 			yaml_parser_delete(self.parser);
 			drop(Box::from_raw(self.parser));
@@ -137,14 +167,19 @@ pub(super) struct Event(*mut yaml_event_t);
 impl Event {
 	fn new(parser: &mut yaml_parser_t) -> Result<Event, ParserError> {
 		let mut event = Box::new(MaybeUninit::<yaml_event_t>::uninit());
+		// SAFETY: yaml_parser_parse is FFI-ish, so unsafe to call. We assume
+		// the yaml_parser_t is logically valid and that libyaml is implemented
+		// correctly.
 		if unsafe { yaml_parser_parse(parser, event.as_mut_ptr()) }.fail {
 			return Err(ParserError::new(parser));
 		}
 		Ok(Event(Box::into_raw(event).cast::<yaml_event_t>()))
 	}
 
-	fn event(&self) -> &yaml_event_t {
-		unsafe { &*self.0 }
+	fn event(&self) -> yaml_event_t {
+		// SAFETY: Event::new returns an error if libyaml fails to initialize
+		// the event value, so we know it's logically valid here.
+		unsafe { *self.0 }
 	}
 
 	pub(super) fn event_type(&self) -> yaml_event_type_t {
@@ -162,6 +197,9 @@ impl Event {
 
 impl Drop for Event {
 	fn drop(&mut self) {
+		// SAFETY: Event::new panics if libyaml fails to initialize the event,
+		// so we know it's logically valid here. The pointer originally came
+		// from a Box, so it's safe to deallocate that way.
 		unsafe {
 			yaml_event_delete(self.0);
 			drop(Box::from_raw(self.0));
@@ -178,6 +216,9 @@ struct ParserError {
 impl ParserError {
 	fn new(parser: &mut yaml_parser_t) -> Self {
 		let (problem, context);
+
+		// SAFETY: CStr::from_ptr documents its need for valid C strings, and we
+		// assume that libyaml is implemented correctly in that respect.
 		unsafe {
 			problem = (!parser.problem.is_null()).then(|| {
 				CStr::from_ptr(parser.problem)
