@@ -1,6 +1,11 @@
-//! A second try at the YAML chunker, focusing on more granular abstractions
-//! around unsafe code and limiting panics in case I ever need real libyaml in
-//! the future.
+//! A minimal safe abstraction over the venerable [libyaml].
+//!
+//! [`Parser`] reads a UTF-8 encoded YAML stream and exposes [`Event`]s that
+//! indicate the start and end positions of various document features. It's
+//! based on a pure-Rust translation of the common [libyaml] library, and
+//! largely exposes that library's types and values when it's safe to do so.
+//!
+//! [libyaml]: https://pyyaml.org/wiki/LibYAML
 
 use std::error::Error;
 use std::ffi::{c_char, c_void, CStr};
@@ -97,7 +102,7 @@ impl<R: Read> Parser<R> {
 	/// # Safety
 	///
 	/// The data pointer provided to yaml_parser_set_input must be a valid
-	/// ReadState<R> pointer.
+	/// `ReadState<R>` pointer.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
 		buffer: *mut u8,

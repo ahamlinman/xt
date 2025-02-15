@@ -1,19 +1,16 @@
 //! Support for splitting YAML 1.2 streams into their constituent documents.
 //!
 //! This is an awful hack to provide some level of streaming input support atop
-//! `serde_yaml`, which as of this writing requires buffering all input before
-//! parsing it (the convenience methods that parse from readers simply do this
-//! buffering for you). Using the same underlying parser as `serde_yaml` (a Rust
-//! translation of the venerable [libyaml][libyaml]), a [`Chunker`] iterates
-//! over the documents in a YAML stream as `String`s, which can be provided one
-//! by one to `serde_yaml` for actual deserialization.
+//! `serde_yaml`, which as of writing must buffer all input before parsing it
+//! (the convenience methods that parse from readers simply buffer for you).
+//! [`Chunker`] secretly copies the raw YAML stream produced by the original
+//! reader, and chunks it up based on the start and end byte offsets of the
+//! documents seen by a parser. Passing those chunks to `serde_yaml` for a
+//! second pass should yield the same result as parsing the entire original
+//! stream.
 //!
-//! I sincerely hope that I will someday have the time and energy to implement
-//! true streaming support in `serde_yaml` itself (unless, of course, someone
-//! beats me to it), and that this implementation will serve as a stepping stone
-//! toward that goal.
-//!
-//! [libyaml]: https://pyyaml.org/wiki/LibYAML
+//! I would love to have the time and energy someday to implement a true
+//! streaming YAML parser, whatever that looks like.
 
 use std::io::{self, Read};
 use std::mem;
