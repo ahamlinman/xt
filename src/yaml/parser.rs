@@ -3,7 +3,7 @@
 //! the future.
 
 use std::error::Error;
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_char, c_void, CStr};
 use std::fmt::Display;
 use std::io::{self, Read};
 use std::mem::MaybeUninit;
@@ -242,23 +242,14 @@ struct ParserError {
 impl ParserError {
 	fn new(parser: &mut yaml_parser_t) -> Self {
 		let (problem, context);
-
-		// SAFETY: CStr::from_ptr documents its expectations for valid C
-		// strings, and we assume libyaml is implemented correctly in that
-		// respect.
+		// SAFETY: We assume libyaml is implemented correctly with respect to
+		// these being either null pointers or valid C strings. The null pointer
+		// checks aren't out of caution; at least one of these may legitimately
+		// be null under normal operation.
 		unsafe {
-			problem = (!parser.problem.is_null()).then(|| {
-				CStr::from_ptr(parser.problem)
-					.to_string_lossy()
-					.into_owned()
-			});
-			context = (!parser.context.is_null()).then(|| {
-				CStr::from_ptr(parser.context)
-					.to_string_lossy()
-					.into_owned()
-			});
+			problem = Self::try_cstr_into_string(parser.problem);
+			context = Self::try_cstr_into_string(parser.context);
 		}
-
 		Self {
 			problem: problem.map(|description| {
 				LocatedError::from_parts(
@@ -271,6 +262,17 @@ impl ParserError {
 				LocatedError::from_parts(description, parser.context_mark, None)
 			}),
 		}
+	}
+
+	/// Try to convert a C string into a [`String`], lossily replacing invalid
+	/// UTF-8 sequences, or return [`None`] if `ptr` is null.
+	///
+	/// # Safety
+	///
+	/// `ptr` must meet all requirements documented by [`CStr::from_ptr`].
+	unsafe fn try_cstr_into_string(ptr: *const c_char) -> Option<String> {
+		// SAFETY: Delegated to the caller.
+		(!ptr.is_null()).then(|| unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() })
 	}
 }
 
