@@ -93,8 +93,8 @@ where
 		// is in read_handler, when we pull it out of libyaml's data pointer.
 		// Assuming libyaml is single-threaded and we have no other aliasing
 		// bugs, our &mut self guarantees that nobody is running the parser
-		// (and, by extension, read_handler) right now. The output lifetime is
-		// bounded by self on return.
+		// (and, by extension, read_handler). The output lifetime is bounded by
+		// self, so nobody _can_ run the parser while it remains live.
 		unsafe { &mut *self.read_state }
 	}
 
