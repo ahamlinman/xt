@@ -30,7 +30,7 @@ libc = "0.2.169"
 
 [dev-dependencies]
 hex-literal = "0.4.1"
-similar-asserts = "1.5.0"
+similar-asserts = "1.6.1"
 
 [dev-dependencies.criterion]
 version = "0.5.1"
