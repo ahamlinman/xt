@@ -26,7 +26,7 @@ version = "0.8.20"
 features = ["preserve_order"]
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2.153"
+libc = "0.2.169"
 
 [dev-dependencies]
 hex-literal = "0.4.1"
