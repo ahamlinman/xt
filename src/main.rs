@@ -70,6 +70,8 @@ fn main() {
 			Err(err) => xt_bail_path!(path, "{err}"),
 		};
 		if let Input::Stdin = input {
+			// TODO: Is this check really worth it? We don't stop anyone from
+			// passing /dev/stdin more than once.
 			if stdin_used {
 				xt_bail!("cannot read from standard input more than once");
 			}
