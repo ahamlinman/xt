@@ -1,3 +1,5 @@
+//! Barebones helpers for error handling.
+
 use std::error::Error as StdError;
 use std::fmt::Display;
 use std::result;
