@@ -264,8 +264,8 @@ impl ParserError {
 		// checks aren't out of caution; at least one of these may legitimately
 		// be null under normal operation.
 		unsafe {
-			problem = Self::try_cstr_into_string(parser.problem);
-			context = Self::try_cstr_into_string(parser.context);
+			problem = Self::try_cstr_into_string(parser.problem.cast::<c_char>());
+			context = Self::try_cstr_into_string(parser.context.cast::<c_char>());
 		}
 		Self {
 			problem: problem.map(|description| {
