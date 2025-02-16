@@ -1,3 +1,11 @@
+## Unreleased
+
+### Changed
+
+- **YAML decoding performance.** This version of xt substantially cleans up the
+  implementation of YAML input support, yielding improvements of around 1% - 5%
+  in rough tests of translation speed.
+
 ## v0.19.2 (2024-08-17)
 
 ### Added
