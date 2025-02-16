@@ -21,7 +21,11 @@ use unsafe_libyaml::{
 };
 
 pub(super) use unsafe_libyaml::yaml_event_type_t::*;
-pub(super) struct Parser<R: Read> {
+
+pub(super) struct Parser<R>
+where
+	R: Read,
+{
 	// We have to keep read_state as a raw pointer; any use through a Box
 	// would invalidate the aliasing pointer maintained for the input handler.
 	// I think we _can_ Box up the parser (as long as we avoid moving it during
@@ -30,13 +34,19 @@ pub(super) struct Parser<R: Read> {
 	read_state: *mut ReadState<R>,
 }
 
-struct ReadState<R: Read> {
+struct ReadState<R>
+where
+	R: Read,
+{
 	reader: R,
 	bouncer: Vec<u8>,
 	error: Option<io::Error>,
 }
 
-impl<R: Read> Parser<R> {
+impl<R> Parser<R>
+where
+	R: Read,
+{
 	pub(super) fn new(reader: R) -> Parser<R> {
 		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
 		let read_state = Box::into_raw(Box::new(ReadState {
@@ -184,7 +194,10 @@ impl<R: Read> Parser<R> {
 	}
 }
 
-impl<R: Read> Drop for Parser<R> {
+impl<R> Drop for Parser<R>
+where
+	R: Read,
+{
 	fn drop(&mut self) {
 		// SAFETY: Parser::new panics if libyaml fails to initialize the parser,
 		// so we know it's logically valid here. Both of the pointers originally
