@@ -28,8 +28,8 @@ $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpa
 
 ## Installation
 
-xt is built with [Rust][rust], and leverages the powerful [Serde][serde]
-ecosystem of data serialization and deserialization libraries.
+xt is written in [Rust][rust] to leverage the powerful [Serde][serde] ecosystem
+of data serialization and deserialization libraries.
 
 After [installing Rust][install rust] on your system, you can install xt
 [from crates.io][crate] using Cargo:
