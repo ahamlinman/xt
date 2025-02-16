@@ -22,6 +22,10 @@ use unsafe_libyaml::{
 
 pub(super) use unsafe_libyaml::yaml_event_type_t::*;
 pub(super) struct Parser<R: Read> {
+	// We have to keep read_state as a raw pointer; any use through a Box
+	// would invalidate the aliasing pointer maintained for the input handler.
+	// I think we _can_ Box up the parser (as long as we avoid moving it during
+	// construction for performance reasons), but I like the consistency here.
 	parser: *mut yaml_parser_t,
 	read_state: *mut ReadState<R>,
 }
