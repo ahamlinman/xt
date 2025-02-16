@@ -264,6 +264,10 @@ impl ParserError {
 		// checks aren't out of caution; at least one of these may legitimately
 		// be null under normal operation.
 		unsafe {
+			// unsafe_libyaml makes these *const i8 on every target, rather than
+			// dynamically using the correct signedness like `c_char` does.
+			// Without the casts working around that, builds for Linux on Arm
+			// targets (and others) will fail.
 			problem = Self::try_cstr_into_string(parser.problem.cast::<c_char>());
 			context = Self::try_cstr_into_string(parser.context.cast::<c_char>());
 		}
