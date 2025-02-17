@@ -60,9 +60,9 @@ fn main() {
 	let mut translator = xt::Translator::new(&mut output, args.to);
 
 	let input_paths = if args.input_pathnames.is_empty() {
-		InputPaths::stdin_only()
+		InputPaths::one(InputPath::Stdin)
 	} else {
-		InputPaths::paths(args.input_pathnames.into_iter().map(Into::into))
+		InputPaths::many(args.input_pathnames.into_iter().map(Into::into))
 	};
 	for path in input_paths {
 		let input = match path.open() {
@@ -353,20 +353,20 @@ enum InputPaths<I>
 where
 	I: Iterator<Item = InputPath>,
 {
-	StdinOnly { used: bool },
-	Paths(I),
+	One(Option<InputPath>),
+	Many(I),
 }
 
 impl<I> InputPaths<I>
 where
 	I: Iterator<Item = InputPath>,
 {
-	fn stdin_only() -> Self {
-		Self::StdinOnly { used: false }
+	fn one(path: InputPath) -> Self {
+		Self::One(Some(path))
 	}
 
-	fn paths(iter: I) -> Self {
-		Self::Paths(iter)
+	fn many(iter: I) -> Self {
+		Self::Many(iter)
 	}
 }
 
@@ -378,12 +378,8 @@ where
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			Self::StdinOnly { used: false } => {
-				*self = Self::StdinOnly { used: true };
-				Some(InputPath::Stdin)
-			}
-			Self::StdinOnly { used: true } => None,
-			Self::Paths(iter) => iter.next(),
+			Self::One(path) => path.take(),
+			Self::Many(iter) => iter.next(),
 		}
 	}
 }
