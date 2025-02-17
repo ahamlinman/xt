@@ -26,12 +26,8 @@ pub(super) struct Parser<R>
 where
 	R: Read,
 {
-	// We have to keep read_state as a raw pointer; any use through a Box
-	// would invalidate the aliasing pointer maintained for the input handler.
-	// I think we _can_ Box up the parser (as long as we avoid moving it during
-	// construction for performance reasons), but I like the consistency here.
-	parser: *mut yaml_parser_t,
-	read_state: *mut ReadState<R>,
+	parser: Box<yaml_parser_t>,
+	read_state: *mut ReadState<R>, // See new() for details.
 }
 
 struct ReadState<R>
@@ -48,44 +44,48 @@ where
 	R: Read,
 {
 	pub(super) fn new(reader: R) -> Parser<R> {
-		let mut parser = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
+		let mut parser: Box<yaml_parser_t>;
+
+		// SAFETY: This comes from libyaml, which we assume is implemented
+		// correctly. We expect initialization functions to properly handle
+		// uninitialized memory; empirical tests in Miri show this to be true.
+		unsafe {
+			// TODO: Use Box::new_uninit and Box::assume_init if our MSRV hits
+			// or exceeds 1.82.
+			let mut uninit = Box::new(MaybeUninit::<yaml_parser_t>::uninit());
+			if yaml_parser_initialize(uninit.as_mut_ptr()).ok {
+				parser = Box::from_raw(Box::into_raw(uninit).cast());
+			} else {
+				panic!("out of memory for yaml_parser_initialize");
+			}
+		}
+
+		// libyaml needs a raw ReadState<R> pointer for Self::read_handler.
+		// Since mutable access through a Box invalidates derived pointers,
+		// we can't simultaneously keep this as a Box in Parser and allow
+		// reader_mut() to expose the underlying reader. reader_mut() is a
+		// must-have, so we solve the aliasing concern by keeping this raw for
+		// its entire life. new() should no longer panic after this point,
+		// so this should never leak before we finish constructing the Parser
+		// and activate its Drop impl.
 		let read_state = Box::into_raw(Box::new(ReadState {
 			reader,
 			bouncer: vec![],
 			error: None,
 		}));
 
-		// SAFETY: These functions come from libyaml, which we assume is
-		// implemented correctly. Most functions only receive the parser pointer
-		// after we know it's been initialized.
-		//
-		// This configuration will call the unsafe Self::read_handler during
-		// parsing. That function requires the data pointer to be a valid
-		// ReadState<R> pointer, which we've satisfied by initializing it
-		// through a Box above.
+		// SAFETY: Again, we assume libyaml is implemented correctly. We know
+		// the parser is initialized because we didn't panic above.
 		unsafe {
-			if yaml_parser_initialize(parser.as_mut_ptr()).fail {
-				panic!("out of memory for libyaml parser initialization");
-			};
-			yaml_parser_set_encoding(parser.as_mut_ptr(), YAML_UTF8_ENCODING);
+			yaml_parser_set_encoding(parser.as_mut(), YAML_UTF8_ENCODING);
 			yaml_parser_set_input(
-				parser.as_mut_ptr(),
+				parser.as_mut(),
 				Self::read_handler,
 				read_state.cast::<c_void>(),
 			);
 		};
 
-		Parser {
-			parser: Box::into_raw(parser).cast::<yaml_parser_t>(),
-			read_state,
-		}
-	}
-
-	fn parser_mut(&mut self) -> &mut yaml_parser_t {
-		// SAFETY: There is no other dereference of self.parser outside of Drop,
-		// so no way for us to mistakenly alias this. The output lifetime is
-		// bounded by self on return.
-		unsafe { &mut *self.parser }
+		Parser { parser, read_state }
 	}
 
 	fn read_state_mut(&mut self) -> &mut ReadState<R> {
@@ -103,7 +103,7 @@ where
 	}
 
 	pub(super) fn next_event(&mut self) -> Result<Event, io::Error> {
-		Event::parse_next(self.parser_mut()).map_err(|err| {
+		Event::parse_next(self.parser.as_mut()).map_err(|err| {
 			self.read_state_mut()
 				.error
 				.take()
@@ -200,11 +200,12 @@ where
 {
 	fn drop(&mut self) {
 		// SAFETY: Parser::new panics if libyaml fails to initialize the parser,
-		// so we know it's logically valid here. Both of the pointers originally
-		// came from Boxes, so are safe to deallocate that way.
+		// so we know it's logically valid here. self.read_state originally came
+		// from a Box, so is safe to deallocate that way. We logically destroy
+		// the parser before the read state, so it should have no chance to
+		// access freed read state memory.
 		unsafe {
-			yaml_parser_delete(self.parser);
-			drop(Box::from_raw(self.parser));
+			yaml_parser_delete(&mut *self.parser);
 			drop(Box::from_raw(self.read_state));
 		}
 	}
