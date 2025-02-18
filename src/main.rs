@@ -11,7 +11,9 @@
 	clippy::unnecessary_cast,
 	// More general style-type things.
 	clippy::from_over_into,
+	clippy::needless_raw_string_hashes,
 	clippy::semicolon_if_nothing_returned,
+	clippy::similar_names,
 )]
 #![warn(
 	// Print macros can panic, and should only be for temporary debugging.
@@ -175,10 +177,10 @@ where
 	let argv0 = usage_name();
 	let _ = write!(
 		w,
-		r#"Usage: {argv0} {USAGE}
+		r"Usage: {argv0} {USAGE}
 Formats: json, msgpack, toml, yaml
 Try '{argv0} --help' for more information.
-"#
+"
 	);
 }
 

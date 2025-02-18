@@ -329,8 +329,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 	}
 
 	fn visit_seq<A: de::SeqAccess<'de>>(self, mut de: A) -> Result<Self::Value, A::Error> {
-		let ser = self.0.take_parent();
-		let mut seq = match ser.serialize_seq(de.size_hint()) {
+		let mut seq = match self.0.take_parent().serialize_seq(de.size_hint()) {
 			Ok(seq) => seq,
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);
@@ -360,8 +359,7 @@ impl<'de, S: Serializer> de::Visitor<'de> for &mut Visitor<S> {
 	}
 
 	fn visit_map<A: de::MapAccess<'de>>(self, mut de: A) -> Result<Self::Value, A::Error> {
-		let ser = self.0.take_parent();
-		let mut map = match ser.serialize_map(de.size_hint()) {
+		let mut map = match self.0.take_parent().serialize_map(de.size_hint()) {
 			Ok(map) => map,
 			Err(ser_err) => {
 				self.0.capture_error(ErrorSource::Ser, ser_err);

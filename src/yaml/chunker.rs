@@ -198,13 +198,13 @@ mod tests {
 
 	#[test]
 	fn chunker_normal_usage() {
-		const INPUT: &str = r#"---
+		const INPUT: &str = r"---
 test: true
 ---
 12345
 ---
 [list, of strings]
-"#;
+";
 
 		let chunker = Chunker::new(INPUT.as_bytes());
 		let docs = chunker.collect::<Result<Vec<_>, io::Error>>().unwrap();

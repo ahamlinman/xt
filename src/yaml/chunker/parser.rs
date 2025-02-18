@@ -115,7 +115,7 @@ where
 	///
 	/// # Safety
 	///
-	/// The data pointer provided to yaml_parser_set_input must be a valid
+	/// The data pointer provided to `yaml_parser_set_input` must be a valid
 	/// `ReadState<R>` pointer.
 	unsafe fn read_handler(
 		read_state: *mut c_void,
