@@ -77,9 +77,9 @@ where
 		// SAFETY: Again, we assume libyaml is implemented correctly. We know
 		// the parser is initialized because we didn't panic above.
 		unsafe {
-			yaml_parser_set_encoding(parser.as_mut(), YAML_UTF8_ENCODING);
+			yaml_parser_set_encoding(&mut *parser, YAML_UTF8_ENCODING);
 			yaml_parser_set_input(
-				parser.as_mut(),
+				&mut *parser,
 				Self::read_handler,
 				read_state.cast::<c_void>(),
 			);
@@ -103,7 +103,7 @@ where
 	}
 
 	pub(super) fn next_event(&mut self) -> Result<Event, io::Error> {
-		Event::parse_next(self.parser.as_mut()).map_err(|err| {
+		Event::parse_next(&mut self.parser).map_err(|err| {
 			self.read_state_mut()
 				.error
 				.take()
