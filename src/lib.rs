@@ -23,7 +23,6 @@
 	clippy::from_over_into,
 	clippy::needless_raw_string_hashes,
 	clippy::semicolon_if_nothing_returned,
-	clippy::similar_names,
 )]
 #![warn(
 	// Print macros can panic, and should only be for temporary debugging.
@@ -32,6 +31,9 @@
 	// The following macros represent incomplete implementation work.
 	clippy::todo,
 	clippy::unimplemented,
+	// Style-type things that might not need an _immediate_ fix.
+	clippy::doc_markdown,
+	clippy::similar_names,
 )]
 
 use std::fmt;
