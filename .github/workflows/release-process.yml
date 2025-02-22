@@ -3,7 +3,9 @@ name: Release Process
 
 on:
   push:
-    branches: [start-release]
+    branches:
+    - start-release
+    - check-release
 
 env:
   CARGO_TERM_COLOR: always
@@ -56,76 +58,90 @@ jobs:
     permissions:
       contents: write
 
-  # merge-release:
-  #   needs:
-  #   - check-release-branch
-  #   - run-deep-tests
-  #   - build-archives
-  #   runs-on: ubuntu-24.04
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       filter: blob:none
-  #       fetch-depth: 0
-  #   - name: Import Signing Key
-  #     run: gpg --batch --import <<< "$GPG_PRIVATE_KEY"
-  #     env:
-  #       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-  #   - name: Merge Release
-  #     run: |
-  #       set -x
+  merge-release:
+    needs:
+    - check-release-branch
+    - run-deep-tests
+    - build-archives
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_BRANCH: ${{ needs.check-release-branch.outputs.release_branch }}
+      RELEASE_TAG: ${{ needs.check-release-branch.outputs.release_tag }}
+      GPG_KEY_ID: ${{ vars.GPG_KEY_ID }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        filter: blob:none
+        fetch-depth: 0
+    - name: Import Signing Key
+      run: gpg --batch --import <<< "$GPG_PRIVATE_KEY"
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+    - name: Merge Release
+      run: |
+        set -x
 
-  #       release_branch="${{ needs.check-release-branch.outputs.release_branch }}"
-  #       release_tag="${{ needs.check-release-branch.outputs.release_tag }}"
-  #       gpg_key_id="${{ vars.GPG_KEY_ID }}"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  #       git config --global user.name "github-actions[bot]"
-  #       git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag -asu "$GPG_KEY_ID" -m "$RELEASE_TAG" "$RELEASE_TAG"
 
-  #       git tag -asu "$gpg_key_id" -m "$release_tag" "$release_tag"
+        git checkout main
+        git merge --ff-only "$RELEASE_BRANCH"
 
-  #       git checkout main
-  #       git merge --ff-only "$release_branch"
+    # So far, none of the intermediate state of the release should be exposed
+    # outside of the GitHub workflow.
+    #
+    # THIS STEP IS THE POINT OF NO RETURN.
+    # IT IS THE ATOMIC MOMENT AT WHICH THE RELEASE OCCURS AND CANNOT BE REVOKED.
+    #
+    # Any failures after this point MUST be possible to recover from manually.
+    # For example, the GitHub release can be cut by hand using archives uploaded
+    # to the workflow run, and the crate can be published from a local checkout
+    # of the tag.
+    - name: Push Release
+      if: ${{ github.ref == 'refs/heads/start-release' }}
+      run: |
+        git push --atomic origin main "$RELEASE_TAG" :"$RELEASE_BRANCH"
 
-  #       git push origin main "$release_tag" :"$release_branch"
-
-  # create-github-release:
-  #   needs:
-  #   - check-release-branch
-  #   - build-archives
-  #   - merge-release
-  #   runs-on: ubuntu-24.04
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #   - name: Download Artifacts
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: release
-  #   - name: List Artifacts
-  #     run: ls -lR
-  #   - name: Create Release
-  #     uses: softprops/action-gh-release@v2
-  #     with:
-  #       tag_name: ${{ needs.check-release-branch.outputs.release_tag }}
-  #       files: |
-  #         xt-*.tar.gz
-  #         SHA256SUMS
-  #       body: >-
-  #         **[See the xt CHANGELOG][changelog] for release information.**
-
-
-  #         Binary releases of xt are available for Linux and macOS as
-  #         attachments to this GitHub Release. They are statically linked (on
-  #         Linux), or link only to the platform's standard libraries (on macOS).
-  #         Before using them, review the [Installation][install] section of the
-  #         xt README. Your platform may support a more robust installation
-  #         mechanism.
+  create-github-release:
+    if: ${{ github.ref == 'refs/heads/start-release' }}
+    needs:
+    - check-release-branch
+    - build-archives
+    - merge-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: release
+    - name: List Artifacts
+      run: ls -lR
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.check-release-branch.outputs.release_tag }}
+        files: |
+          xt-*.tar.gz
+          SHA256SUMS
+        body: >-
+          **[See the xt CHANGELOG][changelog] for release information.**
 
 
-  #         [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
+          Binary releases of xt are available for Linux and macOS as
+          attachments to this GitHub Release. They are statically linked (on
+          Linux), or link only to the platform's standard libraries (on macOS).
+          Before using them, review the [Installation][install] section of the
+          xt README. Your platform may support a more robust installation
+          mechanism.
 
-  #         [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation
+
+          [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
+
+          [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation
