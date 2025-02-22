@@ -65,10 +65,14 @@ jobs:
         path: target.tar.gz
 
   assemble-archives:
-    needs: [build-doc, build-binaries-unix]
+    needs:
+    - build-doc
+    - build-binaries-unix
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -80,7 +84,7 @@ jobs:
           tar -xvf $targetdir/target.tar.gz
           make dist/xt-${targetdir#./target-}.tar.gz
         done
-        (cd dist && sha256sum xt-*.tar.gz > SHA256SUMS)
+        (cd dist && sha256sum xt-*.tar.gz | tee SHA256SUMS)
     - name: Upload Release Artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -88,3 +92,7 @@ jobs:
         path: |
           dist/xt-*.tar.gz
           dist/SHA256SUMS
+    - name: Create GitHub Attestation
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-checksums: dist/SHA256SUMS
