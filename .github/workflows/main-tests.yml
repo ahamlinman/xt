@@ -1,41 +1,45 @@
 ---
-name: xt Main Tests
+name: Main Tests
+
 on:
   push:
     branches: [main]
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
 jobs:
   stable-test-lint:
     runs-on: ubuntu-24.04
     steps:
-    - name: git checkout
+    - name: Checkout
       uses: actions/checkout@v4
-    - name: rustup toolchain install
+    - name: Download Toolchain
       run: |
         rustup set profile minimal
         rustup toolchain install stable --component clippy --component rustfmt
         rustup default stable
         rustc --version
-    - name: cargo check
+    - name: Check
       run: cargo check
-    - name: cargo test
+    - name: Test
       run: cargo test
-    - name: cargo clippy
+    - name: Clippy
       run: cargo clippy
+
   msrv-test:
     runs-on: ubuntu-24.04
     steps:
-    - name: git checkout
+    - name: Checkout
       uses: actions/checkout@v4
-    - name: rustup toolchain install
+    - name: Download Toolchain
       run: |
         rustup set profile minimal
         rustup toolchain install 1.70.0
         rustup default 1.70.0
         rustc --version
-    - name: cargo check
+    - name: Check
       run: cargo check
-    - name: cargo test
+    - name: Test
       run: cargo test

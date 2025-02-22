@@ -1,0 +1,131 @@
+---
+name: Release Process
+
+on:
+  push:
+    branches: [start-release]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-release-branch:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        filter: blob:none
+        fetch-depth: 0
+    - name: Check Release Branch
+      id: check-release
+      run: |
+        set -x
+
+        release_version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')"
+        release_branch="${GITHUB_REF#refs/heads/}"
+        release_tag="v${release_version}"
+        commit_title="$(git show --pretty=format:%s --no-patch)"
+
+        if [[ ! $release_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "$release_version is not a release version"
+          exit 1
+        elif [[ $commit_title != "Release $release_tag" ]]; then
+          echo "'$commit_title' is not a release commit title"
+          exit 1
+        fi
+
+        git checkout main
+        git merge --no-commit --ff-only "$release_branch"
+
+        echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+        echo "release_branch=$release_branch" >> "$GITHUB_OUTPUT"
+        echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+    outputs:
+      release_version: ${{ steps.check-release.outputs.release_version }}
+      release_branch: ${{ steps.check-release.outputs.release_branch }}
+      release_tag: ${{ steps.check-release.outputs.release_tag }}
+
+  run-deep-tests:
+    needs: check-release-branch
+    uses: ./.github/workflows/deep-tests.yml
+
+  build-archives:
+    needs: check-release-branch
+    uses: ./.github/workflows/build-release-archives.yml
+    permissions:
+      contents: write
+
+  # merge-release:
+  #   needs:
+  #   - check-release-branch
+  #   - run-deep-tests
+  #   - build-archives
+  #   runs-on: ubuntu-24.04
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #     with:
+  #       filter: blob:none
+  #       fetch-depth: 0
+  #   - name: Import Signing Key
+  #     run: gpg --batch --import <<< "$GPG_PRIVATE_KEY"
+  #     env:
+  #       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+  #   - name: Merge Release
+  #     run: |
+  #       set -x
+
+  #       release_branch="${{ needs.check-release-branch.outputs.release_branch }}"
+  #       release_tag="${{ needs.check-release-branch.outputs.release_tag }}"
+  #       gpg_key_id="${{ vars.GPG_KEY_ID }}"
+
+  #       git config --global user.name "github-actions[bot]"
+  #       git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+  #       git tag -asu "$gpg_key_id" -m "$release_tag" "$release_tag"
+
+  #       git checkout main
+  #       git merge --ff-only "$release_branch"
+
+  #       git push origin main "$release_tag" :"$release_branch"
+
+  # create-github-release:
+  #   needs:
+  #   - check-release-branch
+  #   - build-archives
+  #   - merge-release
+  #   runs-on: ubuntu-24.04
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #   - name: Download Artifacts
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: release
+  #   - name: List Artifacts
+  #     run: ls -lR
+  #   - name: Create Release
+  #     uses: softprops/action-gh-release@v2
+  #     with:
+  #       tag_name: ${{ needs.check-release-branch.outputs.release_tag }}
+  #       files: |
+  #         xt-*.tar.gz
+  #         SHA256SUMS
+  #       body: >-
+  #         **[See the xt CHANGELOG][changelog] for release information.**
+
+
+  #         Binary releases of xt are available for Linux and macOS as
+  #         attachments to this GitHub Release. They are statically linked (on
+  #         Linux), or link only to the platform's standard libraries (on macOS).
+  #         Before using them, review the [Installation][install] section of the
+  #         xt README. Your platform may support a more robust installation
+  #         mechanism.
+
+
+  #         [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
+
+  #         [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation

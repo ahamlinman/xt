@@ -1,11 +1,13 @@
 ---
-name: xt Release
+name: Build Release Archives
+
 on:
+  workflow_call: {}
   workflow_dispatch: {}
-  push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
 env:
   CARGO_TERM_COLOR: always
+
 jobs:
   build-doc:
     runs-on: ubuntu-24.04
@@ -61,7 +63,7 @@ jobs:
         name: target-${{ matrix.target }}
         path: target.tar.gz
 
-  create-release:
+  assemble-archives:
     needs: [build-doc, build-binaries-unix]
     runs-on: ubuntu-24.04
     permissions:
@@ -79,32 +81,9 @@ jobs:
         done
         (cd dist && sha256sum xt-*.tar.gz > SHA256SUMS)
     - name: Upload Release Artifacts
-      if: startsWith(github.ref, 'refs/heads/')
       uses: actions/upload-artifact@v4
       with:
         name: release
         path: |
           dist/xt-*.tar.gz
           dist/SHA256SUMS
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          dist/xt-*.tar.gz
-          dist/SHA256SUMS
-        body: >-
-          **[See the xt CHANGELOG][changelog] for release information.**
-
-
-          Binary releases of xt are available for Linux and macOS as
-          attachments to this GitHub Release. They are statically linked (on
-          Linux), or link only to the platform's standard libraries (on macOS).
-          Before using them, review the [Installation][install] section of the
-          xt README. Your platform may support a more robust installation
-          mechanism.
-
-
-          [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
-
-          [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation

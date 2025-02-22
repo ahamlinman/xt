@@ -1,42 +1,62 @@
 ---
-name: xt Full Test Matrix
-on: workflow_dispatch
+name: Deep Tests
+
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
 jobs:
+  cargo-publish-dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Download Toolchain
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable
+        rustup default stable
+        rustc --version
+    - name: Try Publishing
+      run: cargo publish --dry-run
+
   stable-msrv-test:
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, macos-14, windows-2022]
-        toolchain: [stable, 1.70.0]
+        toolchain: [stable, '1.70.0']
     runs-on: ${{ matrix.runner }}
     steps:
-    - name: git checkout
+    - name: Checkout
       uses: actions/checkout@v4
-    - name: rustup toolchain install
+    - name: Download Toolchain
       run: |
         rustup set profile minimal
         rustup toolchain install ${{ matrix.toolchain }}
         rustup default ${{ matrix.toolchain }}
         rustc --version
-    - name: cargo check
+    - name: Check
       run: cargo check
-    - name: cargo test
+    - name: Test
       run: cargo test
+
   linux-miri-test:
     runs-on: ubuntu-24.04
     steps:
-    - name: git checkout
+    - name: Checkout
       uses: actions/checkout@v4
-    - name: rustup toolchain install
+    - name: Download Toolchain
       run: |
         rustup set profile minimal
         rustup toolchain install nightly --component miri --allow-downgrade
         rustup default nightly
         rustc --version
-    - name: download nextest
+    - name: Download Nextest
       run: curl -LsSf https://get.nexte.st/0.9/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-    - name: cargo miri test
+    - name: Test in Miri
       run: cargo miri nextest run -j num-cpus
