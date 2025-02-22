@@ -334,7 +334,7 @@ where
 		// units form a valid surrogate pair.
 		Some(Ok(unsafe {
 			char::from_u32_unchecked(
-				0x10000 + (u32::from(lead - 0xD800) << 10 | u32::from(trail - 0xDC00)),
+				0x10000 + ((u32::from(lead - 0xD800) << 10) | u32::from(trail - 0xDC00)),
 			)
 		}))
 	}
