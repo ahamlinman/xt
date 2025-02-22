@@ -6,6 +6,16 @@
   implementation of YAML input support, yielding improvements of around 1% - 5%
   in rough tests of translation speed.
 
+### Note
+
+Beginning with this release, Git tags are created by GitHub Actions and signed
+with GPG key `0xC9C314D2C07EC0A519D48FC7DC468D5E76A2ECCA`. This key has been
+signed by the `0x679A97FC9743E4A5E23879D2653DE6D063CBF818` key used for all
+previous release tags, and both the new key and this signature are [available on
+public keyservers][key search].
+
+[key search]: https://keyserver.ubuntu.com/pks/lookup?search=0xC9C314D2C07EC0A519D48FC7DC468D5E76A2ECCA&fingerprint=on&op=index
+
 ## v0.19.2 (2024-08-17)
 
 ### Added
