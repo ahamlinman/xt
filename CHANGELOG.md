@@ -5,6 +5,11 @@
 - **YAML decoding performance.** This version of xt substantially cleans up the
   implementation of YAML input support, yielding improvements of around 1% - 5%
   in rough tests of translation speed.
+- This version of xt includes additional code cleanup based on linting and
+  formatting changes in newer versions of Rust, along with upgrades of some
+  locked dependencies. These changes are not expected to significantly affect
+  functionality, performance or security, nor are they expected to affect
+  support for xt's current minimum Rust version (1.70.0).
 
 ### Note
 
