@@ -19,3 +19,10 @@ path = "fuzz_targets/slice_detected_all_formats.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "reader_detected_all_formats"
+path = "fuzz_targets/reader_detected_all_formats.rs"
+test = false
+doc = false
+bench = false
