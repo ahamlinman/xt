@@ -24,7 +24,7 @@ Or store an unbounded stream of JSON events as MessagePack to save space:
 $ curl localhost:8001/apis/events.k8s.io/v1/events?watch | xt -tm > events.msgpack
 ```
 
-[jq]: https://stedolan.github.io/jq/
+[jq]: https://jqlang.org/
 
 ## Installation
 
