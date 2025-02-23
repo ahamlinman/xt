@@ -147,3 +147,21 @@ jobs:
           [changelog]: https://github.com/ahamlinman/xt/blob/main/CHANGELOG.md
 
           [install]: https://github.com/ahamlinman/xt?tab=readme-ov-file#installation
+
+  publish-crate:
+    if: ${{ github.ref == 'refs/heads/start-release' }}
+    needs: merge-release
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Download Toolchain
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable
+        rustup default stable
+        rustc --version
+    - name: Publish
+      run: cargo publish
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -24,6 +24,8 @@ jobs:
         rustc --version
     - name: Try Publishing
       run: cargo publish --dry-run
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   read-msrv:
     runs-on: ubuntu-24.04
