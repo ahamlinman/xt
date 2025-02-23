@@ -98,7 +98,7 @@ where
 					let chunk = self.parser.reader_mut().take_to_offset(event.end_offset());
 					self.last_document = Some(Document {
 						content: String::from_utf8(chunk).unwrap(),
-						kind: self.current_document_kind.take().unwrap(),
+						kind: self.current_document_kind.take(),
 					});
 				}
 				YAML_STREAM_END_EVENT => {
@@ -114,7 +114,7 @@ where
 /// A UTF-8 encoded YAML document.
 pub(super) struct Document {
 	content: String,
-	kind: DocumentKind,
+	kind: Option<DocumentKind>,
 }
 
 /// The type of content contained in a YAML document.
@@ -129,10 +129,10 @@ impl Document {
 		&self.content
 	}
 
-	/// Returns true if the content of the document is a scalar rather than a
-	/// collection (sequence or mapping).
-	pub(super) fn is_scalar(&self) -> bool {
-		matches!(self.kind, DocumentKind::Scalar)
+	/// Returns true if the content of the document is a collection (sequence or
+	/// mapping).
+	pub(super) fn is_collection(&self) -> bool {
+		matches!(self.kind, Some(DocumentKind::Collection))
 	}
 }
 
@@ -219,8 +219,18 @@ test: true
 			]
 		);
 
-		let scalars = docs.iter().map(|doc| doc.is_scalar()).collect::<Vec<_>>();
-		assert_eq!(&scalars, &[false, true, false]);
+		let collections: Vec<_> = docs.iter().map(Document::is_collection).collect();
+		assert_eq!(&collections, &[true, false, true]);
+	}
+
+	// Tests that a YAML document consisting solely of an unknown anchor doesn't
+	// crash the chunker. Fuzzing revealed this bug (via this exact input) in a
+	// previous implementation.
+	#[test]
+	fn chunker_unknown_anchor() {
+		const INPUT: &str = "*y";
+		let chunker = Chunker::new(INPUT.as_bytes());
+		chunker.collect::<Result<Vec<_>, io::Error>>().unwrap();
 	}
 
 	#[test]

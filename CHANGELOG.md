@@ -1,3 +1,15 @@
+## Unreleased
+
+### Fixed
+
+- **Crashes on certain invalid YAML inputs.** Previous versions of xt may have
+  aborted with a Rust panic message when handling a YAML document consisting
+  solely of an alias to an undefined anchor (e.g. `*anchor`). This bug was
+  discovered through automated [fuzzing][fuzzing]; with the fix applied, xt now
+  survives far longer fuzzing runs without further crashes.
+
+[fuzzing]: https://rust-fuzz.github.io/book/introduction.html
+
 ## v0.19.3 (2025-02-21)
 
 ### Changed

@@ -26,7 +26,7 @@ pub(crate) fn input_matches(mut input: Ref) -> io::Result<bool> {
 		Ref::Reader(r) => Chunker::new(Encoder::new(BufReader::new(r), encoding)).next(),
 	};
 	match chunk {
-		Some(Ok(doc)) => Ok(!doc.is_scalar()),
+		Some(Ok(doc)) => Ok(doc.is_collection()),
 		Some(Err(err)) if err.kind() == io::ErrorKind::InvalidData => Ok(false),
 		Some(Err(err)) => Err(err),
 		None => Ok(false),
