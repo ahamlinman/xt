@@ -7,6 +7,29 @@ on:
     - start-release
     - check-release
 
+# In many automated release workflows, a human author's push of a new Git tag
+# triggers a CI system to build and ship release artifacts from the tagged
+# commit. But if this tagged code happens to contain an unrecognized defect that
+# blocks a complete release, it's too late to revert or change the tag without
+# potentially breaking downstream Git clones.
+#
+# This release workflow is a spin on Graydon Hoare's "not rocket science" rule
+# for integrating code into a repository's mainline [1]. A release begins with a
+# human author pushing a _provisional_ release commit to a well-known branch.
+# The CI system runs every conceivable test and prepares every expected artifact
+# for this provisional commit, _then_ pushes a Git tag, then starts the process
+# of publishing the built artifacts.
+#
+# The successful push of a Git tag marks the atomic and irreversible transition
+# from a provisional release to a valid release. Changes to this workflow MUST
+# continue to satisfy the property that artifact publishing failures are
+# recoverable without changes to the tagged code or built artifacts.
+# For example, the GitHub release can be cut by hand using archives uploaded to
+# the workflow run, and the crate can be published from a local checkout of the
+# tag.
+#
+# [1]: https://graydon2.dreamwidth.org/1597.html
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -94,17 +117,8 @@ jobs:
         git checkout main
         git merge --ff-only "$RELEASE_BRANCH"
 
-    # So far, none of the intermediate state of the release should be exposed
-    # outside of the GitHub workflow.
-    #
-    # THIS STEP IS THE POINT OF NO RETURN.
-    # IT IS THE ATOMIC MOMENT AT WHICH THE RELEASE OCCURS,
-    # AFTER WHICH IT CANNOT BE REVOKED.
-    #
-    # Any failures after this point MUST be possible to recover from manually.
-    # For example, the GitHub release can be cut by hand using archives uploaded
-    # to the workflow run, and the crate can be published from a local checkout
-    # of the tag.
+    # THIS IS THE ATOMIC AND IRREVERSIBLE POINT OF NO RETURN.
+    # See the explanation of this workflow's design at the top of the file.
     - name: Push Release
       if: ${{ github.ref == 'refs/heads/start-release' }}
       run: git push --atomic origin main "$RELEASE_TAG" :"$RELEASE_BRANCH"
