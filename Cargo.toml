@@ -12,7 +12,7 @@ keywords = ["cli"]
 exclude = ["benches/**"]
 
 [dependencies]
-lexopt = "0.3.0"
+lexopt = "0.3.1"
 memmap2 = "0.9.4"
 rmp = "0.8.12"
 rmp-serde = "1.1.2"
